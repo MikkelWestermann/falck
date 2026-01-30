@@ -42,7 +42,7 @@ function App() {
     <div className="app">
       <header className="app-header">
         <div>
-          <p className="eyebrow">GitGUI</p>
+          <p className="eyebrow">Falck</p>
           <h1>Repository dashboard</h1>
           <p className="lede small">{repoPath}</p>
         </div>

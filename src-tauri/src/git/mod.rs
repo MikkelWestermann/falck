@@ -9,8 +9,6 @@ pub enum GitError {
     Git(String),
     #[error("Repository not found")]
     RepositoryNotFound,
-    #[error("Invalid path")]
-    InvalidPath,
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }

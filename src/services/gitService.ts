@@ -26,6 +26,12 @@ export interface RepositoryInfo {
   status_files: FileStatus[];
 }
 
+export interface SavedRepo {
+  name: string;
+  path: string;
+  last_opened: number;
+}
+
 export const gitService = {
   async cloneRepository(url: string, path: string): Promise<string> {
     return invoke("clone_repo", { url, path });
@@ -78,5 +84,13 @@ export const gitService = {
 
   async getRemotes(path: string): Promise<string[]> {
     return invoke("get_remotes", { path });
+  },
+
+  async saveRepo(name: string, path: string): Promise<void> {
+    return invoke("save_repo_entry", { name, path });
+  },
+
+  async listSavedRepos(): Promise<SavedRepo[]> {
+    return invoke("list_repo_entries");
   },
 };

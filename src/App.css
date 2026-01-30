@@ -417,6 +417,42 @@ select:focus {
   gap: 24px;
 }
 
+.saved-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.saved-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid #f1e2d4;
+  background: #fff6ed;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.saved-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(31, 26, 22, 0.12);
+}
+
+.saved-name {
+  font-weight: 600;
+}
+
+.saved-path {
+  font-size: 0.8rem;
+  color: #7b6a60;
+  margin-top: 4px;
+  word-break: break-all;
+}
+
 @media (max-width: 960px) {
   .app-header {
     flex-direction: column;

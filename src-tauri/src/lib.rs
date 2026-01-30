@@ -1,10 +1,12 @@
 mod git;
+mod storage;
 
 use git::{
     checkout_branch, clone_repository, create_branch, create_commit, delete_branch,
     get_commit_history, get_repository_info, list_remotes, pull_from_remote, push_to_remote,
     stage_file, unstage_file,
 };
+use storage::{list_repos, save_repo, SavedRepo};
 
 // ============================================================================
 // Tauri Commands
@@ -78,6 +80,24 @@ fn get_remotes(path: String) -> Result<Vec<String>, String> {
     list_remotes(&path).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn save_repo_entry(
+    app: tauri::AppHandle,
+    name: String,
+    path: String,
+) -> Result<(), String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs() as i64;
+    save_repo(&app, &name, &path, now)
+}
+
+#[tauri::command]
+fn list_repo_entries(app: tauri::AppHandle) -> Result<Vec<SavedRepo>, String> {
+    list_repos(&app)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -94,6 +114,8 @@ pub fn run() {
             push,
             pull,
             get_remotes,
+            save_repo_entry,
+            list_repo_entries,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
