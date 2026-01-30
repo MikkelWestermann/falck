@@ -1,50 +1,94 @@
 import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
+import { BranchManager } from "./components/BranchManager";
+import { CommitHistory } from "./components/CommitHistory";
+import { RemoteOperations } from "./components/RemoteOperations";
+import { RepoSelector } from "./components/RepoSelector";
+import { StagingArea } from "./components/StagingArea";
+import { gitService, RepositoryInfo } from "./services/gitService";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const [repoPath, setRepoPath] = useState<string | null>(null);
+  const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
+  const [refreshSeed, setRefreshSeed] = useState(0);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+  const loadRepoInfo = async (path: string) => {
+    try {
+      const info = await gitService.getRepositoryInfo(path);
+      setRepoInfo(info);
+    } catch (err) {
+      console.error("Failed to load repo info:", err);
+    }
+  };
+
+  const handleRepoSelect = async (path: string) => {
+    setRepoPath(path);
+    await loadRepoInfo(path);
+  };
+
+  const handleRefresh = async () => {
+    if (!repoPath) {
+      return;
+    }
+    setRefreshSeed((prev) => prev + 1);
+    await loadRepoInfo(repoPath);
+  };
+
+  if (!repoPath || !repoInfo) {
+    return <RepoSelector onRepoSelect={handleRepoSelect} />;
   }
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <div className="app">
+      <header className="app-header">
+        <div>
+          <p className="eyebrow">GitGUI</p>
+          <h1>Repository dashboard</h1>
+          <p className="lede small">{repoPath}</p>
+        </div>
+        <div className="header-actions">
+          <div className={`status-dot ${repoInfo.is_dirty ? "dirty" : "clean"}`}>
+            {repoInfo.is_dirty ? "Uncommitted changes" : "Working tree clean"}
+          </div>
+          <button className="btn ghost" onClick={handleRefresh}>
+            Refresh
+          </button>
+          <button
+            className="btn danger"
+            onClick={() => {
+              setRepoPath(null);
+              setRepoInfo(null);
+            }}
+          >
+            Close repo
+          </button>
+        </div>
+      </header>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+      <main className="app-main">
+        <div className="grid">
+          <div className="column">
+            <BranchManager
+              key={`branches-${refreshSeed}`}
+              repoPath={repoPath}
+              onBranchChange={handleRefresh}
+            />
+            <RemoteOperations
+              repoPath={repoPath}
+              currentBranch={repoInfo.head_branch}
+            />
+          </div>
+          <div className="column">
+            <StagingArea
+              key={`staging-${refreshSeed}`}
+              repoPath={repoPath}
+              onCommit={handleRefresh}
+            />
+            <CommitHistory key={`history-${refreshSeed}`} repoPath={repoPath} />
+          </div>
+        </div>
+      </main>
+    </div>
   );
 }
 

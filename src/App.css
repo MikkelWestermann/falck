@@ -1,116 +1,439 @@
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap");
 
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafb);
-}
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  color: #1f1a16;
+  background-color: #f6f3ee;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
 }
 
-.container {
+* {
+  box-sizing: border-box;
+}
+
+body {
   margin: 0;
-  padding-top: 10vh;
+  background: radial-gradient(circle at top, #fff7eb 0%, #f6f3ee 55%, #efe7dc 100%);
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+p {
+  margin: 0;
+  color: #5b4d44;
+}
+
+.app {
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
+.app-header {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 28px 32px;
+  background: linear-gradient(135deg, #1f1a16 0%, #2f2722 55%, #3a2f28 100%);
+  color: #f7f3ee;
+  border-bottom: 2px solid #d5a36e;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+.app-header .lede.small {
+  color: #d6c8bb;
+  font-size: 0.95rem;
 }
 
-a:hover {
-  color: #535bf2;
+.app-main {
+  flex: 1;
+  padding: 28px 32px 40px;
 }
 
-h1 {
-  text-align: center;
+.eyebrow {
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  color: #d5a36e;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.lede {
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.panel {
+  background: #fffaf4;
+  border: 1px solid #efe1d2;
+  border-radius: 18px;
+  padding: 20px 22px;
+  box-shadow: 0 16px 40px rgba(31, 26, 22, 0.08);
+}
+
+.panel-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.panel-header--row {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-header h2 {
+  font-size: 1.2rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.field.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.field label {
+  font-size: 0.85rem;
+  color: #6a5a4f;
+  font-weight: 600;
 }
 
 input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
+textarea,
+select {
   font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
+  font-size: 0.95rem;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #e6d7c6;
+  background: #fffdf9;
+  color: #1f1a16;
   outline: none;
 }
 
-#greet-input {
-  margin-right: 5px;
+textarea {
+  resize: vertical;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: #d5a36e;
+  box-shadow: 0 0 0 3px rgba(213, 163, 110, 0.2);
+}
+
+.btn {
+  font-family: inherit;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn.primary {
+  background: #d5a36e;
+  color: #1f1a16;
+  box-shadow: 0 10px 20px rgba(213, 163, 110, 0.25);
+}
+
+.btn.ghost {
+  background: transparent;
+  border: 1px solid #d5a36e;
+  color: #7a5a3f;
+}
+
+.btn.danger {
+  background: #ffdad3;
+  color: #8a2a1e;
+  border-color: #f4a18e;
+}
+
+.btn.small,
+.btn.tiny {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-dot {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 0.85rem;
+}
+
+.status-dot.clean {
+  border: 1px solid rgba(167, 230, 190, 0.6);
+  color: #bce9c9;
+}
+
+.status-dot.dirty {
+  border: 1px solid rgba(255, 208, 160, 0.6);
+  color: #ffd0a0;
+}
+
+.branch-current {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: #f5eadf;
+  font-weight: 600;
+}
+
+.branch-list,
+.file-list,
+.commit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.branch-item,
+.file-item,
+.commit-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff6ed;
+  border: 1px solid #f1e2d4;
+}
+
+.branch-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.tag {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f3d7b9;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #6a4c34;
+}
+
+.tag.muted {
+  background: #f1ebe5;
+  color: #7b6a60;
+}
+
+.branch-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.file-path {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: "JetBrains Mono", "Courier New", monospace;
+  font-size: 0.85rem;
+}
+
+.status-pill {
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #f1e2d4;
+}
+
+.status-pill.modified {
+  background: #ffe7c4;
+}
+
+.status-pill.added {
+  background: #d8f3e5;
+}
+
+.status-pill.deleted {
+  background: #ffd6d0;
+}
+
+.status-pill.untracked {
+  background: #dbe8ff;
+}
+
+.status-pill.renamed {
+  background: #f5def5;
+}
+
+.commit-item {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.commit-hash {
+  font-family: "JetBrains Mono", "Courier New", monospace;
+  font-size: 0.85rem;
+  color: #7a5a3f;
+  min-width: 72px;
+}
+
+.commit-message {
+  font-weight: 600;
+}
+
+.commit-meta {
+  font-size: 0.8rem;
+  color: #7b6a60;
+  margin-top: 4px;
+}
+
+.commit-form h3 {
+  margin-bottom: 12px;
+}
+
+.divider {
+  height: 1px;
+  background: #ecdcc9;
+  margin: 16px 0;
+  border-radius: 999px;
+}
+
+.notice {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.notice.error {
+  background: #ffe5e1;
+  color: #8a2a1e;
+}
+
+.notice.success {
+  background: #e3f7ea;
+  color: #17653a;
+}
+
+.empty {
+  padding: 18px;
+  background: #f5eadf;
+  border-radius: 12px;
+  color: #7b6a60;
+}
+
+.button-row {
+  display: flex;
+  gap: 12px;
+}
+
+.repo-shell {
+  min-height: 100vh;
+  padding: 40px 32px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.repo-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.repo-hero h1 {
+  font-size: 2.3rem;
+}
+
+.repo-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.meta-chip {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #1f1a16;
+  color: #f7f3ee;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.repo-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+@media (max-width: 960px) {
+  .app-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
   }
 
-  a:hover {
-    color: #24c8db;
+  .grid,
+  .repo-panels {
+    grid-template-columns: 1fr;
   }
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
+  .header-actions {
+    flex-wrap: wrap;
   }
-  button:active {
-    background-color: #0f0f0f69;
+
+  .repo-hero {
+    flex-direction: column;
   }
 }
