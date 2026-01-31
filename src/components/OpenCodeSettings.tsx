@@ -5,6 +5,7 @@ import { zodValidator } from "@tanstack/zod-form-adapter";
 import { FormField, FormSelect } from "@/components/form/FormField";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +21,11 @@ interface OpenCodeSettingsProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function OpenCodeSettings({ open, onOpenChange }: OpenCodeSettingsProps) {
+interface OpenCodeSettingsContentProps {
+  active: boolean;
+}
+
+const useOpenCodeSettings = (active: boolean) => {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -49,11 +54,11 @@ export function OpenCodeSettings({ open, onOpenChange }: OpenCodeSettingsProps) 
   });
 
   useEffect(() => {
-    if (!open) {
+    if (!active) {
       return;
     }
     void loadProviders();
-  }, [open]);
+  }, [active]);
 
   const loadProviders = async () => {
     setLoading(true);
@@ -72,11 +77,114 @@ export function OpenCodeSettings({ open, onOpenChange }: OpenCodeSettingsProps) 
     }
   };
 
+  return {
+    providers,
+    error,
+    success,
+    loading,
+    form,
+  };
+};
+
+const OpenCodeSettingsContent = ({ active }: OpenCodeSettingsContentProps) => {
+  const { providers, error, success, loading, form } = useOpenCodeSettings(active);
   const providerOptions = providers.map((provider) => ({
     label: provider.name,
     value: provider.name,
   }));
 
+  return (
+    <div className="space-y-6">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void form.handleSubmit();
+        }}
+        className="space-y-4"
+      >
+        <form.Field
+          name="provider"
+          validators={{ onChange: zodValidator(setAPIKeySchema.shape.provider) }}
+        >
+          {(field) => (
+            <FormSelect
+              field={field}
+              label="Provider"
+              options={providerOptions}
+              required
+            />
+          )}
+        </form.Field>
+        <form.Field
+          name="apiKey"
+          validators={{ onChange: zodValidator(setAPIKeySchema.shape.apiKey) }}
+        >
+          {(field) => (
+            <FormField
+              field={field}
+              label="API key"
+              placeholder="Enter API key"
+              type="password"
+              required
+            />
+          )}
+        </form.Field>
+
+        <Button type="submit" disabled={loading} className="w-full">
+          {loading ? "Saving…" : "Save key"}
+        </Button>
+      </form>
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold">Available models</h3>
+        <div className="grid gap-3">
+          {providers.map((provider) => (
+            <div
+              key={provider.name}
+              className="rounded-lg border-2 border-border bg-secondary/20 p-3 shadow-[var(--shadow-xs)]"
+            >
+              <div className="text-sm font-semibold text-foreground">
+                {provider.name}
+              </div>
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                {provider.models.map((model) => (
+                  <li key={model}>{model}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {success && (
+        <Alert>
+          <AlertDescription>{success}</AlertDescription>
+        </Alert>
+      )}
+    </div>
+  );
+};
+
+export function OpenCodeSettingsPanel() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>OpenCode settings</CardTitle>
+        <CardDescription>Configure API keys and view models.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <OpenCodeSettingsContent active />
+      </CardContent>
+    </Card>
+  );
+}
+
+export function OpenCodeSettings({ open, onOpenChange }: OpenCodeSettingsProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -85,77 +193,7 @@ export function OpenCodeSettings({ open, onOpenChange }: OpenCodeSettingsProps) 
           <DialogDescription>Configure API keys and view models.</DialogDescription>
         </DialogHeader>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void form.handleSubmit();
-          }}
-          className="space-y-4"
-        >
-          <form.Field
-            name="provider"
-            validators={{ onChange: zodValidator(setAPIKeySchema.shape.provider) }}
-          >
-            {(field) => (
-              <FormSelect
-                field={field}
-                label="Provider"
-                options={providerOptions}
-                required
-              />
-            )}
-          </form.Field>
-          <form.Field
-            name="apiKey"
-            validators={{ onChange: zodValidator(setAPIKeySchema.shape.apiKey) }}
-          >
-            {(field) => (
-              <FormField
-                field={field}
-                label="API key"
-                placeholder="Enter API key"
-                type="password"
-                required
-              />
-            )}
-          </form.Field>
-
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Saving…" : "Save key"}
-          </Button>
-        </form>
-
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold">Available models</h3>
-          <div className="grid gap-3">
-            {providers.map((provider) => (
-              <div
-                key={provider.name}
-                className="rounded-lg border-2 border-border bg-secondary/20 p-3 shadow-[var(--shadow-xs)]"
-              >
-                <div className="text-sm font-semibold text-foreground">
-                  {provider.name}
-                </div>
-                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                  {provider.models.map((model) => (
-                    <li key={model}>{model}</li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        {success && (
-          <Alert>
-            <AlertDescription>{success}</AlertDescription>
-          </Alert>
-        )}
+        <OpenCodeSettingsContent active={open} />
       </DialogContent>
     </Dialog>
   );

@@ -13,6 +13,76 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
+const formatError = (error: unknown, depth = 0): string => {
+  if (depth > 2) {
+    return "Invalid input.";
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (Array.isArray(error)) {
+    for (const item of error) {
+      const message = formatError(item, depth + 1);
+      if (message && message !== "Invalid input.") {
+        return message;
+      }
+    }
+  }
+  if (error instanceof Map) {
+    for (const value of error.values()) {
+      const message = formatError(value, depth + 1);
+      if (message && message !== "Invalid input.") {
+        return message;
+      }
+    }
+  }
+  if (error && typeof error === "object") {
+    const candidate = error as {
+      message?: unknown;
+      issues?: unknown;
+      errors?: unknown;
+      cause?: unknown;
+    };
+    if (typeof candidate.message === "string" && candidate.message.length > 0) {
+      return candidate.message;
+    }
+    if (Array.isArray(candidate.issues) && candidate.issues.length > 0) {
+      const issue = candidate.issues[0] as { message?: unknown };
+      if (typeof issue?.message === "string") {
+        return issue.message;
+      }
+    }
+    if (Array.isArray(candidate.errors) && candidate.errors.length > 0) {
+      const nested = formatError(candidate.errors[0], depth + 1);
+      if (nested) {
+        return nested;
+      }
+    }
+    if (candidate.cause) {
+      const nested = formatError(candidate.cause, depth + 1);
+      if (nested) {
+        return nested;
+      }
+    }
+    const ownKeys = Object.getOwnPropertyNames(error);
+    if (ownKeys.length > 0) {
+      const snapshot = Object.fromEntries(
+        ownKeys.map((key) => [key, (error as Record<string, unknown>)[key]]),
+      );
+      try {
+        return JSON.stringify(snapshot);
+      } catch {
+        return String(error);
+      }
+    }
+  }
+  const fallback = String(error);
+  return fallback === "[object Object]" ? "Invalid input." : fallback;
+};
+
 interface FormFieldProps {
   field: FieldApi<any, any, any, any>;
   label?: string;
@@ -57,7 +127,7 @@ export const FormField: React.FC<FormFieldProps> = ({
       />
       {errors.length > 0 && (
         <p className="text-sm font-medium text-destructive">
-          {errors[0]?.toString()}
+          {formatError(errors[0])}
         </p>
       )}
       {helpText && !isInvalid && (
@@ -100,7 +170,7 @@ export const FormTextarea: React.FC<FormFieldProps> = ({
       />
       {errors.length > 0 && (
         <p className="text-sm font-medium text-destructive">
-          {errors[0]?.toString()}
+          {formatError(errors[0])}
         </p>
       )}
       {helpText && !isInvalid && (
@@ -144,7 +214,7 @@ export const FormSelect: React.FC<
       </Select>
       {errors.length > 0 && (
         <p className="text-sm font-medium text-destructive">
-          {errors[0]?.toString()}
+          {formatError(errors[0])}
         </p>
       )}
     </div>

@@ -1,4 +1,7 @@
-use git2::{BranchType, Repository, Signature, Sort, StatusOptions};
+use git2::{
+    build::RepoBuilder, BranchType, Cred, CredentialType, FetchOptions, PushOptions,
+    RemoteCallbacks, Repository, Signature, Sort, StatusOptions,
+};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
@@ -59,8 +62,58 @@ pub struct RepositoryInfo {
 // Repository Operations
 // ============================================================================
 
-pub fn clone_repository(url: &str, local_path: &str) -> GitResult<()> {
-    Repository::clone(url, local_path)?;
+fn configure_ssh_callbacks(callbacks: &mut RemoteCallbacks, ssh_key_path: &str) {
+    let ssh_key_path = ssh_key_path.to_string();
+    let public_key_path = format!("{}.pub", ssh_key_path);
+
+    callbacks.certificate_check(|_, _| Ok(git2::CertificateCheckStatus::CertificateOk));
+    callbacks.credentials(move |_, username_from_url, allowed_types| {
+        let username = username_from_url.unwrap_or("git");
+
+        if allowed_types.contains(CredentialType::SSH_KEY) {
+            let public_key = {
+                let path = Path::new(&public_key_path);
+                if path.exists() {
+                    Some(path)
+                } else {
+                    None
+                }
+            };
+
+            if let Ok(cred) = Cred::ssh_key(
+                username,
+                public_key,
+                Path::new(&ssh_key_path),
+                None,
+            ) {
+                return Ok(cred);
+            }
+
+            return Cred::ssh_key_from_agent(username);
+        }
+
+        if allowed_types.contains(CredentialType::USERNAME) {
+            return Cred::username(username);
+        }
+
+        Err(git2::Error::from_str("No supported SSH credentials available"))
+    });
+}
+
+pub fn clone_repository(url: &str, local_path: &str, ssh_key_path: &str) -> GitResult<()> {
+    if !Path::new(ssh_key_path).exists() {
+        return Err(GitError::Git("SSH key not found".to_string()));
+    }
+
+    let mut callbacks = RemoteCallbacks::new();
+    configure_ssh_callbacks(&mut callbacks, ssh_key_path);
+
+    let mut fetch_options = FetchOptions::new();
+    fetch_options.remote_callbacks(callbacks);
+
+    let mut builder = RepoBuilder::new();
+    builder.fetch_options(fetch_options);
+    builder.clone(url, Path::new(local_path))?;
     Ok(())
 }
 
@@ -250,18 +303,49 @@ pub fn checkout_branch(path: &str, branch_name: &str) -> GitResult<()> {
 // Push/Pull Operations
 // ============================================================================
 
-pub fn push_to_remote(path: &str, remote_name: &str, branch_name: &str) -> GitResult<()> {
+pub fn push_to_remote(
+    path: &str,
+    remote_name: &str,
+    branch_name: &str,
+    ssh_key_path: &str,
+) -> GitResult<()> {
+    if !Path::new(ssh_key_path).exists() {
+        return Err(GitError::Git("SSH key not found".to_string()));
+    }
+
     let repo = open_repository(path)?;
     let mut remote = repo.find_remote(remote_name)?;
     let refspec = format!("refs/heads/{0}:refs/heads/{0}", branch_name);
-    remote.push(&[&refspec], None)?;
+
+    let mut callbacks = RemoteCallbacks::new();
+    configure_ssh_callbacks(&mut callbacks, ssh_key_path);
+
+    let mut push_options = PushOptions::new();
+    push_options.remote_callbacks(callbacks);
+    remote.push(&[&refspec], Some(&mut push_options))?;
     Ok(())
 }
 
-pub fn pull_from_remote(path: &str, remote_name: &str, branch_name: &str) -> GitResult<()> {
+pub fn pull_from_remote(
+    path: &str,
+    remote_name: &str,
+    branch_name: &str,
+    ssh_key_path: &str,
+) -> GitResult<()> {
+    if !Path::new(ssh_key_path).exists() {
+        return Err(GitError::Git("SSH key not found".to_string()));
+    }
+
     let repo = open_repository(path)?;
     let mut remote = repo.find_remote(remote_name)?;
-    remote.fetch(&[branch_name], None, None)?;
+
+    let mut callbacks = RemoteCallbacks::new();
+    configure_ssh_callbacks(&mut callbacks, ssh_key_path);
+
+    let mut fetch_options = FetchOptions::new();
+    fetch_options.remote_callbacks(callbacks);
+
+    remote.fetch(&[branch_name], Some(&mut fetch_options), None)?;
 
     let fetch_head = repo.find_reference("FETCH_HEAD")?;
     let fetch_commit = repo.reference_to_annotated_commit(&fetch_head)?;

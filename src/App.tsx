@@ -1,23 +1,70 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BranchSwitcher } from "@/components/BranchSwitcher";
 import { GitToolsDialog } from "@/components/GitToolsDialog";
 import { RepoSelector } from "@/components/RepoSelector";
 import { SaveChangesDialog } from "@/components/SaveChangesDialog";
 import { AIChat } from "@/components/AIChat";
-import { OpenCodeSettings } from "@/components/OpenCodeSettings";
+import { SSHKeySetup } from "@/components/ssh/SSHKeySetup";
+import { SettingsPage } from "@/components/SettingsPage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Menubar,
+  MenubarContent,
+  MenubarItem,
+  MenubarMenu,
+  MenubarSeparator,
+  MenubarTrigger,
+} from "@/components/ui/menubar";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { gitService, RepositoryInfo } from "@/services/gitService";
-import logo from "@/assets/logo.png";
+import { configService } from "@/services/configService";
+import { SSHKey, sshService } from "@/services/sshService";
 
 function App() {
   const [repoPath, setRepoPath] = useState<string | null>(null);
   const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
   const [refreshSeed, setRefreshSeed] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettingsPage, setShowSettingsPage] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showGitTools, setShowGitTools] = useState(false);
+  const [showSSHSettings, setShowSSHSettings] = useState(false);
+  const [sshKey, setSshKey] = useState<SSHKey | null>(() =>
+    configService.getSelectedSSHKey(),
+  );
+  const [sshReady, setSshReady] = useState(false);
+
+  useEffect(() => {
+    const verifyKey = async () => {
+      const stored = configService.getSelectedSSHKey();
+      if (!stored) {
+        setSshReady(true);
+        return;
+      }
+
+      try {
+        const keys = await sshService.listKeys();
+        const match =
+          keys.find(
+            (key) =>
+              key.private_key_path === stored.private_key_path ||
+              key.fingerprint === stored.fingerprint,
+          ) || null;
+        if (match) {
+          setSshKey(match);
+        } else {
+          configService.setSelectedSSHKey(null);
+          setSshKey(null);
+        }
+      } catch {
+        setSshKey(stored);
+      } finally {
+        setSshReady(true);
+      }
+    };
+
+    void verifyKey();
+  }, []);
 
   const loadRepoInfo = async (path: string) => {
     try {
@@ -41,6 +88,15 @@ function App() {
     await loadRepoInfo(repoPath);
   };
 
+  const handleCloseRepo = () => {
+    setRepoPath(null);
+    setRepoInfo(null);
+    setShowSaveDialog(false);
+    setShowGitTools(false);
+    setShowSettingsPage(false);
+    setShowSSHSettings(false);
+  };
+
   const handleDragStart = () => {
     getCurrentWindow()
       .startDragging()
@@ -49,12 +105,55 @@ function App() {
       });
   };
 
+  if (!sshReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+        Loading SSH configuration…
+      </div>
+    );
+  }
+
+  if (!sshKey) {
+    return <SSHKeySetup onConfigured={setSshKey} />;
+  }
+
+  if (showSSHSettings && sshKey) {
+    return (
+      <SSHKeySetup
+        mode="manage"
+        initialKey={sshKey}
+        onConfigured={setSshKey}
+        onClose={() => setShowSSHSettings(false)}
+      />
+    );
+  }
+
+  if (showSettingsPage && sshKey) {
+    return (
+      <SettingsPage
+        sshKey={sshKey}
+        onManageSSHKey={() => setShowSSHSettings(true)}
+        onClose={() => setShowSettingsPage(false)}
+      />
+    );
+  }
+
   if (!repoPath || !repoInfo) {
-    return <RepoSelector onRepoSelect={handleRepoSelect} />;
+    return (
+      <RepoSelector
+        onRepoSelect={handleRepoSelect}
+        onOpenSettings={() => setShowSettingsPage(true)}
+      />
+    );
   }
 
   const hasChanges = repoInfo.is_dirty;
   const changeCount = repoInfo.status_files.length;
+  const repoName =
+    repoPath
+      ?.replace(/[/\\\\]+$/, "")
+      .split(/[/\\\\]/)
+      .pop() ?? "Repository";
 
   return (
     <div className="relative min-h-screen bg-background text-foreground">
@@ -63,37 +162,88 @@ function App() {
         <div className="absolute left-[-80px] top-40 h-72 w-72 rounded-full bg-primary/20 blur-3xl" />
         <div className="absolute inset-x-0 top-28 h-px bg-gradient-to-r from-transparent via-border to-transparent opacity-60" />
       </div>
-      <header
-        className="relative z-10 border-b-2 border-border/80 bg-card/80 backdrop-blur"
-      >
+      <header className="relative z-10 bg-card/80 backdrop-blur">
         <div
-          className="absolute inset-x-0 top-0 z-20 h-10 cursor-grab bg-gradient-to-b from-foreground/10 to-transparent"
+          className="absolute inset-x-0 top-0 z-20 h-8 cursor-grab bg-gradient-to-b from-foreground/10 to-transparent"
           data-tauri-drag-region
           onPointerDown={handleDragStart}
         />
-        <div className="mx-auto w-full max-w-7xl px-6 pb-8 pt-12">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 items-center justify-center border-2 border-border bg-card shadow-[var(--shadow-md)]">
-                <img src={logo} alt="Falck logo" className="h-7 w-7 object-contain" />
-              </div>
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.4em] text-muted-foreground">
-                  Falck
+        <div className="mx-auto w-full max-w-7xl px-6 py-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div
+              className="flex flex-wrap items-center gap-4"
+              data-tauri-drag-region="false"
+            >
+              <div className="min-w-[220px]">
+                <p className="text-sm font-semibold uppercase tracking-[0.32em] text-foreground/80">
+                  {repoName}
                 </p>
-                <h1 className="text-3xl font-black uppercase tracking-tight">
-                  AI coding deck
-                </h1>
-                <p className="text-xs font-mono text-muted-foreground">
+                <p className="text-xs font-mono text-muted-foreground break-all">
                   {repoPath}
                 </p>
               </div>
+              <Menubar className="bg-card/70">
+                <MenubarMenu>
+                  <MenubarTrigger>Repo</MenubarTrigger>
+                  <MenubarContent align="start">
+                    <MenubarItem onSelect={handleRefresh}>Refresh</MenubarItem>
+                    <MenubarSeparator />
+                    <MenubarItem
+                      onSelect={handleCloseRepo}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      Close repo
+                    </MenubarItem>
+                  </MenubarContent>
+                </MenubarMenu>
+                <MenubarMenu>
+                  <MenubarTrigger>Git</MenubarTrigger>
+                  <MenubarContent align="start">
+                    <MenubarItem onSelect={() => setShowGitTools(true)}>
+                      Git tools
+                    </MenubarItem>
+                    <MenubarItem
+                      onSelect={() => setShowSaveDialog(true)}
+                      disabled={!hasChanges}
+                    >
+                      Save &amp; push
+                    </MenubarItem>
+                  </MenubarContent>
+                </MenubarMenu>
+                <MenubarMenu>
+                  <MenubarTrigger>Settings</MenubarTrigger>
+                  <MenubarContent align="start">
+                    <MenubarItem onSelect={() => setShowSettingsPage(true)}>
+                      Open settings
+                    </MenubarItem>
+                  </MenubarContent>
+                </MenubarMenu>
+              </Menubar>
             </div>
             <div
-              className="flex flex-wrap items-center gap-2"
+              className="flex flex-wrap items-center gap-3"
               data-tauri-drag-region="false"
             >
-              <Badge variant={hasChanges ? "destructive" : "secondary"}>
+              <div className="min-w-[220px]">
+                <BranchSwitcher
+                  repoPath={repoPath}
+                  branches={repoInfo.branches}
+                  currentBranch={repoInfo.head_branch}
+                  onBranchChange={handleRefresh}
+                  compact
+                />
+              </div>
+              <Badge
+                variant={hasChanges ? "destructive" : "secondary"}
+                className="gap-2 px-3 py-1"
+              >
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    hasChanges
+                      ? "bg-destructive-foreground"
+                      : "bg-muted-foreground"
+                  }`}
+                />
                 {hasChanges
                   ? `${changeCount} unsaved ${changeCount === 1 ? "change" : "changes"}`
                   : "All changes saved"}
@@ -101,56 +251,11 @@ function App() {
               <Button
                 onClick={() => setShowSaveDialog(true)}
                 disabled={!hasChanges}
-                className="shadow-[var(--shadow-lg)]"
+                size="lg"
+                className="min-w-[170px] shadow-[var(--shadow-lg)]"
               >
                 Save &amp; push
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowGitTools(true)}
-              >
-                Git tools
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowSettings(true)}
-              >
-                AI settings
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleRefresh}>
-                Refresh
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => {
-                setRepoPath(null);
-                setRepoInfo(null);
-                setShowSaveDialog(false);
-                setShowGitTools(false);
-              }}
-            >
-              Close repo
-            </Button>
-            </div>
-          </div>
-
-          <div
-            className="mt-6 flex flex-col gap-4 rounded-lg border-2 border-border bg-card/80 p-4 shadow-[var(--shadow-md)] md:flex-row md:items-center md:justify-between"
-            data-tauri-drag-region="false"
-          >
-            <div className="min-w-[220px]">
-              <BranchSwitcher
-                repoPath={repoPath}
-                branches={repoInfo.branches}
-                currentBranch={repoInfo.head_branch}
-                onBranchChange={handleRefresh}
-              />
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Focus on AI-assisted coding. Git tools stay in the side lane.
             </div>
           </div>
         </div>
@@ -180,8 +285,6 @@ function App() {
         refreshSeed={refreshSeed}
         onOpenSave={() => setShowSaveDialog(true)}
       />
-
-      <OpenCodeSettings open={showSettings} onOpenChange={setShowSettings} />
     </div>
   );
 }

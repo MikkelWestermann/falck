@@ -1,8 +1,17 @@
 import { z } from "zod";
 
+const isSshUrl = (value: string) =>
+  value.startsWith("git@") || value.startsWith("ssh://");
+
 export const cloneRepoSchema = z.object({
   name: z.string().min(1, "Repo name is required"),
-  url: z.string().url("Please enter a valid repository URL"),
+  url: z
+    .string()
+    .min(1, "Repository URL is required")
+    .refine(
+      (value) => isSshUrl(value),
+      "Use an SSH URL (git@github.com:org/repo.git)",
+    ),
   localPath: z.string().min(1, "Local path is required"),
 });
 

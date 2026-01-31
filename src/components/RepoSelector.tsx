@@ -19,9 +19,13 @@ import logo from "@/assets/logo.png";
 
 interface RepoSelectorProps {
   onRepoSelect: (path: string) => void;
+  onOpenSettings?: () => void;
 }
 
-export function RepoSelector({ onRepoSelect }: RepoSelectorProps) {
+export function RepoSelector({
+  onRepoSelect,
+  onOpenSettings,
+}: RepoSelectorProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedRepos, setSavedRepos] = useState<
@@ -133,6 +137,13 @@ export function RepoSelector({ onRepoSelect }: RepoSelectorProps) {
               </div>
             </div>
             <div className="grid gap-2 text-right">
+              {onOpenSettings && (
+                <div data-tauri-drag-region="false">
+                  <Button variant="outline" size="sm" onClick={onOpenSettings}>
+                    Settings
+                  </Button>
+                </div>
+              )}
               <Badge variant="secondary" className="justify-center">
                 Tauri + React
               </Badge>
@@ -151,7 +162,7 @@ export function RepoSelector({ onRepoSelect }: RepoSelectorProps) {
             <CardHeader>
               <CardTitle>Clone repository</CardTitle>
               <CardDescription>
-                Start from a remote URL and choose a local destination.
+                Start from an SSH URL and choose a local destination.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -187,7 +198,8 @@ export function RepoSelector({ onRepoSelect }: RepoSelectorProps) {
                     <FormField
                       field={field}
                       label="Repository URL"
-                      placeholder="https://github.com/user/repo.git"
+                      placeholder="git@github.com:org/repo.git"
+                      helpText="SSH URLs are required for authenticated Git operations."
                       required
                     />
                   )}

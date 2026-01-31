@@ -1,4 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { configService } from "@/services/configService";
+import { SSHKey } from "@/services/sshService";
 
 export interface CommitInfo {
   id: string;
@@ -32,9 +34,22 @@ export interface SavedRepo {
   last_opened: number;
 }
 
+const requireSSHKey = (): SSHKey => {
+  const key = configService.getSelectedSSHKey();
+  if (!key) {
+    throw new Error("SSH key is required. Set one up before using Git.");
+  }
+  return key;
+};
+
 export const gitService = {
   async cloneRepository(url: string, path: string): Promise<string> {
-    return invoke("clone_repo", { url, path });
+    const key = requireSSHKey();
+    return invoke("clone_repo", {
+      url,
+      path,
+      sshKeyPath: key.private_key_path,
+    });
   },
 
   async getRepositoryInfo(path: string): Promise<RepositoryInfo> {
@@ -75,11 +90,23 @@ export const gitService = {
   },
 
   async push(path: string, remote: string, branch: string): Promise<string> {
-    return invoke("push", { path, remote, branch });
+    const key = requireSSHKey();
+    return invoke("push", {
+      path,
+      remote,
+      branch,
+      sshKeyPath: key.private_key_path,
+    });
   },
 
   async pull(path: string, remote: string, branch: string): Promise<string> {
-    return invoke("pull", { path, remote, branch });
+    const key = requireSSHKey();
+    return invoke("pull", {
+      path,
+      remote,
+      branch,
+      sshKeyPath: key.private_key_path,
+    });
   },
 
   async getRemotes(path: string): Promise<string[]> {

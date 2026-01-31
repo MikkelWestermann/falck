@@ -1,5 +1,6 @@
 mod git;
 mod opencode;
+mod ssh;
 mod storage;
 
 use git::{
@@ -15,8 +16,10 @@ use storage::{list_repos, save_repo, SavedRepo};
 // ============================================================================
 
 #[tauri::command]
-fn clone_repo(url: String, path: String) -> Result<String, String> {
-    clone_repository(&url, &path).map_err(|e| e.to_string())?;
+fn clone_repo(url: String, path: String, ssh_key_path: Option<String>) -> Result<String, String> {
+    let ssh_key_path =
+        ssh_key_path.ok_or_else(|| "SSH key is required to clone repositories.".to_string())?;
+    clone_repository(&url, &path, &ssh_key_path).map_err(|e| e.to_string())?;
     Ok("Repository cloned successfully".to_string())
 }
 
@@ -66,14 +69,26 @@ fn checkout(path: String, branch: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn push(path: String, remote: String, branch: String) -> Result<String, String> {
-    push_to_remote(&path, &remote, &branch).map_err(|e| e.to_string())?;
+fn push(
+    path: String,
+    remote: String,
+    branch: String,
+    ssh_key_path: Option<String>,
+) -> Result<String, String> {
+    let ssh_key_path = ssh_key_path.ok_or_else(|| "SSH key is required to push.".to_string())?;
+    push_to_remote(&path, &remote, &branch, &ssh_key_path).map_err(|e| e.to_string())?;
     Ok("Pushed successfully".to_string())
 }
 
 #[tauri::command]
-fn pull(path: String, remote: String, branch: String) -> Result<String, String> {
-    pull_from_remote(&path, &remote, &branch).map_err(|e| e.to_string())?;
+fn pull(
+    path: String,
+    remote: String,
+    branch: String,
+    ssh_key_path: Option<String>,
+) -> Result<String, String> {
+    let ssh_key_path = ssh_key_path.ok_or_else(|| "SSH key is required to pull.".to_string())?;
+    pull_from_remote(&path, &remote, &branch, &ssh_key_path).map_err(|e| e.to_string())?;
     Ok("Pulled successfully".to_string())
 }
 
@@ -120,6 +135,11 @@ pub fn run() {
             save_repo_entry,
             list_repo_entries,
             opencode_send,
+            ssh::generate_new_ssh_key,
+            ssh::list_ssh_keys,
+            ssh::add_ssh_key_to_agent,
+            ssh::test_ssh_github,
+            ssh::get_current_os,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -27,6 +27,7 @@ interface BranchSwitcherProps {
   branches: BranchInfo[];
   currentBranch: string;
   onBranchChange: () => void;
+  compact?: boolean;
 }
 
 export function BranchSwitcher({
@@ -34,6 +35,7 @@ export function BranchSwitcher({
   branches,
   currentBranch,
   onBranchChange,
+  compact = false,
 }: BranchSwitcherProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const [branchName, setBranchName] = useState("");
@@ -84,8 +86,8 @@ export function BranchSwitcher({
   };
 
   return (
-    <div className="space-y-2">
-      <Label>Branch</Label>
+    <div className={compact ? "space-y-1" : "space-y-2"}>
+      <Label className={compact ? "sr-only" : undefined}>Branch</Label>
       <Select value={currentBranch} onValueChange={handleSelect}>
         <SelectTrigger disabled={loading}>
           <SelectValue placeholder="Select branch" />
