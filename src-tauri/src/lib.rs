@@ -1,4 +1,5 @@
 mod git;
+mod opencode;
 mod storage;
 
 use git::{
@@ -6,6 +7,7 @@ use git::{
     get_commit_history, get_repository_info, list_remotes, pull_from_remote, push_to_remote,
     stage_file, unstage_file,
 };
+use opencode::{opencode_send, OpencodeState};
 use storage::{list_repos, save_repo, SavedRepo};
 
 // ============================================================================
@@ -101,6 +103,7 @@ fn list_repo_entries(app: tauri::AppHandle) -> Result<Vec<SavedRepo>, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(OpencodeState::default())
         .invoke_handler(tauri::generate_handler![
             clone_repo,
             get_repo_info,
@@ -116,6 +119,7 @@ pub fn run() {
             get_remotes,
             save_repo_entry,
             list_repo_entries,
+            opencode_send,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

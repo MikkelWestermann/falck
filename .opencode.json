@@ -1,0 +1,21 @@
+{
+  "models": {
+    "default": "gpt-4",
+    "providers": {
+      "openai": "gpt-4",
+      "anthropic": "claude-3-sonnet",
+      "local": "mistral"
+    }
+  },
+  "features": {
+    "codeCompletion": true,
+    "refactoring": true,
+    "documentation": true
+  },
+  "ignore": [
+    "node_modules/",
+    ".git/",
+    "dist/",
+    "build/"
+  ]
+}
