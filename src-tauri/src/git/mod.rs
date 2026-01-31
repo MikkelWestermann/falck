@@ -1,4 +1,4 @@
-use git2::{BranchType, Repository, Signature, Sort};
+use git2::{BranchType, Repository, Signature, Sort, StatusOptions};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
@@ -89,9 +89,18 @@ pub fn get_repository_info(path: &str) -> GitResult<RepositoryInfo> {
     }
 
     let mut status_files = Vec::new();
-    let statuses = repo.statuses(None)?;
+    let mut status_options = StatusOptions::new();
+    status_options
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_ignored(false)
+        .include_unmodified(false);
+    let statuses = repo.statuses(Some(&mut status_options))?;
     for entry in statuses.iter() {
         let status = entry.status();
+        if status.is_ignored() {
+            continue;
+        }
         let status_str = if status.is_wt_modified() || status.is_index_modified() {
             "modified"
         } else if status.is_wt_new() {
