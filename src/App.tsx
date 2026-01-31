@@ -7,6 +7,7 @@ import { AIChat } from "@/components/AIChat";
 import { OpenCodeSettings } from "@/components/OpenCodeSettings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { gitService, RepositoryInfo } from "@/services/gitService";
 import logo from "@/assets/logo.png";
 
@@ -40,6 +41,14 @@ function App() {
     await loadRepoInfo(repoPath);
   };
 
+  const handleDragStart = () => {
+    getCurrentWindow()
+      .startDragging()
+      .catch(() => {
+        // no-op outside Tauri runtime
+      });
+  };
+
   if (!repoPath || !repoInfo) {
     return <RepoSelector onRepoSelect={handleRepoSelect} />;
   }
@@ -54,12 +63,15 @@ function App() {
         <div className="absolute left-[-80px] top-40 h-72 w-72 rounded-full bg-primary/20 blur-3xl" />
         <div className="absolute inset-x-0 top-28 h-px bg-gradient-to-r from-transparent via-border to-transparent opacity-60" />
       </div>
-
       <header
         className="relative z-10 border-b-2 border-border/80 bg-card/80 backdrop-blur"
-        data-tauri-drag-region
       >
-        <div className="mx-auto w-full max-w-7xl px-6 pb-8 pt-8">
+        <div
+          className="absolute inset-x-0 top-0 z-20 h-10 cursor-grab bg-gradient-to-b from-foreground/10 to-transparent"
+          data-tauri-drag-region
+          onPointerDown={handleDragStart}
+        />
+        <div className="mx-auto w-full max-w-7xl px-6 pb-8 pt-12">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-4">
               <div className="flex h-12 w-12 items-center justify-center border-2 border-border bg-card shadow-[var(--shadow-md)]">
