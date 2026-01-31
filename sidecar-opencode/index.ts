@@ -5,6 +5,7 @@ import path from "node:path";
 type RequestMessage = {
   cmd: string;
   sessionPath?: string;
+  directory?: string;
   name?: string;
   description?: string;
   model?: string;
@@ -148,40 +149,40 @@ rl.on("line", async (line) => {
 });
 
 async function handleCommand(request: RequestMessage) {
-  const { cmd, sessionPath, ...args } = request;
+  const { cmd, sessionPath, directory, ...args } = request;
 
   try {
-    console.error("[SIDECAR] request", cmd, { sessionPath, ...args });
+    console.error("[SIDECAR] request", cmd, { sessionPath, directory, ...args });
     switch (cmd) {
       case "health":
         await handleHealth();
         break;
       case "config":
-        await handleConfig();
+        await handleConfig(directory);
         break;
       case "createSession":
-        await handleCreateSession(args);
+        await handleCreateSession(args, directory);
         break;
       case "getSession":
-        await handleGetSession(sessionPath);
+        await handleGetSession(sessionPath, directory);
         break;
       case "listSessions":
-        await handleListSessions();
+        await handleListSessions(directory);
         break;
       case "prompt":
-        await handlePrompt(sessionPath, args);
+        await handlePrompt(sessionPath, args, directory);
         break;
       case "listMessages":
-        await handleListMessages(sessionPath);
+        await handleListMessages(sessionPath, directory);
         break;
       case "deleteSession":
-        await handleDeleteSession(sessionPath);
+        await handleDeleteSession(sessionPath, directory);
         break;
       case "setAuth":
         await handleSetAuth(args);
         break;
       case "getProviders":
-        await handleGetProviders();
+        await handleGetProviders(directory);
         break;
       default:
         sendError(`Unknown command: ${cmd}`, "UNKNOWN_CMD");
@@ -205,10 +206,10 @@ async function handleHealth() {
   });
 }
 
-async function handleConfig() {
+async function handleConfig(directory?: string) {
   const [configResult, providersResult] = await Promise.all([
-    client.config.get(),
-    client.config.providers(),
+    client.config.get({ directory }),
+    client.config.providers({ directory }),
   ]);
   const config = unwrapData(configResult);
   const providers = unwrapData(providersResult);
@@ -225,8 +226,8 @@ async function handleConfig() {
   });
 }
 
-async function handleGetProviders() {
-  const providers = unwrapData(await client.config.providers());
+async function handleGetProviders(directory?: string) {
+  const providers = unwrapData(await client.config.providers({ directory }));
   const uiProviders = toUiProviders(providers);
   sendMessage({
     type: "success",
@@ -238,12 +239,12 @@ async function handleGetProviders() {
   });
 }
 
-async function handleCreateSession({
-  name,
-  description,
-  model,
-}: RequestMessage) {
+async function handleCreateSession(
+  { name, description }: RequestMessage,
+  directory?: string,
+) {
   const session = await client.session.create({
+    directory,
     title: name || description || "Untitled Session",
   });
   const data = unwrapData(session);
@@ -263,12 +264,14 @@ async function handleCreateSession({
   });
 }
 
-async function handleGetSession(sessionPath?: string) {
+async function handleGetSession(sessionPath?: string, directory?: string) {
   if (!sessionPath) {
     sendError("sessionPath is required", "INVALID_ARGUMENT");
     return;
   }
-  const data = unwrapData(await client.session.get({ sessionID: sessionPath }));
+  const data = unwrapData(
+    await client.session.get({ sessionID: sessionPath, directory }),
+  );
   sendMessage({
     type: "success",
     cmd: "getSession",
@@ -283,8 +286,8 @@ async function handleGetSession(sessionPath?: string) {
   });
 }
 
-async function handleListSessions() {
-  const sessions = unwrapData(await client.session.list());
+async function handleListSessions(directory?: string) {
+  const sessions = unwrapData(await client.session.list({ directory }));
   const sessionList = (sessions || []).map((session) => ({
     path: session.path ?? session.id ?? session.slug,
     name: session.name ?? session.title,
@@ -304,6 +307,7 @@ async function handleListSessions() {
 async function handlePrompt(
   sessionPath?: string,
   { message, model }: RequestMessage = {},
+  directory?: string,
 ) {
   if (!sessionPath) {
     sendError("sessionPath is required", "INVALID_ARGUMENT");
@@ -318,6 +322,7 @@ async function handlePrompt(
       : undefined;
   const response = await client.session.prompt({
     sessionID: sessionPath,
+    directory,
     model: modelParts,
     parts: [{ type: "text", text: message ?? "" }],
   });
@@ -335,13 +340,13 @@ async function handlePrompt(
   });
 }
 
-async function handleListMessages(sessionPath?: string) {
+async function handleListMessages(sessionPath?: string, directory?: string) {
   if (!sessionPath) {
     sendError("sessionPath is required", "INVALID_ARGUMENT");
     return;
   }
   const data = unwrapData(
-    await client.session.messages({ sessionID: sessionPath }),
+    await client.session.messages({ sessionID: sessionPath, directory }),
   );
 
   const messageList = (data || []).map((msg) => ({
@@ -360,13 +365,13 @@ async function handleListMessages(sessionPath?: string) {
   });
 }
 
-async function handleDeleteSession(sessionPath?: string) {
+async function handleDeleteSession(sessionPath?: string, directory?: string) {
   if (!sessionPath) {
     sendError("sessionPath is required", "INVALID_ARGUMENT");
     return;
   }
   const success = unwrapData(
-    await client.session.delete({ sessionID: sessionPath }),
+    await client.session.delete({ sessionID: sessionPath, directory }),
   );
   sendMessage({
     type: "success",

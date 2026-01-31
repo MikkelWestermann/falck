@@ -23,15 +23,15 @@ export function AIChat({ repoPath }: AIChatProps) {
   const initializeOpenCode = async () => {
     setInitializing(true);
     try {
-      await opencodeService.health();
-      const config = await opencodeService.getProviders();
+      await opencodeService.health(repoPath);
+      const config = await opencodeService.getProviders(repoPath);
       setProviders(config.providers);
       setSelectedModel(
         config.defaults?.openai ||
           config.providers[0]?.models[0] ||
           "gpt-4",
       );
-      const sessionList = await opencodeService.listSessions();
+      const sessionList = await opencodeService.listSessions(repoPath);
       setSessions(sessionList);
       setError("");
     } catch (err) {
@@ -65,9 +65,9 @@ export function AIChat({ repoPath }: AIChatProps) {
   const handleSelectSession = async (session: AISession) => {
     setLoading(true);
     try {
-      const loadedSession = await opencodeService.getSession(session.path);
+      const loadedSession = await opencodeService.getSession(session.path, repoPath);
       setCurrentSession(loadedSession);
-      const sessionMessages = await opencodeService.listMessages(session.path);
+      const sessionMessages = await opencodeService.listMessages(session.path, repoPath);
       setMessages(sessionMessages);
       setError("");
     } catch (err) {
@@ -98,6 +98,7 @@ export function AIChat({ repoPath }: AIChatProps) {
         currentSession.path,
         inputMessage,
         selectedModel,
+        repoPath,
       );
 
       const assistantMessage: Message = {
@@ -121,7 +122,7 @@ export function AIChat({ repoPath }: AIChatProps) {
     }
 
     try {
-      await opencodeService.deleteSession(session.path);
+      await opencodeService.deleteSession(session.path, repoPath);
       setSessions((prev) => prev.filter((s) => s.path !== session.path));
       if (currentSession?.path === session.path) {
         setCurrentSession(null);

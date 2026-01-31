@@ -58,27 +58,32 @@ async function withRetry<T>(
   throw lastError ?? new Error("OpenCode request failed");
 }
 
-async function sendCommand(cmd: string, args: Record<string, unknown>) {
-  return invoke("opencode_send", { cmd, args });
+async function sendCommand(
+  cmd: string,
+  args: Record<string, unknown>,
+  directory?: string,
+) {
+  const payload = directory ? { ...args, directory } : args;
+  return invoke("opencode_send", { cmd, args: payload });
 }
 
 export const opencodeService = {
-  async health(): Promise<{ healthy: boolean; version: string }> {
-    return withRetry(() => sendCommand("health", {})) as Promise<{
+  async health(directory?: string): Promise<{ healthy: boolean; version: string }> {
+    return withRetry(() => sendCommand("health", {}, directory)) as Promise<{
       healthy: boolean;
       version: string;
     }>;
   },
 
-  async getConfig(): Promise<OpenCodeConfig> {
-    return withRetry(() => sendCommand("config", {})) as Promise<OpenCodeConfig>;
+  async getConfig(directory?: string): Promise<OpenCodeConfig> {
+    return withRetry(() => sendCommand("config", {}, directory)) as Promise<OpenCodeConfig>;
   },
 
-  async getProviders(): Promise<{
+  async getProviders(directory?: string): Promise<{
     providers: Provider[];
     defaults: Record<string, string>;
   }> {
-    return withRetry(() => sendCommand("getProviders", {})) as Promise<{
+    return withRetry(() => sendCommand("getProviders", {}, directory)) as Promise<{
       providers: Provider[];
       defaults: Record<string, string>;
     }>;
@@ -91,23 +96,23 @@ export const opencodeService = {
     repoPath: string,
   ): Promise<AISession> {
     const result = (await withRetry(() =>
-      sendCommand("createSession", { name, description, model }),
+      sendCommand("createSession", { name, description, model }, repoPath),
     )) as { session: AISession };
 
     return { ...result.session, repoPath };
   },
 
-  async getSession(sessionPath: string): Promise<AISession> {
+  async getSession(sessionPath: string, directory?: string): Promise<AISession> {
     const result = (await withRetry(() =>
-      sendCommand("getSession", { sessionPath }),
+      sendCommand("getSession", { sessionPath }, directory),
     )) as { session: AISession };
 
     return result.session;
   },
 
-  async listSessions(): Promise<AISession[]> {
+  async listSessions(directory?: string): Promise<AISession[]> {
     const result = (await withRetry(() =>
-      sendCommand("listSessions", {}),
+      sendCommand("listSessions", {}, directory),
     )) as { sessions: AISession[] };
 
     return result.sessions || [];
@@ -117,6 +122,7 @@ export const opencodeService = {
     sessionPath: string,
     message: string,
     model?: string,
+    directory?: string,
   ): Promise<{
     message: string;
     response: string;
@@ -124,7 +130,7 @@ export const opencodeService = {
     timestamp: string;
   }> {
     return withRetry(() =>
-      sendCommand("prompt", { sessionPath, message, model }),
+      sendCommand("prompt", { sessionPath, message, model }, directory),
     ) as Promise<{
       message: string;
       response: string;
@@ -133,25 +139,25 @@ export const opencodeService = {
     }>;
   },
 
-  async listMessages(sessionPath: string): Promise<Message[]> {
+  async listMessages(sessionPath: string, directory?: string): Promise<Message[]> {
     const result = (await withRetry(() =>
-      sendCommand("listMessages", { sessionPath }),
+      sendCommand("listMessages", { sessionPath }, directory),
     )) as { messages: Message[] };
 
     return result.messages || [];
   },
 
-  async deleteSession(sessionPath: string): Promise<boolean> {
+  async deleteSession(sessionPath: string, directory?: string): Promise<boolean> {
     const result = (await withRetry(() =>
-      sendCommand("deleteSession", { sessionPath }),
+      sendCommand("deleteSession", { sessionPath }, directory),
     )) as { success: boolean };
 
     return result.success;
   },
 
-  async setAuth(provider: string, apiKey: string): Promise<boolean> {
+  async setAuth(provider: string, apiKey: string, directory?: string): Promise<boolean> {
     const result = (await withRetry(() =>
-      sendCommand("setAuth", { provider, apiKey }),
+      sendCommand("setAuth", { provider, apiKey }, directory),
     )) as { success: boolean };
 
     return result.success;
