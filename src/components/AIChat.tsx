@@ -6,6 +6,7 @@ interface AIChatProps {
 }
 
 export function AIChat({ repoPath }: AIChatProps) {
+  const MODEL_STORAGE_KEY = "falck.opencode.model";
   const [sessions, setSessions] = useState<AISession[]>([]);
   const [currentSession, setCurrentSession] = useState<AISession | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -18,6 +19,22 @@ export function AIChat({ repoPath }: AIChatProps) {
   const [error, setError] = useState("");
   const [initializing, setInitializing] = useState(true);
   const partsByMessage = useRef<Map<string, Map<string, string>>>(new Map());
+
+  const readStoredModel = () => {
+    try {
+      return window.localStorage.getItem(MODEL_STORAGE_KEY) || "";
+    } catch {
+      return "";
+    }
+  };
+
+  const persistModel = (model: string) => {
+    try {
+      window.localStorage.setItem(MODEL_STORAGE_KEY, model);
+    } catch {
+      // ignore storage errors
+    }
+  };
 
   const eventStreamUrl = useMemo(() => {
     const url = new URL("http://127.0.0.1:4096/event");
@@ -127,11 +144,18 @@ export function AIChat({ repoPath }: AIChatProps) {
       await opencodeService.health(repoPath);
       const config = await opencodeService.getProviders(repoPath);
       setProviders(config.providers);
-      setSelectedModel(
+      const availableModels = config.providers.flatMap((provider) => provider.models);
+      const storedModel = readStoredModel();
+      const fallbackModel =
         config.defaults?.openai ||
-          config.providers[0]?.models[0] ||
-          "gpt-4",
-      );
+        config.defaults?.opencode ||
+        availableModels[0] ||
+        "gpt-4";
+      const nextModel = storedModel && availableModels.includes(storedModel)
+        ? storedModel
+        : fallbackModel;
+      setSelectedModel(nextModel);
+      persistModel(nextModel);
       const sessionList = await opencodeService.listSessions(repoPath);
       setSessions(sessionList);
       setError("");
@@ -280,7 +304,10 @@ export function AIChat({ repoPath }: AIChatProps) {
           <label>Model</label>
           <select
             value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
+            onChange={(e) => {
+              setSelectedModel(e.target.value);
+              persistModel(e.target.value);
+            }}
           >
             {providers.flatMap((provider) =>
               provider.models.map((model) => (
