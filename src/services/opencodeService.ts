@@ -124,6 +124,8 @@ export const opencodeService = {
     model?: string,
     directory?: string,
   ): Promise<{
+    messageId?: string;
+    sessionId?: string;
     message: string;
     response: string;
     model: string;
@@ -132,11 +134,24 @@ export const opencodeService = {
     return withRetry(() =>
       sendCommand("prompt", { sessionPath, message, model }, directory),
     ) as Promise<{
+      messageId?: string;
+      sessionId?: string;
       message: string;
       response: string;
       model: string;
       timestamp: string;
     }>;
+  },
+
+  async sendPromptAsync(
+    sessionPath: string,
+    message: string,
+    model?: string,
+    directory?: string,
+  ): Promise<{ queued: boolean; sessionId?: string }> {
+    return withRetry(() =>
+      sendCommand("promptAsync", { sessionPath, message, model }, directory),
+    ) as Promise<{ queued: boolean; sessionId?: string }>;
   },
 
   async listMessages(sessionPath: string, directory?: string): Promise<Message[]> {

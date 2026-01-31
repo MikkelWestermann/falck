@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AISession, Message, Provider, opencodeService } from "../services/opencodeService";
 
 interface AIChatProps {
@@ -13,12 +13,113 @@ export function AIChat({ repoPath }: AIChatProps) {
   const [selectedModel, setSelectedModel] = useState("gpt-4");
   const [inputMessage, setInputMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState("");
   const [initializing, setInitializing] = useState(true);
+  const partsByMessage = useRef<Map<string, Map<string, string>>>(new Map());
+
+  const eventStreamUrl = useMemo(() => {
+    const url = new URL("http://127.0.0.1:4096/event");
+    url.searchParams.set("directory", repoPath);
+    return url.toString();
+  }, [repoPath]);
 
   useEffect(() => {
     void initializeOpenCode();
   }, []);
+
+  useEffect(() => {
+    if (!repoPath) {
+      return;
+    }
+
+    const source = new EventSource(eventStreamUrl);
+
+    const upsertMessage = (messageId: string, updates: Partial<Message>) => {
+      setMessages((prev) => {
+        const idx = prev.findIndex((msg) => msg.id === messageId);
+        if (idx === -1) {
+          return [
+            ...prev,
+            {
+              id: messageId,
+              role: updates.role ?? "assistant",
+              text: updates.text ?? "",
+              timestamp: updates.timestamp ?? new Date().toISOString(),
+            },
+          ];
+        }
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...updates, id: messageId };
+        return next;
+      });
+    };
+
+    source.onmessage = (event) => {
+      if (!event.data) {
+        return;
+      }
+      try {
+        const payload = JSON.parse(event.data) as {
+          type?: string;
+          properties?: Record<string, unknown>;
+        };
+
+        if (payload.type === "message.part.updated") {
+          const part = payload.properties?.part as
+            | { sessionID?: string; messageID?: string; id?: string; type?: string; text?: string; time?: { start?: number; end?: number } }
+            | undefined;
+          if (!part || part.sessionID !== currentSession?.path || !part.messageID || !part.id) {
+            return;
+          }
+          if (part.type === "text") {
+            setStreaming(true);
+            const byPart = partsByMessage.current.get(part.messageID) ?? new Map();
+            byPart.set(part.id, part.text ?? "");
+            partsByMessage.current.set(part.messageID, byPart);
+            const combined = Array.from(byPart.values()).filter(Boolean).join("\n");
+            upsertMessage(part.messageID, {
+              role: "assistant",
+              text: combined,
+              timestamp: part.time?.end
+                ? new Date(part.time.end).toISOString()
+                : new Date().toISOString(),
+            });
+          }
+          return;
+        }
+
+        if (payload.type === "message.updated") {
+          const info = payload.properties?.info as
+            | { id?: string; sessionID?: string; role?: "user" | "assistant"; time?: { created?: number; completed?: number } }
+            | undefined;
+          if (!info || info.sessionID !== currentSession?.path || !info.id) {
+            return;
+          }
+          upsertMessage(info.id, {
+            role: info.role ?? "assistant",
+            timestamp: info.time?.created
+              ? new Date(info.time.created).toISOString()
+              : new Date().toISOString(),
+          });
+          if (info.role === "assistant" && info.time?.completed) {
+            setStreaming(false);
+          }
+        }
+      } catch (err) {
+        console.error("[OpenCode] Failed to parse event:", err);
+      }
+    };
+
+    source.onerror = (err) => {
+      console.error("[OpenCode] Event stream error", err);
+    };
+
+    return () => {
+      source.close();
+    };
+  }, [currentSession?.path, eventStreamUrl, repoPath]);
 
   const initializeOpenCode = async () => {
     setInitializing(true);
@@ -90,29 +191,23 @@ export function AIChat({ repoPath }: AIChatProps) {
 
     setMessages((prev) => [...prev, userMessage]);
     setInputMessage("");
-    setLoading(true);
+    setSending(true);
+    setStreaming(true);
     setError("");
 
     try {
-      const result = await opencodeService.sendPrompt(
+      await opencodeService.sendPromptAsync(
         currentSession.path,
         inputMessage,
         selectedModel,
         repoPath,
       );
-
-      const assistantMessage: Message = {
-        role: "assistant",
-        text: result.response,
-        timestamp: result.timestamp,
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
       setError(`Failed to get response: ${String(err)}`);
       setMessages((prev) => prev.slice(0, -1));
+      setStreaming(false);
     } finally {
-      setLoading(false);
+      setSending(false);
     }
   };
 
@@ -229,7 +324,7 @@ export function AIChat({ repoPath }: AIChatProps) {
                   </div>
                 ))
               )}
-              {loading && (
+              {(sending || streaming) && (
                 <div className="ai-message assistant">
                   <div className="ai-message-role">AI</div>
                   <div className="ai-message-text">Thinking…</div>
@@ -248,12 +343,11 @@ export function AIChat({ repoPath }: AIChatProps) {
                   }
                 }}
                 placeholder="Ask Falck AI… (Ctrl+Enter to send)"
-                disabled={loading}
               />
               <button
                 className="btn primary"
                 onClick={handleSendMessage}
-                disabled={loading || !inputMessage.trim()}
+                disabled={sending || !inputMessage.trim()}
               >
                 Send
               </button>

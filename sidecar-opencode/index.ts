@@ -214,6 +214,9 @@ async function handleCommand(request: RequestMessage) {
       case "prompt":
         await handlePrompt(sessionPath, args, directory);
         break;
+      case "promptAsync":
+        await handlePromptAsync(sessionPath, args, directory);
+        break;
       case "listMessages":
         await handleListMessages(sessionPath, directory);
         break;
@@ -374,10 +377,46 @@ async function handlePrompt(
     type: "success",
     cmd: "prompt",
     data: {
+      messageId: data.info?.id,
+      sessionId: data.info?.sessionID,
       message,
       response: extractMessageText(data.parts),
       model,
       timestamp: new Date().toISOString(),
+    },
+  });
+}
+
+async function handlePromptAsync(
+  sessionPath?: string,
+  { message, model }: RequestMessage = {},
+  directory?: string,
+) {
+  if (!sessionPath) {
+    sendError("sessionPath is required", "INVALID_ARGUMENT");
+    return;
+  }
+  const modelParts =
+    typeof model === "string" && model.includes("/")
+      ? {
+          providerID: model.split("/")[0],
+          modelID: model.split("/").slice(1).join("/"),
+        }
+      : undefined;
+
+  await client.session.promptAsync({
+    sessionID: sessionPath,
+    directory,
+    model: modelParts,
+    parts: [{ type: "text", text: message ?? "" }],
+  });
+
+  sendMessage({
+    type: "success",
+    cmd: "promptAsync",
+    data: {
+      queued: true,
+      sessionId: sessionPath,
     },
   });
 }
