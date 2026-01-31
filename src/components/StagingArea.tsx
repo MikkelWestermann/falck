@@ -1,5 +1,20 @@
 import { useEffect, useState } from "react";
-import { FileStatus, gitService } from "../services/gitService";
+import { useForm } from "@tanstack/react-form";
+import { zodValidator } from "@tanstack/zod-form-adapter";
+
+import { FormField, FormTextarea } from "@/components/form/FormField";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { commitSchema } from "@/schemas/forms";
+import { FileStatus, gitService } from "@/services/gitService";
 
 interface StagingAreaProps {
   repoPath: string;
@@ -15,13 +30,19 @@ const statusLabel: Record<FileStatus["status"], string> = {
   unknown: "Unknown",
 };
 
+const statusVariant: Record<FileStatus["status"], "default" | "secondary" | "destructive" | "outline" | "muted"> = {
+  modified: "secondary",
+  added: "default",
+  deleted: "destructive",
+  renamed: "secondary",
+  untracked: "outline",
+  unknown: "muted",
+};
+
 export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
   const [files, setFiles] = useState<FileStatus[]>([]);
-  const [message, setMessage] = useState("");
-  const [author, setAuthor] = useState("Your Name");
-  const [email, setEmail] = useState("you@example.com");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void loadStatus();
@@ -45,97 +66,121 @@ export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
     }
   };
 
-  const handleCommit = async () => {
-    if (!message) {
-      setError("Commit message required.");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-    try {
-      await gitService.createCommit(repoPath, message, author, email);
-      setMessage("");
-      await loadStatus();
-      onCommit();
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const commitForm = useForm({
+    defaultValues: {
+      author: "Your Name",
+      email: "you@example.com",
+      message: "",
+    },
+    onSubmit: async ({ value }) => {
+      if (files.length === 0) {
+        setError("No changes to commit.");
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        await gitService.createCommit(repoPath, value.message, value.author, value.email);
+        commitForm.reset();
+        await loadStatus();
+        onCommit();
+      } catch (err) {
+        setError(String(err));
+      } finally {
+        setLoading(false);
+      }
+    },
+    validatorAdapter: zodValidator(),
+  });
 
   const hasChanges = files.length > 0;
 
   return (
-    <section className="panel">
-      <header className="panel-header">
-        <h2>Staging area</h2>
-        <p>Pick files to stage and craft a commit.</p>
-      </header>
-
-      {!hasChanges ? (
-        <div className="empty">No changes to commit.</div>
-      ) : (
-        <div className="file-list">
-          {files.map((file) => (
-            <div className="file-item" key={file.path}>
-              <div className="file-path">
-                <span className={`status-pill ${file.status}`}>
-                  {statusLabel[file.status]}
-                </span>
-                {file.path}
-              </div>
-              <button
-                className="btn ghost tiny"
-                onClick={() => handleStageFile(file.path)}
+    <Card>
+      <CardHeader>
+        <CardTitle>Staging area</CardTitle>
+        <CardDescription>Pick files to stage and craft a commit.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {!hasChanges ? (
+          <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+            No changes to commit.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {files.map((file) => (
+              <div
+                key={file.path}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card/80 px-4 py-3"
               >
-                Stage
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+                <div className="flex min-w-0 items-center gap-3">
+                  <Badge variant={statusVariant[file.status]} className="rounded-full">
+                    {statusLabel[file.status]}
+                  </Badge>
+                  <span className="truncate text-sm font-mono text-foreground/80">
+                    {file.path}
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleStageFile(file.path)}
+                >
+                  Stage
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
 
-      <div className="divider" />
-
-      <div className="commit-form">
-        <h3>Create commit</h3>
-        <div className="field">
-          <label>Author name</label>
-          <input
-            type="text"
-            value={author}
-            onChange={(e) => setAuthor(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label>Author email</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label>Commit message</label>
-          <textarea
-            rows={4}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Summarize what changed"
-          />
-        </div>
-        <button
-          className="btn primary"
-          onClick={handleCommit}
-          disabled={loading || !hasChanges}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void commitForm.handleSubmit();
+          }}
+          className="space-y-4 rounded-2xl border border-dashed border-border/70 bg-secondary/40 p-4"
         >
-          {loading ? "Committing…" : "Commit"}
-        </button>
-      </div>
+          <h3 className="text-base font-semibold">Create commit</h3>
+          <commitForm.Field
+            name="author"
+            validators={{ onChange: zodValidator(commitSchema.shape.author) }}
+          >
+            {(field) => (
+              <FormField field={field} label="Author name" required />
+            )}
+          </commitForm.Field>
+          <commitForm.Field
+            name="email"
+            validators={{ onChange: zodValidator(commitSchema.shape.email) }}
+          >
+            {(field) => (
+              <FormField field={field} label="Author email" type="email" required />
+            )}
+          </commitForm.Field>
+          <commitForm.Field
+            name="message"
+            validators={{ onChange: zodValidator(commitSchema.shape.message) }}
+          >
+            {(field) => (
+              <FormTextarea
+                field={field}
+                label="Commit message"
+                placeholder="Summarize what changed"
+                required
+              />
+            )}
+          </commitForm.Field>
+          <Button type="submit" disabled={loading || !hasChanges} className="w-full">
+            {loading ? "Committing…" : "Commit"}
+          </Button>
+        </form>
 
-      {error && <div className="notice error">{error}</div>}
-    </section>
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
   );
 }

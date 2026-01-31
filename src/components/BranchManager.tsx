@@ -1,5 +1,20 @@
 import { useEffect, useState } from "react";
-import { BranchInfo, gitService } from "../services/gitService";
+import { useForm } from "@tanstack/react-form";
+import { zodValidator } from "@tanstack/zod-form-adapter";
+
+import { FormField } from "@/components/form/FormField";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { createBranchSchema } from "@/schemas/forms";
+import { BranchInfo, gitService } from "@/services/gitService";
 
 interface BranchManagerProps {
   repoPath: string;
@@ -9,9 +24,8 @@ interface BranchManagerProps {
 export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) {
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [currentBranch, setCurrentBranch] = useState("");
-  const [newBranchName, setNewBranchName] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void loadBranches();
@@ -31,26 +45,10 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
   };
 
   const handleCheckout = async (branchName: string) => {
-    setError("");
+    setError(null);
     try {
       await gitService.checkoutBranch(repoPath, branchName);
       setCurrentBranch(branchName);
-      onBranchChange();
-    } catch (err) {
-      setError(String(err));
-    }
-  };
-
-  const handleCreateBranch = async () => {
-    if (!newBranchName) {
-      setError("Branch name required.");
-      return;
-    }
-    setError("");
-    try {
-      await gitService.createBranch(repoPath, newBranchName);
-      setNewBranchName("");
-      await loadBranches();
       onBranchChange();
     } catch (err) {
       setError(String(err));
@@ -62,7 +60,7 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
       setError("Cannot delete the current branch.");
       return;
     }
-    setError("");
+    setError(null);
     try {
       await gitService.deleteBranch(repoPath, branchName);
       await loadBranches();
@@ -71,65 +69,111 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
     }
   };
 
+  const branchForm = useForm({
+    defaultValues: {
+      branchName: "",
+    },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      try {
+        await gitService.createBranch(repoPath, value.branchName);
+        branchForm.reset();
+        await loadBranches();
+        onBranchChange();
+      } catch (err) {
+        setError(String(err));
+      }
+    },
+    validatorAdapter: zodValidator(),
+  });
+
   return (
-    <section className="panel">
-      <header className="panel-header">
-        <h2>Branches</h2>
-        <p>Switch, create, and clean up branches.</p>
-      </header>
-
-      <div className="branch-current">
-        <span>Current</span>
-        <strong>{currentBranch || "—"}</strong>
-      </div>
-
-      {loading ? (
-        <div className="empty">Loading branches…</div>
-      ) : (
-        <div className="branch-list">
-          {branches.map((branch) => (
-            <div className="branch-item" key={branch.name}>
-              <div className="branch-name">
-                {branch.name}
-                {branch.is_head && <span className="tag">Checked out</span>}
-              </div>
-              {!branch.is_head && (
-                <div className="branch-actions">
-                  <button
-                    className="btn ghost tiny"
-                    onClick={() => handleCheckout(branch.name)}
-                  >
-                    Checkout
-                  </button>
-                  <button
-                    className="btn danger tiny"
-                    onClick={() => handleDeleteBranch(branch.name)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+    <Card>
+      <CardHeader>
+        <CardTitle>Branches</CardTitle>
+        <CardDescription>Switch, create, and clean up branches.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="flex items-center justify-between rounded-2xl border border-transparent bg-secondary/70 px-4 py-3">
+          <span className="text-sm text-muted-foreground">Current</span>
+          <span className="text-sm font-semibold">{currentBranch || "—"}</span>
         </div>
-      )}
 
-      <div className="divider" />
+        {loading ? (
+          <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+            Loading branches…
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {branches.map((branch) => (
+              <div
+                key={branch.name}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card/80 px-4 py-3"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold">{branch.name}</span>
+                  {branch.is_head && (
+                    <Badge variant="secondary" className="rounded-full">
+                      Checked out
+                    </Badge>
+                  )}
+                </div>
+                {!branch.is_head && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleCheckout(branch.name)}
+                    >
+                      Checkout
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleDeleteBranch(branch.name)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
-      <div className="field inline">
-        <label>New branch</label>
-        <input
-          type="text"
-          placeholder="feature/branch-name"
-          value={newBranchName}
-          onChange={(e) => setNewBranchName(e.target.value)}
-        />
-        <button className="btn primary" onClick={handleCreateBranch}>
-          Create
-        </button>
-      </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void branchForm.handleSubmit();
+          }}
+          className="flex flex-col gap-3 rounded-2xl border border-dashed border-border/70 bg-secondary/40 p-4 sm:flex-row sm:items-end"
+        >
+          <branchForm.Field
+            name="branchName"
+            validators={{
+              onChange: zodValidator(createBranchSchema.shape.branchName),
+            }}
+          >
+            {(field) => (
+              <FormField
+                field={field}
+                label="New branch"
+                placeholder="feature/branch-name"
+                required
+              />
+            )}
+          </branchForm.Field>
+          <Button type="submit" className="sm:mt-6">
+            Create
+          </Button>
+        </form>
 
-      {error && <div className="notice error">{error}</div>}
-    </section>
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
   );
 }

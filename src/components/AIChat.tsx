@@ -1,5 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AISession, Message, Provider, opencodeService } from "../services/opencodeService";
+
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
+import {
+  AISession,
+  Message,
+  Provider,
+  opencodeService,
+} from "@/services/opencodeService";
 
 interface AIChatProps {
   repoPath: string;
@@ -85,9 +110,21 @@ export function AIChat({ repoPath }: AIChatProps) {
 
         if (payload.type === "message.part.updated") {
           const part = payload.properties?.part as
-            | { sessionID?: string; messageID?: string; id?: string; type?: string; text?: string; time?: { start?: number; end?: number } }
+            | {
+                sessionID?: string;
+                messageID?: string;
+                id?: string;
+                type?: string;
+                text?: string;
+                time?: { start?: number; end?: number };
+              }
             | undefined;
-          if (!part || part.sessionID !== currentSession?.path || !part.messageID || !part.id) {
+          if (
+            !part ||
+            part.sessionID !== currentSession?.path ||
+            !part.messageID ||
+            !part.id
+          ) {
             return;
           }
           if (part.type === "text") {
@@ -109,7 +146,12 @@ export function AIChat({ repoPath }: AIChatProps) {
 
         if (payload.type === "message.updated") {
           const info = payload.properties?.info as
-            | { id?: string; sessionID?: string; role?: "user" | "assistant"; time?: { created?: number; completed?: number } }
+            | {
+                id?: string;
+                sessionID?: string;
+                role?: "user" | "assistant";
+                time?: { created?: number; completed?: number };
+              }
             | undefined;
           if (!info || info.sessionID !== currentSession?.path || !info.id) {
             return;
@@ -151,9 +193,10 @@ export function AIChat({ repoPath }: AIChatProps) {
         config.defaults?.opencode ||
         availableModels[0] ||
         "gpt-4";
-      const nextModel = storedModel && availableModels.includes(storedModel)
-        ? storedModel
-        : fallbackModel;
+      const nextModel =
+        storedModel && availableModels.includes(storedModel)
+          ? storedModel
+          : fallbackModel;
       setSelectedModel(nextModel);
       persistModel(nextModel);
       const sessionList = await opencodeService.listSessions(repoPath);
@@ -254,136 +297,182 @@ export function AIChat({ repoPath }: AIChatProps) {
   };
 
   if (initializing) {
-    return <div className="ai-shell">Initializing OpenCode…</div>;
+    return (
+      <div className="rounded-2xl border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
+        Initializing OpenCode…
+      </div>
+    );
   }
 
   return (
-    <div className="ai-shell">
-      <aside className="ai-sidebar">
-        <div className="ai-sidebar-header">
-          <h2>AI sessions</h2>
-          <p>Keep separate conversations per task.</p>
-        </div>
-
-        <div className="ai-session-list">
-          {sessions.length === 0 ? (
-            <div className="empty">No sessions yet.</div>
-          ) : (
-            sessions.map((session) => (
-              <div
-                key={session.path}
-                className={`ai-session-item ${
-                  currentSession?.path === session.path ? "active" : ""
-                }`}
-              >
-                <button
-                  className="ai-session-main"
-                  onClick={() => handleSelectSession(session)}
-                >
-                  <div>
-                    <div className="ai-session-name">{session.name}</div>
-                    <div className="ai-session-model">{session.model}</div>
-                  </div>
-                </button>
-                <button
-                  className="btn ghost tiny"
-                  onClick={() => handleDeleteSession(session)}
-                >
-                  Delete
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-
-        <button className="btn primary" onClick={handleCreateSession} disabled={loading}>
-          + New session
-        </button>
-
-        <div className="field">
-          <label>Model</label>
-          <select
-            value={selectedModel}
-            onChange={(e) => {
-              setSelectedModel(e.target.value);
-              persistModel(e.target.value);
-            }}
-          >
-            {providers.flatMap((provider) =>
-              provider.models.map((model) => (
-                <option key={`${provider.name}-${model}`} value={model}>
-                  {provider.name}: {model}
-                </option>
-              )),
-            )}
-          </select>
-        </div>
-      </aside>
-
-      <section className="ai-main">
-        {!currentSession ? (
-          <div className="ai-empty">
-            <p>Select a session or create a new one to start chatting.</p>
+    <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+      <Card className="flex h-full flex-col">
+        <CardHeader>
+          <CardTitle>AI sessions</CardTitle>
+          <CardDescription>Keep separate conversations per task.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-1 flex-col gap-4">
+          <div className="flex items-center justify-between gap-2">
+            <Button onClick={handleCreateSession} disabled={loading} className="w-full">
+              + New session
+            </Button>
           </div>
+
+          <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: 360 }}>
+            {sessions.length === 0 ? (
+              <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                No sessions yet.
+              </div>
+            ) : (
+              sessions.map((session) => (
+                <div
+                  key={session.path}
+                  className={cn(
+                    "flex items-center justify-between gap-2 rounded-2xl border px-3 py-2",
+                    currentSession?.path === session.path
+                      ? "border-primary/40 bg-secondary/80"
+                      : "border-border/60 bg-card/80",
+                  )}
+                >
+                  <button
+                    className="flex-1 text-left"
+                    onClick={() => handleSelectSession(session)}
+                  >
+                    <div className="text-sm font-semibold text-foreground">
+                      {session.name}
+                    </div>
+                    <div className="text-xs text-muted-foreground">{session.model}</div>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteSession(session)}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">
+              Model
+            </p>
+            <Select
+              value={selectedModel}
+              onValueChange={(value) => {
+                setSelectedModel(value);
+                persistModel(value);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select model" />
+              </SelectTrigger>
+              <SelectContent>
+                {providers.flatMap((provider) =>
+                  provider.models.map((model) => (
+                    <SelectItem key={`${provider.name}-${model}`} value={model}>
+                      {provider.name}: {model}
+                    </SelectItem>
+                  )),
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="flex min-h-[560px] flex-col">
+        {!currentSession ? (
+          <CardContent className="flex flex-1 items-center justify-center">
+            <div className="text-center text-sm text-muted-foreground">
+              Select a session or create a new one to start chatting.
+            </div>
+          </CardContent>
         ) : (
           <>
-            <header className="ai-header">
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2>{currentSession.name}</h2>
-                <p>Repository: {repoPath}</p>
+                <CardTitle>{currentSession.name}</CardTitle>
+                <CardDescription>Repository: {repoPath}</CardDescription>
               </div>
-              <span className="tag">{currentSession.model}</span>
-            </header>
-
-            <div className="ai-messages">
-              {messages.length === 0 ? (
-                <div className="empty">No messages yet. Ask the AI anything.</div>
-              ) : (
-                messages.map((msg, idx) => (
-                  <div key={idx} className={`ai-message ${msg.role}`}>
-                    <div className="ai-message-role">
-                      {msg.role === "user" ? "You" : "AI"}
-                    </div>
-                    <div className="ai-message-text">{msg.text}</div>
-                    <div className="ai-message-time">
-                      {new Date(msg.timestamp).toLocaleTimeString()}
-                    </div>
+              <Badge variant="secondary" className="w-fit rounded-full">
+                {currentSession.model}
+              </Badge>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-hidden pt-0">
+              <div className="flex h-full flex-col gap-3 overflow-y-auto pr-2">
+                {messages.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                    No messages yet. Ask the AI anything.
                   </div>
-                ))
-              )}
-              {(sending || streaming) && (
-                <div className="ai-message assistant">
-                  <div className="ai-message-role">AI</div>
-                  <div className="ai-message-text">Thinking…</div>
-                </div>
-              )}
-            </div>
-
-            <div className="ai-input">
-              <textarea
-                rows={3}
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.ctrlKey && e.key === "Enter") {
-                    handleSendMessage();
-                  }
-                }}
-                placeholder="Ask Falck AI… (Ctrl+Enter to send)"
-              />
-              <button
-                className="btn primary"
-                onClick={handleSendMessage}
-                disabled={sending || !inputMessage.trim()}
-              >
-                Send
-              </button>
+                ) : (
+                  messages.map((msg, idx) => (
+                    <div
+                      key={idx}
+                      className={cn(
+                        "max-w-[75%] rounded-2xl px-4 py-3 text-sm",
+                        msg.role === "user"
+                          ? "ml-auto bg-primary text-primary-foreground"
+                          : "mr-auto border border-border/60 bg-card",
+                      )}
+                    >
+                      <div className="mb-1 text-[0.65rem] uppercase tracking-[0.25em] opacity-70">
+                        {msg.role === "user" ? "You" : "AI"}
+                      </div>
+                      <div className="whitespace-pre-wrap leading-relaxed">
+                        {msg.text}
+                      </div>
+                      <div className="mt-2 text-[0.65rem] opacity-60">
+                        {new Date(msg.timestamp).toLocaleTimeString()}
+                      </div>
+                    </div>
+                  ))
+                )}
+                {(sending || streaming) && (
+                  <div className="mr-auto max-w-[75%] rounded-2xl border border-border/60 bg-card px-4 py-3 text-sm">
+                    <div className="mb-1 text-[0.65rem] uppercase tracking-[0.25em] opacity-70">
+                      AI
+                    </div>
+                    <div className="leading-relaxed">Thinking…</div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+            <div className="border-t border-border/60 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <Textarea
+                  rows={3}
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.ctrlKey && e.key === "Enter") {
+                      handleSendMessage();
+                    }
+                  }}
+                  placeholder="Ask Falck AI… (Ctrl+Enter to send)"
+                />
+                <Button
+                  onClick={handleSendMessage}
+                  disabled={sending || !inputMessage.trim()}
+                  className="sm:w-32"
+                >
+                  Send
+                </Button>
+              </div>
             </div>
           </>
         )}
 
-        {error && <div className="notice error">{error}</div>}
-      </section>
+        {error && (
+          <div className="p-4 pt-0">
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

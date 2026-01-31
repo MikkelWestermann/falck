@@ -1,5 +1,23 @@
 import { useEffect, useState } from "react";
-import { gitService } from "../services/gitService";
+
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { gitService } from "@/services/gitService";
 
 interface RemoteOperationsProps {
   repoPath: string;
@@ -13,8 +31,8 @@ export function RemoteOperations({
   const [remotes, setRemotes] = useState<string[]>([]);
   const [selectedRemote, setSelectedRemote] = useState("origin");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     void loadRemotes();
@@ -34,8 +52,8 @@ export function RemoteOperations({
 
   const handlePush = async () => {
     setLoading(true);
-    setError("");
-    setMessage("");
+    setError(null);
+    setMessage(null);
     try {
       await gitService.push(repoPath, selectedRemote, currentBranch);
       setMessage(`Pushed to ${selectedRemote}/${currentBranch}`);
@@ -48,8 +66,8 @@ export function RemoteOperations({
 
   const handlePull = async () => {
     setLoading(true);
-    setError("");
-    setMessage("");
+    setError(null);
+    setMessage(null);
     try {
       await gitService.pull(repoPath, selectedRemote, currentBranch);
       setMessage(`Pulled from ${selectedRemote}/${currentBranch}`);
@@ -61,52 +79,60 @@ export function RemoteOperations({
   };
 
   return (
-    <section className="panel">
-      <header className="panel-header">
-        <h2>Remote operations</h2>
-        <p>Sync changes with your configured remote.</p>
-      </header>
-
-      {remotes.length === 0 ? (
-        <div className="empty">No remotes configured.</div>
-      ) : (
-        <>
-          <div className="field inline">
-            <label>Remote</label>
-            <select
-              value={selectedRemote}
-              onChange={(e) => setSelectedRemote(e.target.value)}
-            >
-              {remotes.map((remote) => (
-                <option key={remote} value={remote}>
-                  {remote}
-                </option>
-              ))}
-            </select>
-            <div className="tag muted">{currentBranch}</div>
+    <Card>
+      <CardHeader>
+        <CardTitle>Remote operations</CardTitle>
+        <CardDescription>Sync changes with your configured remote.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {remotes.length === 0 ? (
+          <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+            No remotes configured.
           </div>
+        ) : (
+          <>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex-1">
+                <Select value={selectedRemote} onValueChange={setSelectedRemote}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select remote" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {remotes.map((remote) => (
+                      <SelectItem key={remote} value={remote}>
+                        {remote}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Badge variant="secondary" className="w-fit rounded-full">
+                {currentBranch}
+              </Badge>
+            </div>
 
-          <div className="button-row">
-            <button
-              className="btn ghost"
-              onClick={handlePull}
-              disabled={loading}
-            >
-              {loading ? "Pulling…" : "Pull"}
-            </button>
-            <button
-              className="btn primary"
-              onClick={handlePush}
-              disabled={loading}
-            >
-              {loading ? "Pushing…" : "Push"}
-            </button>
-          </div>
-        </>
-      )}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={handlePull} disabled={loading}>
+                {loading ? "Pulling…" : "Pull"}
+              </Button>
+              <Button onClick={handlePush} disabled={loading}>
+                {loading ? "Pushing…" : "Push"}
+              </Button>
+            </div>
+          </>
+        )}
 
-      {error && <div className="notice error">{error}</div>}
-      {message && <div className="notice success">{message}</div>}
-    </section>
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {message && (
+          <Alert>
+            <AlertDescription>{message}</AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
   );
 }

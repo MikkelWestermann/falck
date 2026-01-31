@@ -1,5 +1,15 @@
 import { useEffect, useState } from "react";
-import { CommitInfo, gitService } from "../services/gitService";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { CommitInfo, gitService } from "@/services/gitService";
 
 interface CommitHistoryProps {
   repoPath: string;
@@ -29,38 +39,48 @@ export function CommitHistory({ repoPath }: CommitHistoryProps) {
     new Date(timestamp * 1000).toLocaleString();
 
   return (
-    <section className="panel">
-      <header className="panel-header panel-header--row">
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <div>
-          <h2>Commit history</h2>
-          <p>Latest activity from the current branch.</p>
+          <CardTitle>Commit history</CardTitle>
+          <CardDescription>Latest activity from the current branch.</CardDescription>
         </div>
-        <button className="btn ghost small" onClick={loadCommits}>
+        <Button variant="outline" size="sm" onClick={loadCommits}>
           Refresh
-        </button>
-      </header>
-
-      {loading ? (
-        <div className="empty">Loading commits…</div>
-      ) : commits.length === 0 ? (
-        <div className="empty">No commits found.</div>
-      ) : (
-        <div className="commit-list">
-          {commits.map((commit) => (
-            <div className="commit-item" key={commit.id}>
-              <div className="commit-hash">
-                {commit.id.substring(0, 7)}
-              </div>
-              <div className="commit-body">
-                <div className="commit-message">{commit.message}</div>
-                <div className="commit-meta">
-                  {commit.author} · {formatDate(commit.timestamp)}
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+            Loading commits…
+          </div>
+        ) : commits.length === 0 ? (
+          <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+            No commits found.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {commits.map((commit) => (
+              <div
+                key={commit.id}
+                className="flex flex-col gap-2 rounded-2xl border border-border/60 bg-card/80 p-4 sm:flex-row sm:items-start"
+              >
+                <Badge variant="muted" className="w-fit rounded-full font-mono">
+                  {commit.id.substring(0, 7)}
+                </Badge>
+                <div>
+                  <div className="text-sm font-semibold text-foreground">
+                    {commit.message}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {commit.author} · {formatDate(commit.timestamp)}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
