@@ -106,12 +106,54 @@ async function healthWithRetry() {
   throw lastError;
 }
 
-function firstTextPart(parts: Array<{ type?: string; text?: string }> | undefined) {
-  for (const part of parts ?? []) {
-    if (part?.type === "text") {
-      return part.text ?? "";
-    }
+type AnyPart = {
+  type?: string;
+  text?: string;
+  prompt?: string;
+  description?: string;
+  state?: { status?: string; output?: string };
+};
+
+function extractMessageText(parts: Array<AnyPart> | undefined) {
+  if (!parts || parts.length === 0) {
+    return "";
   }
+
+  const textParts = parts
+    .filter((part) => part?.type === "text" && part.text?.trim())
+    .map((part) => part.text!.trim());
+  if (textParts.length > 0) {
+    return textParts.join("\n");
+  }
+
+  const toolOutputs = parts
+    .filter(
+      (part) =>
+        part?.type === "tool" &&
+        part.state?.status === "completed" &&
+        part.state.output?.trim(),
+    )
+    .map((part) => part.state!.output!.trim());
+  if (toolOutputs.length > 0) {
+    return toolOutputs.join("\n");
+  }
+
+  const reasoningParts = parts
+    .filter((part) => part?.type === "reasoning" && part.text?.trim())
+    .map((part) => part.text!.trim());
+  if (reasoningParts.length > 0) {
+    return reasoningParts.join("\n");
+  }
+
+  const subtaskParts = parts
+    .filter((part) => part?.type === "subtask")
+    .map((part) => part.description || part.prompt)
+    .filter((text): text is string => Boolean(text?.trim()))
+    .map((text) => text.trim());
+  if (subtaskParts.length > 0) {
+    return subtaskParts.join("\n");
+  }
+
   return "";
 }
 
@@ -333,7 +375,7 @@ async function handlePrompt(
     cmd: "prompt",
     data: {
       message,
-      response: firstTextPart(data.parts),
+      response: extractMessageText(data.parts),
       model,
       timestamp: new Date().toISOString(),
     },
@@ -352,8 +394,10 @@ async function handleListMessages(sessionPath?: string, directory?: string) {
   const messageList = (data || []).map((msg) => ({
     id: msg.info.id,
     role: msg.info.role,
-    timestamp: msg.info.time?.created,
-    text: firstTextPart(msg.parts),
+    timestamp: msg.info.time?.created
+      ? new Date(msg.info.time.created).toISOString()
+      : new Date().toISOString(),
+    text: extractMessageText(msg.parts),
   }));
 
   sendMessage({
