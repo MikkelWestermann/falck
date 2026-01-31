@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useForm } from "@tanstack/react-form";
-import { zodValidator } from "@tanstack/zod-form-adapter";
 
 import { FormField, FormTextarea } from "@/components/form/FormField";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -72,6 +71,9 @@ export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
       email: "you@example.com",
       message: "",
     },
+    validators: {
+      onSubmit: commitSchema,
+    },
     onSubmit: async ({ value }) => {
       if (files.length === 0) {
         setError("No changes to commit.");
@@ -90,7 +92,6 @@ export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
         setLoading(false);
       }
     },
-    validatorAdapter: zodValidator(),
   });
 
   const hasChanges = files.length > 0;
@@ -141,26 +142,17 @@ export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
           className="space-y-4 rounded-lg border-2 border-dashed border-border/70 bg-secondary/20 p-4 shadow-[var(--shadow-xs)]"
         >
           <h3 className="text-base font-semibold">Create commit</h3>
-          <commitForm.Field
-            name="author"
-            validators={{ onChange: zodValidator(commitSchema.shape.author) }}
-          >
+          <commitForm.Field name="author">
             {(field) => (
               <FormField field={field} label="Author name" required />
             )}
           </commitForm.Field>
-          <commitForm.Field
-            name="email"
-            validators={{ onChange: zodValidator(commitSchema.shape.email) }}
-          >
+          <commitForm.Field name="email">
             {(field) => (
               <FormField field={field} label="Author email" type="email" required />
             )}
           </commitForm.Field>
-          <commitForm.Field
-            name="message"
-            validators={{ onChange: zodValidator(commitSchema.shape.message) }}
-          >
+          <commitForm.Field name="message">
             {(field) => (
               <FormTextarea
                 field={field}

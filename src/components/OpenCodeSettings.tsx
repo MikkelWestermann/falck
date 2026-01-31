@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useForm } from "@tanstack/react-form";
-import { zodValidator } from "@tanstack/zod-form-adapter";
 
 import { FormField, FormSelect } from "@/components/form/FormField";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -36,6 +35,9 @@ const useOpenCodeSettings = (active: boolean) => {
       provider: "",
       apiKey: "",
     },
+    validators: {
+      onSubmit: setAPIKeySchema,
+    },
     onSubmit: async ({ value }) => {
       setLoading(true);
       setError(null);
@@ -50,7 +52,6 @@ const useOpenCodeSettings = (active: boolean) => {
         setLoading(false);
       }
     },
-    validatorAdapter: zodValidator(),
   });
 
   useEffect(() => {
@@ -102,10 +103,7 @@ const OpenCodeSettingsContent = ({ active }: OpenCodeSettingsContentProps) => {
         }}
         className="space-y-4"
       >
-        <form.Field
-          name="provider"
-          validators={{ onChange: zodValidator(setAPIKeySchema.shape.provider) }}
-        >
+        <form.Field name="provider">
           {(field) => (
             <FormSelect
               field={field}
@@ -115,10 +113,7 @@ const OpenCodeSettingsContent = ({ active }: OpenCodeSettingsContentProps) => {
             />
           )}
         </form.Field>
-        <form.Field
-          name="apiKey"
-          validators={{ onChange: zodValidator(setAPIKeySchema.shape.apiKey) }}
-        >
+        <form.Field name="apiKey">
           {(field) => (
             <FormField
               field={field}

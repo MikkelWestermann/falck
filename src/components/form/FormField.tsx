@@ -1,5 +1,5 @@
 import React from "react";
-import { FieldApi } from "@tanstack/react-form";
+import type { AnyFieldApi } from "@tanstack/react-form";
 
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -84,7 +84,7 @@ const formatError = (error: unknown, depth = 0): string => {
 };
 
 interface FormFieldProps {
-  field: FieldApi<any, any, any, any>;
+  field: AnyFieldApi;
   label?: string;
   placeholder?: string;
   type?: "text" | "email" | "password" | "number";
@@ -101,7 +101,8 @@ export const FormField: React.FC<FormFieldProps> = ({
   required,
 }) => {
   const errors = field.state.meta.errors ?? [];
-  const isInvalid = errors.length > 0;
+  const isInvalid =
+    field.state.meta.isTouched && !field.state.meta.isValid;
 
   return (
     <div className="flex flex-col space-y-2">
@@ -125,7 +126,7 @@ export const FormField: React.FC<FormFieldProps> = ({
         aria-invalid={isInvalid}
         className={cn(isInvalid && "border-destructive focus-visible:ring-destructive")}
       />
-      {errors.length > 0 && (
+      {isInvalid && errors.length > 0 && (
         <p className="text-sm font-medium text-destructive">
           {formatError(errors[0])}
         </p>
@@ -145,7 +146,8 @@ export const FormTextarea: React.FC<FormFieldProps> = ({
   required,
 }) => {
   const errors = field.state.meta.errors ?? [];
-  const isInvalid = errors.length > 0;
+  const isInvalid =
+    field.state.meta.isTouched && !field.state.meta.isValid;
 
   return (
     <div className="flex flex-col space-y-2">
@@ -168,7 +170,7 @@ export const FormTextarea: React.FC<FormFieldProps> = ({
         aria-invalid={isInvalid}
         className={cn(isInvalid && "border-destructive focus-visible:ring-destructive")}
       />
-      {errors.length > 0 && (
+      {isInvalid && errors.length > 0 && (
         <p className="text-sm font-medium text-destructive">
           {formatError(errors[0])}
         </p>
@@ -184,7 +186,8 @@ export const FormSelect: React.FC<
   FormFieldProps & { options: { label: string; value: string }[] }
 > = ({ field, label, options, required }) => {
   const errors = field.state.meta.errors ?? [];
-  const isInvalid = errors.length > 0;
+  const isInvalid =
+    field.state.meta.isTouched && !field.state.meta.isValid;
 
   return (
     <div className="flex flex-col space-y-2">
@@ -212,7 +215,7 @@ export const FormSelect: React.FC<
           ))}
         </SelectContent>
       </Select>
-      {errors.length > 0 && (
+      {isInvalid && errors.length > 0 && (
         <p className="text-sm font-medium text-destructive">
           {formatError(errors[0])}
         </p>

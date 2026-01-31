@@ -6,6 +6,7 @@ import { SaveChangesDialog } from "@/components/SaveChangesDialog";
 import { AIChat } from "@/components/AIChat";
 import { SSHKeySetup } from "@/components/ssh/SSHKeySetup";
 import { SettingsPage } from "@/components/SettingsPage";
+import { FalckDashboard } from "@/components/falck/FalckDashboard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +20,7 @@ import {
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { gitService, RepositoryInfo } from "@/services/gitService";
 import { configService } from "@/services/configService";
+import { falckService } from "@/services/falckService";
 import { SSHKey, sshService } from "@/services/sshService";
 
 function App() {
@@ -29,6 +31,8 @@ function App() {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showGitTools, setShowGitTools] = useState(false);
   const [showSSHSettings, setShowSSHSettings] = useState(false);
+  const [pullLoading, setPullLoading] = useState(false);
+  const [pullError, setPullError] = useState<string | null>(null);
   const [sshKey, setSshKey] = useState<SSHKey | null>(() =>
     configService.getSelectedSSHKey(),
   );
@@ -66,6 +70,15 @@ function App() {
     void verifyKey();
   }, []);
 
+  useEffect(() => {
+    if (!repoPath) {
+      return;
+    }
+    return () => {
+      void falckService.clearSecrets();
+    };
+  }, [repoPath]);
+
   const loadRepoInfo = async (path: string) => {
     try {
       const info = await gitService.getRepositoryInfo(path);
@@ -77,6 +90,7 @@ function App() {
 
   const handleRepoSelect = async (path: string) => {
     setRepoPath(path);
+    setPullError(null);
     await loadRepoInfo(path);
   };
 
@@ -95,6 +109,27 @@ function App() {
     setShowGitTools(false);
     setShowSettingsPage(false);
     setShowSSHSettings(false);
+    setPullError(null);
+  };
+
+  const handlePull = async () => {
+    if (!repoPath || !repoInfo) return;
+    setPullError(null);
+    setPullLoading(true);
+    try {
+      const remotes = await gitService.getRemotes(repoPath);
+      const remote = remotes.includes("origin") ? "origin" : remotes[0];
+      if (!remote) {
+        setPullError("No remotes configured.");
+        return;
+      }
+      await gitService.pull(repoPath, remote, repoInfo.head_branch);
+      await loadRepoInfo(repoPath);
+    } catch (err) {
+      setPullError(String(err));
+    } finally {
+      setPullLoading(false);
+    }
   };
 
   const handleDragStart = () => {
@@ -203,6 +238,12 @@ function App() {
                       Git tools
                     </MenubarItem>
                     <MenubarItem
+                      onSelect={handlePull}
+                      disabled={pullLoading}
+                    >
+                      {pullLoading ? "Pulling…" : "Pull"}
+                    </MenubarItem>
+                    <MenubarItem
                       onSelect={() => setShowSaveDialog(true)}
                       disabled={!hasChanges}
                     >
@@ -249,6 +290,15 @@ function App() {
                   : "All changes saved"}
               </Badge>
               <Button
+                variant="outline"
+                onClick={handlePull}
+                disabled={pullLoading}
+                size="lg"
+                className="min-w-[100px] shadow-[var(--shadow-lg)]"
+              >
+                {pullLoading ? "Pulling…" : "Pull"}
+              </Button>
+              <Button
                 onClick={() => setShowSaveDialog(true)}
                 disabled={!hasChanges}
                 size="lg"
@@ -259,12 +309,23 @@ function App() {
             </div>
           </div>
         </div>
+        {pullError && (
+          <div className="mx-auto w-full max-w-7xl px-6 pb-2">
+            <p className="text-sm text-destructive">{pullError}</p>
+          </div>
+        )}
       </header>
 
       <main className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-6 pb-12">
         <section
           className="space-y-6 animate-in fade-in slide-in-from-bottom-4"
           style={{ animationDuration: "700ms" }}
+        >
+          <FalckDashboard repoPath={repoPath} />
+        </section>
+        <section
+          className="space-y-6 animate-in fade-in slide-in-from-bottom-4"
+          style={{ animationDuration: "800ms" }}
         >
           <AIChat repoPath={repoPath} />
         </section>

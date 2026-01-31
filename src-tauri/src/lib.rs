@@ -1,4 +1,5 @@
 mod git;
+mod falck;
 mod opencode;
 mod ssh;
 mod storage;
@@ -140,6 +141,18 @@ pub fn run() {
             ssh::add_ssh_key_to_agent,
             ssh::test_ssh_github,
             ssh::get_current_os,
+            falck::load_falck_config,
+            falck::check_falck_prerequisites,
+            falck::get_app_secrets_for_config,
+            falck::set_app_secret,
+            falck::check_secrets_satisfied,
+            falck::run_falck_setup,
+            falck::launch_falck_app,
+            falck::run_falck_cleanup,
+            falck::kill_falck_app,
+            falck::check_port_available,
+            falck::open_browser_to_url,
+            falck::clear_all_secrets,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

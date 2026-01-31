@@ -186,9 +186,6 @@ select:focus {
   font-size: 0.8rem;
 }
 
-.btn:hover {
-  transform: translateY(-1px);
-}
 
 .btn:disabled {
   opacity: 0.6;
@@ -438,7 +435,6 @@ select:focus {
 }
 
 .saved-item:hover {
-  transform: translateY(-1px);
   box-shadow: 0 12px 24px rgba(31, 26, 22, 0.12);
 }
 

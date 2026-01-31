@@ -1,0 +1,42 @@
+version: "1.0"
+
+metadata:
+  name: "Falck"
+  description: "Desktop Git + AI workspace for non-technical teams"
+  author: "Falck"
+
+applications:
+  - id: "falck-desktop"
+    name: "Falck Desktop App"
+    type: "web"
+    description: "Run the Falck Tauri desktop application"
+    root: "."
+
+    prerequisites:
+      - type: "runtime"
+        name: "Node.js"
+        command: "node --version"
+        version: "18.0.0"
+        install_url: "https://nodejs.org"
+
+      - type: "runtime"
+        name: "Rust"
+        command: "rustc --version"
+        version: "1.70.0"
+        install_url: "https://rustup.rs"
+
+    setup:
+      steps:
+        - name: "Install dependencies"
+          command: "npm install"
+          timeout: 300
+          description: "Install JavaScript dependencies and the Tauri CLI"
+
+    launch:
+      command: "npm run tauri dev"
+      description: "Start the Falck desktop app"
+      timeout: 60
+      access:
+        type: "custom"
+        url: "Opens a Falck desktop window on this machine"
+        open_browser: false

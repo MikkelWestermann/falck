@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useForm } from "@tanstack/react-form";
-import { zodValidator } from "@tanstack/zod-form-adapter";
 
 import { FormField } from "@/components/form/FormField";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -51,6 +50,9 @@ export function RepoSelector({
       url: "",
       localPath: "",
     },
+    validators: {
+      onSubmit: cloneRepoSchema,
+    },
     onSubmit: async ({ value }) => {
       setLoading(true);
       setError(null);
@@ -66,13 +68,15 @@ export function RepoSelector({
         setLoading(false);
       }
     },
-    validatorAdapter: zodValidator(),
   });
 
   const openForm = useForm({
     defaultValues: {
       name: "",
       path: "",
+    },
+    validators: {
+      onSubmit: openRepoSchema,
     },
     onSubmit: async ({ value }) => {
       setLoading(true);
@@ -89,7 +93,6 @@ export function RepoSelector({
         setLoading(false);
       }
     },
-    validatorAdapter: zodValidator(),
   });
 
   const handleOpenSaved = async (path: string, name: string) => {
@@ -173,12 +176,7 @@ export function RepoSelector({
                 }}
                 className="space-y-4"
               >
-                <cloneForm.Field
-                  name="name"
-                  validators={{
-                    onChange: zodValidator(cloneRepoSchema.shape.name),
-                  }}
-                >
+                <cloneForm.Field name="name">
                   {(field) => (
                     <FormField
                       field={field}
@@ -188,12 +186,7 @@ export function RepoSelector({
                     />
                   )}
                 </cloneForm.Field>
-                <cloneForm.Field
-                  name="url"
-                  validators={{
-                    onChange: zodValidator(cloneRepoSchema.shape.url),
-                  }}
-                >
+                <cloneForm.Field name="url">
                   {(field) => (
                     <FormField
                       field={field}
@@ -204,12 +197,7 @@ export function RepoSelector({
                     />
                   )}
                 </cloneForm.Field>
-                <cloneForm.Field
-                  name="localPath"
-                  validators={{
-                    onChange: zodValidator(cloneRepoSchema.shape.localPath),
-                  }}
-                >
+                <cloneForm.Field name="localPath">
                   {(field) => (
                     <FormField
                       field={field}
@@ -241,12 +229,7 @@ export function RepoSelector({
                 }}
                 className="space-y-4"
               >
-                <openForm.Field
-                  name="name"
-                  validators={{
-                    onChange: zodValidator(openRepoSchema.shape.name),
-                  }}
-                >
+                <openForm.Field name="name">
                   {(field) => (
                     <FormField
                       field={field}
@@ -256,12 +239,7 @@ export function RepoSelector({
                     />
                   )}
                 </openForm.Field>
-                <openForm.Field
-                  name="path"
-                  validators={{
-                    onChange: zodValidator(openRepoSchema.shape.path),
-                  }}
-                >
+                <openForm.Field name="path">
                   {(field) => (
                     <FormField
                       field={field}
@@ -300,7 +278,7 @@ export function RepoSelector({
                 {savedRepos.map((repo) => (
                   <button
                     key={repo.path}
-                    className="group flex w-full items-center justify-between gap-4 rounded-lg border-2 border-border bg-card/70 px-4 py-3 text-left shadow-[var(--shadow-xs)] transition hover:-translate-y-0.5 hover:bg-secondary/20 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+                    className="group flex w-full items-center justify-between gap-4 rounded-lg border-2 border-border bg-card/70 px-4 py-3 text-left shadow-[var(--shadow-xs)] transition hover:bg-secondary/20 active:shadow-none"
                     onClick={() => handleOpenSaved(repo.path, repo.name)}
                     disabled={loading}
                   >

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useForm } from "@tanstack/react-form";
-import { zodValidator } from "@tanstack/zod-form-adapter";
 
 import { FormField } from "@/components/form/FormField";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -73,6 +72,9 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
     defaultValues: {
       branchName: "",
     },
+    validators: {
+      onSubmit: createBranchSchema,
+    },
     onSubmit: async ({ value }) => {
       setError(null);
       try {
@@ -84,7 +86,6 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
         setError(String(err));
       }
     },
-    validatorAdapter: zodValidator(),
   });
 
   return (
@@ -148,12 +149,7 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
           }}
           className="flex flex-col gap-3 rounded-lg border-2 border-dashed border-border/70 bg-secondary/20 p-4 shadow-[var(--shadow-xs)] sm:flex-row sm:items-end"
         >
-          <branchForm.Field
-            name="branchName"
-            validators={{
-              onChange: zodValidator(createBranchSchema.shape.branchName),
-            }}
-          >
+          <branchForm.Field name="branchName">
             {(field) => (
               <FormField
                 field={field}

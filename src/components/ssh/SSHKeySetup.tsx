@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useForm } from "@tanstack/react-form";
-import { zodValidator } from "@tanstack/zod-form-adapter";
 import { z } from "zod";
 
 import { FormField, FormSelect } from "@/components/form/FormField";
@@ -36,16 +35,6 @@ const generateKeySchema = generateKeyBaseSchema.refine(
     path: ["passphraseConfirm"],
   },
 );
-
-const validateWithSchema =
-  <T,>(schema: z.ZodType<T>) =>
-  ({ value }: { value: T }) => {
-    const result = schema.safeParse(value);
-    if (result.success) {
-      return undefined;
-    }
-    return result.error.issues[0]?.message ?? "Invalid input.";
-  };
 
 type SetupMode = "onboarding" | "manage";
 
@@ -175,16 +164,13 @@ export function SSHKeySetup({
       passphrase: "",
       passphraseConfirm: "",
     },
+    validators: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- refined Zod schema types don't match form; runtime validation is correct
+      onSubmit: generateKeySchema as any,
+    },
     onSubmit: async ({ value }) => {
       setError(null);
       try {
-        const validation = generateKeySchema.safeParse(value);
-        if (!validation.success) {
-          setError(
-            validation.error.issues[0]?.message ?? "Invalid key details.",
-          );
-          return;
-        }
         const key = await sshService.generateNewKey(
           value.keyName,
           value.passphrase || null,
@@ -197,7 +183,6 @@ export function SSHKeySetup({
         setError(`Failed to generate key: ${String(err)}`);
       }
     },
-    validatorAdapter: zodValidator(),
   });
 
   if (step === "create") {
@@ -219,12 +204,7 @@ export function SSHKeySetup({
                 }}
                 className="space-y-4"
               >
-                <createForm.Field
-                  name="keyName"
-                  validators={{
-                    onChange: validateWithSchema(generateKeyBaseSchema.shape.keyName),
-                  }}
-                >
+                <createForm.Field name="keyName">
                   {(field) => (
                     <FormField
                       field={field}
@@ -234,12 +214,7 @@ export function SSHKeySetup({
                     />
                   )}
                 </createForm.Field>
-                <createForm.Field
-                  name="keyType"
-                  validators={{
-                    onChange: validateWithSchema(generateKeyBaseSchema.shape.keyType),
-                  }}
-                >
+                <createForm.Field name="keyType">
                   {(field) => (
                     <FormSelect
                       field={field}
@@ -252,12 +227,7 @@ export function SSHKeySetup({
                     />
                   )}
                 </createForm.Field>
-                <createForm.Field
-                  name="passphrase"
-                  validators={{
-                    onChange: validateWithSchema(generateKeyBaseSchema.shape.passphrase),
-                  }}
-                >
+                <createForm.Field name="passphrase">
                   {(field) => (
                     <FormField
                       field={field}
@@ -267,21 +237,7 @@ export function SSHKeySetup({
                     />
                   )}
                 </createForm.Field>
-                <createForm.Field
-                  name="passphraseConfirm"
-                  validators={{
-                    onChange: ({ value, fieldApi }) => {
-                      const passphrase = fieldApi.form.getFieldValue("passphrase");
-                      if (!value && !passphrase) {
-                        return undefined;
-                      }
-                      if (value !== passphrase) {
-                        return "Passphrases do not match";
-                      }
-                      return undefined;
-                    },
-                  }}
-                >
+                <createForm.Field name="passphraseConfirm">
                   {(field) => (
                     <FormField
                       field={field}
@@ -562,7 +518,7 @@ export function SSHKeySetup({
                   {keys.map((key) => (
                     <button
                       key={key.fingerprint}
-                      className="flex w-full flex-col gap-2 rounded-lg border-2 border-border bg-card/70 px-4 py-3 text-left shadow-[var(--shadow-xs)] transition hover:-translate-y-0.5 hover:bg-secondary/20 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+                      className="flex w-full flex-col gap-2 rounded-lg border-2 border-border bg-card/70 px-4 py-3 text-left shadow-[var(--shadow-xs)] transition hover:bg-secondary/20 active:shadow-none"
                       onClick={() => handleSelectKey(key)}
                     >
                       <div className="flex items-center justify-between gap-3">
