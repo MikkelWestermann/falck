@@ -103,7 +103,7 @@ export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
       </CardHeader>
       <CardContent className="space-y-5">
         {!hasChanges ? (
-          <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
             No changes to commit.
           </div>
         ) : (
@@ -111,10 +111,10 @@ export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
             {files.map((file) => (
               <div
                 key={file.path}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card/80 px-4 py-3"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border-2 border-border bg-card/80 px-4 py-3 shadow-[var(--shadow-xs)]"
               >
                 <div className="flex min-w-0 items-center gap-3">
-                  <Badge variant={statusVariant[file.status]} className="rounded-full">
+                  <Badge variant={statusVariant[file.status]}>
                     {statusLabel[file.status]}
                   </Badge>
                   <span className="truncate text-sm font-mono text-foreground/80">
@@ -138,7 +138,7 @@ export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
             e.preventDefault();
             void commitForm.handleSubmit();
           }}
-          className="space-y-4 rounded-2xl border border-dashed border-border/70 bg-secondary/40 p-4"
+          className="space-y-4 rounded-lg border-2 border-dashed border-border/70 bg-secondary/20 p-4 shadow-[var(--shadow-xs)]"
         >
           <h3 className="text-base font-semibold">Create commit</h3>
           <commitForm.Field

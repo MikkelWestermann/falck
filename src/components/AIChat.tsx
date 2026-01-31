@@ -129,10 +129,13 @@ export function AIChat({ repoPath }: AIChatProps) {
           }
           if (part.type === "text") {
             setStreaming(true);
-            const byPart = partsByMessage.current.get(part.messageID) ?? new Map();
+            const byPart =
+              partsByMessage.current.get(part.messageID) ?? new Map();
             byPart.set(part.id, part.text ?? "");
             partsByMessage.current.set(part.messageID, byPart);
-            const combined = Array.from(byPart.values()).filter(Boolean).join("\n");
+            const combined = Array.from(byPart.values())
+              .filter(Boolean)
+              .join("\n");
             upsertMessage(part.messageID, {
               role: "assistant",
               text: combined,
@@ -186,7 +189,9 @@ export function AIChat({ repoPath }: AIChatProps) {
       await opencodeService.health(repoPath);
       const config = await opencodeService.getProviders(repoPath);
       setProviders(config.providers);
-      const availableModels = config.providers.flatMap((provider) => provider.models);
+      const availableModels = config.providers.flatMap(
+        (provider) => provider.models,
+      );
       const storedModel = readStoredModel();
       const fallbackModel =
         config.defaults?.openai ||
@@ -233,9 +238,15 @@ export function AIChat({ repoPath }: AIChatProps) {
   const handleSelectSession = async (session: AISession) => {
     setLoading(true);
     try {
-      const loadedSession = await opencodeService.getSession(session.path, repoPath);
+      const loadedSession = await opencodeService.getSession(
+        session.path,
+        repoPath,
+      );
       setCurrentSession(loadedSession);
-      const sessionMessages = await opencodeService.listMessages(session.path, repoPath);
+      const sessionMessages = await opencodeService.listMessages(
+        session.path,
+        repoPath,
+      );
       setMessages(sessionMessages);
       setError("");
     } catch (err) {
@@ -298,7 +309,7 @@ export function AIChat({ repoPath }: AIChatProps) {
 
   if (initializing) {
     return (
-      <div className="rounded-2xl border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
+      <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-10 text-center text-sm text-muted-foreground">
         Initializing OpenCode…
       </div>
     );
@@ -309,18 +320,27 @@ export function AIChat({ repoPath }: AIChatProps) {
       <Card className="flex h-full flex-col">
         <CardHeader>
           <CardTitle>AI sessions</CardTitle>
-          <CardDescription>Keep separate conversations per task.</CardDescription>
+          <CardDescription>
+            Keep separate conversations per task.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-1 flex-col gap-4">
           <div className="flex items-center justify-between gap-2">
-            <Button onClick={handleCreateSession} disabled={loading} className="w-full">
+            <Button
+              onClick={handleCreateSession}
+              disabled={loading}
+              className="w-full"
+            >
               + New session
             </Button>
           </div>
 
-          <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: 360 }}>
+          <div
+            className="space-y-2 overflow-y-auto pr-1"
+            style={{ maxHeight: 360 }}
+          >
             {sessions.length === 0 ? (
-              <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+              <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
                 No sessions yet.
               </div>
             ) : (
@@ -328,10 +348,10 @@ export function AIChat({ repoPath }: AIChatProps) {
                 <div
                   key={session.path}
                   className={cn(
-                    "flex items-center justify-between gap-2 rounded-2xl border px-3 py-2",
+                    "flex items-center justify-between gap-2 rounded-lg border-2 border-border px-3 py-2 shadow-[var(--shadow-xs)]",
                     currentSession?.path === session.path
-                      ? "border-primary/40 bg-secondary/80"
-                      : "border-border/60 bg-card/80",
+                      ? "border-primary bg-secondary/30"
+                      : "bg-card/80",
                   )}
                 >
                   <button
@@ -341,7 +361,9 @@ export function AIChat({ repoPath }: AIChatProps) {
                     <div className="text-sm font-semibold text-foreground">
                       {session.name}
                     </div>
-                    <div className="text-xs text-muted-foreground">{session.model}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {session.model}
+                    </div>
                   </button>
                   <Button
                     variant="ghost"
@@ -383,7 +405,7 @@ export function AIChat({ repoPath }: AIChatProps) {
         </CardContent>
       </Card>
 
-      <Card className="flex min-h-[560px] flex-col">
+      <Card className="flex h-[calc(100vh-10rem)] flex-col">
         {!currentSession ? (
           <CardContent className="flex flex-1 items-center justify-center">
             <div className="text-center text-sm text-muted-foreground">
@@ -397,14 +419,14 @@ export function AIChat({ repoPath }: AIChatProps) {
                 <CardTitle>{currentSession.name}</CardTitle>
                 <CardDescription>Repository: {repoPath}</CardDescription>
               </div>
-              <Badge variant="secondary" className="w-fit rounded-full">
+              <Badge variant="secondary" className="w-fit">
                 {currentSession.model}
               </Badge>
             </CardHeader>
             <CardContent className="flex-1 overflow-hidden pt-0">
               <div className="flex h-full flex-col gap-3 overflow-y-auto pr-2">
                 {messages.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                  <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
                     No messages yet. Ask the AI anything.
                   </div>
                 ) : (
@@ -412,10 +434,10 @@ export function AIChat({ repoPath }: AIChatProps) {
                     <div
                       key={idx}
                       className={cn(
-                        "max-w-[75%] rounded-2xl px-4 py-3 text-sm",
+                        "max-w-[75%] rounded-lg border-2 border-border px-4 py-3 text-sm shadow-[var(--shadow-xs)]",
                         msg.role === "user"
                           ? "ml-auto bg-primary text-primary-foreground"
-                          : "mr-auto border border-border/60 bg-card",
+                          : "mr-auto bg-card",
                       )}
                     >
                       <div className="mb-1 text-[0.65rem] uppercase tracking-[0.25em] opacity-70">
@@ -431,7 +453,7 @@ export function AIChat({ repoPath }: AIChatProps) {
                   ))
                 )}
                 {(sending || streaming) && (
-                  <div className="mr-auto max-w-[75%] rounded-2xl border border-border/60 bg-card px-4 py-3 text-sm">
+                  <div className="mr-auto max-w-[75%] rounded-lg border-2 border-border bg-card px-4 py-3 text-sm shadow-[var(--shadow-xs)]">
                     <div className="mb-1 text-[0.65rem] uppercase tracking-[0.25em] opacity-70">
                       AI
                     </div>
@@ -440,7 +462,7 @@ export function AIChat({ repoPath }: AIChatProps) {
                 )}
               </div>
             </CardContent>
-            <div className="border-t border-border/60 p-4">
+            <div className="border-t-2 border-border p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                 <Textarea
                   rows={3}

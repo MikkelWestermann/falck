@@ -129,7 +129,10 @@ export function OpenCodeSettings({ open, onOpenChange }: OpenCodeSettingsProps) 
           <h3 className="text-sm font-semibold">Available models</h3>
           <div className="grid gap-3">
             {providers.map((provider) => (
-              <div key={provider.name} className="rounded-2xl border border-border/60 bg-secondary/40 p-3">
+              <div
+                key={provider.name}
+                className="rounded-lg border-2 border-border bg-secondary/20 p-3 shadow-[var(--shadow-xs)]"
+              >
                 <div className="text-sm font-semibold text-foreground">
                   {provider.name}
                 </div>

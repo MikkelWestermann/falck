@@ -51,11 +51,11 @@ export function CommitHistory({ repoPath }: CommitHistoryProps) {
       </CardHeader>
       <CardContent>
         {loading ? (
-          <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
             Loading commits…
           </div>
         ) : commits.length === 0 ? (
-          <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
             No commits found.
           </div>
         ) : (
@@ -63,9 +63,9 @@ export function CommitHistory({ repoPath }: CommitHistoryProps) {
             {commits.map((commit) => (
               <div
                 key={commit.id}
-                className="flex flex-col gap-2 rounded-2xl border border-border/60 bg-card/80 p-4 sm:flex-row sm:items-start"
+                className="flex flex-col gap-2 rounded-lg border-2 border-border bg-card/80 p-4 shadow-[var(--shadow-xs)] sm:flex-row sm:items-start"
               >
-                <Badge variant="muted" className="w-fit rounded-full font-mono">
+                <Badge variant="muted" className="w-fit font-mono">
                   {commit.id.substring(0, 7)}
                 </Badge>
                 <div>

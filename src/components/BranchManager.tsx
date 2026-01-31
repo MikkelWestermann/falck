@@ -94,13 +94,13 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
         <CardDescription>Switch, create, and clean up branches.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="flex items-center justify-between rounded-2xl border border-transparent bg-secondary/70 px-4 py-3">
+        <div className="flex items-center justify-between rounded-lg border-2 border-border bg-secondary/30 px-4 py-3 shadow-[var(--shadow-xs)]">
           <span className="text-sm text-muted-foreground">Current</span>
           <span className="text-sm font-semibold">{currentBranch || "—"}</span>
         </div>
 
         {loading ? (
-          <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
             Loading branches…
           </div>
         ) : (
@@ -108,12 +108,12 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
             {branches.map((branch) => (
               <div
                 key={branch.name}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card/80 px-4 py-3"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border-2 border-border bg-card/80 px-4 py-3 shadow-[var(--shadow-xs)]"
               >
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold">{branch.name}</span>
                   {branch.is_head && (
-                    <Badge variant="secondary" className="rounded-full">
+                    <Badge variant="secondary">
                       Checked out
                     </Badge>
                   )}
@@ -146,7 +146,7 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
             e.preventDefault();
             void branchForm.handleSubmit();
           }}
-          className="flex flex-col gap-3 rounded-2xl border border-dashed border-border/70 bg-secondary/40 p-4 sm:flex-row sm:items-end"
+          className="flex flex-col gap-3 rounded-lg border-2 border-dashed border-border/70 bg-secondary/20 p-4 shadow-[var(--shadow-xs)] sm:flex-row sm:items-end"
         >
           <branchForm.Field
             name="branchName"

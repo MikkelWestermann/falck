@@ -39,7 +39,7 @@ export const FormField: React.FC<FormFieldProps> = ({
         <Label
           htmlFor={field.name}
           className={cn(
-            required && "after:ml-0.5 after:text-red-500 after:content-['*']",
+            required && "after:ml-0.5 after:text-destructive after:content-['*']",
           )}
         >
           {label}
@@ -53,10 +53,10 @@ export const FormField: React.FC<FormFieldProps> = ({
         onChange={(e) => field.handleChange(e.target.value)}
         onBlur={field.handleBlur}
         aria-invalid={isInvalid}
-        className={cn(isInvalid && "border-red-500 focus-visible:ring-red-500")}
+        className={cn(isInvalid && "border-destructive focus-visible:ring-destructive")}
       />
       {errors.length > 0 && (
-        <p className="text-sm font-medium text-red-500">
+        <p className="text-sm font-medium text-destructive">
           {errors[0]?.toString()}
         </p>
       )}
@@ -83,7 +83,7 @@ export const FormTextarea: React.FC<FormFieldProps> = ({
         <Label
           htmlFor={field.name}
           className={cn(
-            required && "after:ml-0.5 after:text-red-500 after:content-['*']",
+            required && "after:ml-0.5 after:text-destructive after:content-['*']",
           )}
         >
           {label}
@@ -96,10 +96,10 @@ export const FormTextarea: React.FC<FormFieldProps> = ({
         onChange={(e) => field.handleChange(e.target.value)}
         onBlur={field.handleBlur}
         aria-invalid={isInvalid}
-        className={cn(isInvalid && "border-red-500 focus-visible:ring-red-500")}
+        className={cn(isInvalid && "border-destructive focus-visible:ring-destructive")}
       />
       {errors.length > 0 && (
-        <p className="text-sm font-medium text-red-500">
+        <p className="text-sm font-medium text-destructive">
           {errors[0]?.toString()}
         </p>
       )}
@@ -121,14 +121,17 @@ export const FormSelect: React.FC<
       {label && (
         <Label
           className={cn(
-            required && "after:ml-0.5 after:text-red-500 after:content-['*']",
+            required && "after:ml-0.5 after:text-destructive after:content-['*']",
           )}
         >
           {label}
         </Label>
       )}
       <Select value={field.state.value ?? ""} onValueChange={field.handleChange}>
-        <SelectTrigger aria-invalid={isInvalid} className={cn(isInvalid && "border-red-500")}>
+        <SelectTrigger
+          aria-invalid={isInvalid}
+          className={cn(isInvalid && "border-destructive")}
+        >
           <SelectValue placeholder="Select an option" />
         </SelectTrigger>
         <SelectContent>
@@ -140,7 +143,7 @@ export const FormSelect: React.FC<
         </SelectContent>
       </Select>
       {errors.length > 0 && (
-        <p className="text-sm font-medium text-red-500">
+        <p className="text-sm font-medium text-destructive">
           {errors[0]?.toString()}
         </p>
       )}

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { gitService, RepositoryInfo } from "@/services/gitService";
+import logo from "@/assets/logo.png";
 
 function App() {
   const [repoPath, setRepoPath] = useState<string | null>(null);
@@ -45,23 +46,29 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b bg-card/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-6 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-primary/80">
-              Falck
-            </p>
-            <h1 className="text-2xl font-semibold md:text-3xl">
-              Repository dashboard
-            </h1>
-            <p className="text-sm text-muted-foreground">{repoPath}</p>
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      <header
+        className="relative border-b-2 border-border bg-card/90"
+        data-tauri-drag-region
+      >
+        <div className="absolute inset-x-0 top-0 h-2 bg-primary" />
+        <div className="mx-auto flex max-w-6xl flex-col gap-6 pr-6 pl-16 py-6 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 items-center justify-center border-2 border-border bg-primary shadow-[var(--shadow-sm)]">
+              <img src={logo} alt="Falck logo" className="h-7 w-7 object-contain" />
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.4em] text-foreground">
+                Falck
+              </p>
+              <h1 className="text-2xl font-black uppercase tracking-tight md:text-3xl">
+                Repository dashboard
+              </h1>
+              <p className="text-xs font-mono text-muted-foreground">{repoPath}</p>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              variant={repoInfo.is_dirty ? "destructive" : "secondary"}
-              className="rounded-full"
-            >
+          <div className="flex flex-wrap items-center gap-2" data-tauri-drag-region="false">
+            <Badge variant={repoInfo.is_dirty ? "destructive" : "secondary"}>
               {repoInfo.is_dirty ? "Uncommitted changes" : "Working tree clean"}
             </Badge>
             <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
@@ -84,13 +91,13 @@ function App() {
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-6xl flex-1 flex-col px-6 py-8">
+      <main className="mx-auto flex max-w-6xl flex-1 flex-col px-6 py-10">
         <Tabs
           value={activeTab}
           onValueChange={(value) => setActiveTab(value as "git" | "ai")}
           className="flex-1"
         >
-          <TabsList className="w-full justify-start gap-2 rounded-full bg-secondary/70 p-1">
+          <TabsList className="w-full justify-start gap-2">
             <TabsTrigger value="git">Git operations</TabsTrigger>
             <TabsTrigger value="ai">AI coding</TabsTrigger>
           </TabsList>

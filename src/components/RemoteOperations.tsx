@@ -86,7 +86,7 @@ export function RemoteOperations({
       </CardHeader>
       <CardContent className="space-y-4">
         {remotes.length === 0 ? (
-          <div className="rounded-2xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
             No remotes configured.
           </div>
         ) : (
@@ -106,7 +106,7 @@ export function RemoteOperations({
                   </SelectContent>
                 </Select>
               </div>
-              <Badge variant="secondary" className="w-fit rounded-full">
+              <Badge variant="secondary" className="w-fit">
                 {currentBranch}
               </Badge>
             </div>
