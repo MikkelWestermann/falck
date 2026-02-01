@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { gitService, RepositoryInfo } from "@/services/gitService";
 import { useAppState } from "@/router/app-state";
+import { ArrowLeft } from "lucide-react";
 
 export const Route = createFileRoute("/overview")({
   component: OverviewRoute,
@@ -114,17 +115,7 @@ function OverviewRoute() {
 
   return (
     <div className="relative min-h-screen bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-24 right-0 h-72 w-72 rounded-full bg-secondary/25 blur-3xl" />
-        <div className="absolute left-[-80px] top-40 h-72 w-72 rounded-full bg-primary/20 blur-3xl" />
-        <div className="absolute inset-x-0 top-28 h-px bg-gradient-to-r from-transparent via-border to-transparent opacity-60" />
-      </div>
       <header className="relative z-10 bg-card/80 backdrop-blur">
-        <div
-          className="absolute inset-x-0 top-0 z-20 h-8 cursor-grab bg-gradient-to-b from-foreground/10 to-transparent"
-          data-tauri-drag-region
-          onPointerDown={handleDragStart}
-        />
         <div className="mx-auto w-full max-w-7xl px-6 py-4">
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -133,7 +124,8 @@ function OverviewRoute() {
                 data-tauri-drag-region="false"
               >
                 <Button variant="ghost" size="sm" onClick={handleCloseRepo}>
-                  Back to repos
+                  <ArrowLeft className="h-4 w-4" />
+                  <span>Back</span>
                 </Button>
                 <div className="min-w-[220px]">
                   <p className="text-sm font-semibold uppercase tracking-[0.32em] text-foreground/80">
@@ -169,13 +161,13 @@ function OverviewRoute() {
                   size="lg"
                   className="min-w-[170px] shadow-[var(--shadow-lg)]"
                 >
-                  Save &amp; push
+                  Save
                 </Button>
               </div>
             </div>
 
             <div
-              className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-border bg-card/70 px-3 py-2 shadow-[var(--shadow-xs)]"
+              className="flex flex-wrap items-center gap-3"
               data-tauri-drag-region="false"
             >
               <div className="min-w-[220px]">

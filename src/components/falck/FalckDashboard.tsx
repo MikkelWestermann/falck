@@ -46,18 +46,19 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
   const [prereqResults, setPrereqResults] = useState<
     Record<string, PrerequisiteCheckResult[]>
   >({});
-  const [prereqLoading, setPrereqLoading] = useState<Record<string, boolean>>({});
+  const [prereqLoading, setPrereqLoading] = useState<Record<string, boolean>>(
+    {},
+  );
   const [setupRunning, setSetupRunning] = useState<Record<string, boolean>>({});
   const [setupMessage, setSetupMessage] = useState<Record<string, string>>({});
   const [setupError, setSetupError] = useState<Record<string, string>>({});
   const [launchError, setLaunchError] = useState<Record<string, string>>({});
   const [runningApps, setRunningApps] = useState<Record<string, number>>({});
-  const [secretsSatisfied, setSecretsSatisfied] = useState<Record<string, boolean>>(
-    {},
-  );
-  const [secretsDialogApp, setSecretsDialogApp] = useState<FalckApplication | null>(
-    null,
-  );
+  const [secretsSatisfied, setSecretsSatisfied] = useState<
+    Record<string, boolean>
+  >({});
+  const [secretsDialogApp, setSecretsDialogApp] =
+    useState<FalckApplication | null>(null);
   const [detailsOpenByApp, setDetailsOpenByApp] = useState<
     Record<string, boolean>
   >({});
@@ -145,7 +146,10 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
 
   const checkSecrets = async (appId: string) => {
     try {
-      const satisfied = await falckService.checkSecretsSatisfied(repoPath, appId);
+      const satisfied = await falckService.checkSecretsSatisfied(
+        repoPath,
+        appId,
+      );
       setSecretsSatisfied((prev) => ({ ...prev, [appId]: satisfied }));
     } catch (err) {
       setSecretsSatisfied((prev) => ({ ...prev, [appId]: false }));
@@ -263,7 +267,7 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
     : true;
   const isRunning = activeApp ? Boolean(runningApps[activeApp.id]) : false;
   const detailsOpen = activeApp
-    ? detailsOpenByApp[activeApp.id] ?? !isRunning
+    ? (detailsOpenByApp[activeApp.id] ?? !isRunning)
     : false;
   const toggleDetails = () => {
     if (!activeApp) {
@@ -286,12 +290,9 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
 
       {activeApp ? (
         <div className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="border px-2 py-1 rounded">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap items-center gap-3">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Falck
-                </span>
                 {appOptions.length > 1 ? (
                   <Select
                     value={activeApp.id}
@@ -309,7 +310,9 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
                     </SelectContent>
                   </Select>
                 ) : (
-                  <span className="text-sm font-semibold">{activeApp.name}</span>
+                  <span className="text-sm font-semibold">
+                    {activeApp.name}
+                  </span>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -341,9 +344,7 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() =>
-                      handleOpenUrl(activeApp.launch.access!.url!)
-                    }
+                    onClick={() => handleOpenUrl(activeApp.launch.access!.url!)}
                   >
                     Open
                   </Button>
@@ -371,8 +372,8 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
                   Refresh
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-2 pt-0">
+            </div>
+            <div className="space-y-2 pt-0">
               {!isRunning && prereqsMissing ? (
                 <div className="rounded-lg border-2 border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
                   Missing prerequisites. Open details to see what is needed.
@@ -398,8 +399,8 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
                   </AlertDescription>
                 </Alert>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {detailsOpen ? (
             <Card>

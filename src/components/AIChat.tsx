@@ -409,12 +409,10 @@ export function AIChat({ repoPath }: AIChatProps) {
 
   return (
     <>
-      {/* <div className="pointer-events-none absolute -right-24 -top-28 h-64 w-64 rounded-full bg-amber-200/40 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-40 left-12 h-72 w-72 rounded-full bg-orange-200/35 blur-3xl" /> */}
       <div className="relative flex h-[min(72vh,720px)] min-h-[420px] flex-col">
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/60 bg-white/70 px-6 py-5 backdrop-blur">
-          <div className="space-y-1">
-            <div className="text-lg font-semibold text-foreground">
+        <div className="flex flex-wrap items-start justify-between border-b border-border/60 bg-white/70 px-6 py-2 backdrop-blur">
+          <div>
+            <div className="text-sm font-semibold text-foreground">
               {currentSession ? currentSession.name : "Start a new session"}
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -543,11 +541,11 @@ export function AIChat({ repoPath }: AIChatProps) {
         </div>
 
         <div className="flex flex-1 flex-col min-h-0">
-          <div className="flex-1 min-h-0 px-6 py-6">
-            <div className="flex h-full flex-col overflow-hidden rounded-[24px] border border-border/50 bg-white/70 shadow-[var(--shadow-xs)] backdrop-blur">
+          <div className="flex-1 min-h-0 px-6 pb-6">
+            <div>
               <div
                 ref={messagesContainerRef}
-                className="flex flex-1 min-h-0 flex-col gap-6 overflow-y-auto px-6 py-6"
+                className="flex flex-1 min-h-[400px] flex-col gap-6 overflow-y-auto px-6 py-6 h-[calc(100vh-450px)]"
               >
                 {loadingSession ? (
                   <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-white/70 px-6 py-12 text-center">
@@ -653,100 +651,14 @@ export function AIChat({ repoPath }: AIChatProps) {
                 )}
               </div>
 
-              <div className="border-t border-border/50 bg-gradient-to-b from-white/80 via-white/90 to-white px-5 py-4">
-                <div className="mx-auto max-w-4xl [&_[data-slot=input-group]]:rounded-2xl [&_[data-slot=input-group]]:border-border/50 [&_[data-slot=input-group]]:bg-white/90 [&_[data-slot=input-group]]:shadow-[var(--shadow-xs)]">
+              <div>
+                <div>
                   <PromptInput
                     onSubmit={(message, event) => {
                       event.preventDefault();
                       void handleSendMessage(message.text);
                     }}
                   >
-                    <PromptInputHeader className="justify-between border-b border-border/40 bg-white/60">
-                      <div className="flex flex-wrap items-center gap-2 text-[0.65rem] uppercase tracking-[0.3em] text-muted-foreground">
-                        <span>Model</span>
-                        {selectedProvider && (
-                          <span className="text-foreground/70">
-                            {selectedProvider.name}
-                          </span>
-                        )}
-                      </div>
-                      <ModelSelector
-                        open={modelSelectorOpen}
-                        onOpenChange={setModelSelectorOpen}
-                      >
-                        <ModelSelectorTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-2 rounded-full border-border/60 bg-white/80 px-3 text-xs font-semibold shadow-[var(--shadow-xs)]"
-                            type="button"
-                          >
-                            {selectedProvider && (
-                              <ModelSelectorLogo
-                                provider={selectedProvider.name}
-                                className="size-4"
-                              />
-                            )}
-                            <ModelSelectorName className="max-w-[160px] flex-none truncate font-mono text-[0.7rem]">
-                              {selectedModel}
-                            </ModelSelectorName>
-                            <ChevronDownIcon className="size-3 text-muted-foreground" />
-                          </Button>
-                        </ModelSelectorTrigger>
-                        <ModelSelectorContent className="max-w-xl">
-                          <div className="border-b px-4 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-                            Choose a model
-                          </div>
-                          <ModelSelectorInput placeholder="Search models..." />
-                          <ModelSelectorList className="max-h-[380px]">
-                            <ModelSelectorEmpty>
-                              No models found.
-                            </ModelSelectorEmpty>
-                            {providers.map((provider, index) => (
-                              <div key={provider.name}>
-                                <ModelSelectorGroup heading={provider.name}>
-                                  {provider.models.map((model) => (
-                                    <ModelSelectorItem
-                                      key={`${provider.name}-${model}`}
-                                      value={`${provider.name} ${model}`}
-                                      onSelect={() => {
-                                        setSelectedModel(model);
-                                        persistModel(model);
-                                        setModelSelectorOpen(false);
-                                      }}
-                                      className={cn(
-                                        "flex items-center gap-2",
-                                        selectedModel === model
-                                          ? "bg-accent/60 text-foreground"
-                                          : "",
-                                      )}
-                                    >
-                                      <ModelSelectorLogo
-                                        provider={provider.name}
-                                      />
-                                      <ModelSelectorName className="text-sm">
-                                        {model}
-                                      </ModelSelectorName>
-                                      {selectedModel === model && (
-                                        <Badge
-                                          variant="secondary"
-                                          className="ml-auto rounded-full px-2 py-0 text-[0.6rem]"
-                                        >
-                                          Active
-                                        </Badge>
-                                      )}
-                                    </ModelSelectorItem>
-                                  ))}
-                                </ModelSelectorGroup>
-                                {index < providers.length - 1 && (
-                                  <ModelSelectorSeparator />
-                                )}
-                              </div>
-                            ))}
-                          </ModelSelectorList>
-                        </ModelSelectorContent>
-                      </ModelSelector>
-                    </PromptInputHeader>
                     <PromptInputBody>
                       <PromptInputTextarea
                         rows={3}
@@ -772,6 +684,77 @@ export function AIChat({ repoPath }: AIChatProps) {
                           : "Create a session to start writing."}
                       </PromptInputTools>
                       <PromptInputTools>
+                        <ModelSelector
+                          open={modelSelectorOpen}
+                          onOpenChange={setModelSelectorOpen}
+                        >
+                          <ModelSelectorTrigger asChild>
+                            <Button variant="outline" size="sm" type="button">
+                              {selectedProvider && (
+                                <ModelSelectorLogo
+                                  provider={selectedProvider.name}
+                                  className="size-4"
+                                />
+                              )}
+                              <ModelSelectorName className="max-w-[160px] flex-none truncate font-mono text-[0.7rem]">
+                                {selectedModel}
+                              </ModelSelectorName>
+                              <ChevronDownIcon className="size-3 text-muted-foreground" />
+                            </Button>
+                          </ModelSelectorTrigger>
+                          <ModelSelectorContent className="max-w-xl">
+                            <div className="border-b px-4 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+                              Choose a model
+                            </div>
+                            <ModelSelectorInput placeholder="Search models..." />
+                            <ModelSelectorList className="max-h-[380px]">
+                              <ModelSelectorEmpty>
+                                No models found.
+                              </ModelSelectorEmpty>
+                              {providers.map((provider, index) => (
+                                <div key={provider.name}>
+                                  <ModelSelectorGroup heading={provider.name}>
+                                    {provider.models.map((model) => (
+                                      <ModelSelectorItem
+                                        key={`${provider.name}-${model}`}
+                                        value={`${provider.name} ${model}`}
+                                        onSelect={() => {
+                                          setSelectedModel(model);
+                                          persistModel(model);
+                                          setModelSelectorOpen(false);
+                                        }}
+                                        className={cn(
+                                          "flex items-center gap-2",
+                                          selectedModel === model
+                                            ? "bg-accent/60 text-foreground"
+                                            : "",
+                                        )}
+                                      >
+                                        <ModelSelectorLogo
+                                          provider={provider.name}
+                                        />
+                                        <ModelSelectorName className="text-sm">
+                                          {model}
+                                        </ModelSelectorName>
+                                        {selectedModel === model && (
+                                          <Badge
+                                            variant="secondary"
+                                            className="ml-auto rounded-full px-2 py-0 text-[0.6rem]"
+                                          >
+                                            Active
+                                          </Badge>
+                                        )}
+                                      </ModelSelectorItem>
+                                    ))}
+                                  </ModelSelectorGroup>
+                                  {index < providers.length - 1 && (
+                                    <ModelSelectorSeparator />
+                                  )}
+                                </div>
+                              ))}
+                            </ModelSelectorList>
+                          </ModelSelectorContent>
+                        </ModelSelector>
                         <PromptInputSubmit
                           status={chatStatus}
                           disabled={

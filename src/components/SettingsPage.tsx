@@ -1,5 +1,11 @@
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { OpenCodeSettingsPanel } from "@/components/OpenCodeSettings";
 import { SSHKey } from "@/services/sshService";
 
@@ -16,16 +22,7 @@ export function SettingsPage({
 }: SettingsPageProps) {
   return (
     <div className="relative min-h-screen bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-24 right-0 h-72 w-72 rounded-full bg-secondary/25 blur-3xl" />
-        <div className="absolute left-[-80px] top-40 h-72 w-72 rounded-full bg-primary/20 blur-3xl" />
-        <div className="absolute inset-x-0 top-28 h-px bg-gradient-to-r from-transparent via-border to-transparent opacity-60" />
-      </div>
       <header className="relative z-10 border-b-2 border-border/80 bg-card/80 backdrop-blur">
-        <div
-          className="absolute inset-x-0 top-0 z-20 h-8 cursor-grab bg-gradient-to-b from-foreground/10 to-transparent"
-          data-tauri-drag-region
-        />
         <div className="mx-auto w-full max-w-5xl px-6 py-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>

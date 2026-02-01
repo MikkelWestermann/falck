@@ -38,14 +38,14 @@ const statusLabel: Record<FileStatus["status"], string> = {
 
 const statusVariant: Record<
   FileStatus["status"],
-  "default" | "secondary" | "destructive" | "outline" | "muted"
+  "default" | "secondary" | "destructive" | "outline"
 > = {
   modified: "secondary",
   added: "default",
   deleted: "destructive",
   renamed: "secondary",
   untracked: "outline",
-  unknown: "muted",
+  unknown: "secondary",
 };
 
 export function GitToolsDialog({
@@ -88,7 +88,7 @@ export function GitToolsDialog({
                   }}
                   disabled={!hasChanges}
                 >
-                  Save & push
+                  Save
                 </Button>
               </CardHeader>
               <CardContent>

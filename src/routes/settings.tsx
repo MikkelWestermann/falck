@@ -1,26 +1,16 @@
-import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { SettingsPage } from "@/components/SettingsPage";
+import { createFileRoute, Navigate, Outlet } from "@tanstack/react-router";
 import { useAppState } from "@/router/app-state";
 
 export const Route = createFileRoute("/settings")({
-  component: SettingsRoute,
+  component: SettingsLayout,
 });
 
-function SettingsRoute() {
-  const navigate = Route.useNavigate();
-  const { sshKey, repoPath } = useAppState();
+function SettingsLayout() {
+  const { sshKey } = useAppState();
 
   if (!sshKey) {
     return <Navigate to="/ssh" />;
   }
 
-  return (
-    <SettingsPage
-      sshKey={sshKey}
-      onManageSSHKey={() => navigate({ to: "/settings/ssh" })}
-      onClose={() =>
-        navigate({ to: repoPath ? "/overview" : "/repo" })
-      }
-    />
-  );
+  return <Outlet />;
 }

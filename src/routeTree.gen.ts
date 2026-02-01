@@ -14,6 +14,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RepoRouteImport } from './routes/repo'
 import { Route as OverviewRouteImport } from './routes/overview'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsSshRouteImport } from './routes/settings.ssh'
 
 const SshRoute = SshRouteImport.update({
@@ -41,6 +42,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsSshRoute = SettingsSshRouteImport.update({
   id: '/ssh',
   path: '/ssh',
@@ -54,14 +60,15 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteWithChildren
   '/ssh': typeof SshRoute
   '/settings/ssh': typeof SettingsSshRoute
+  '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/overview': typeof OverviewRoute
   '/repo': typeof RepoRoute
-  '/settings': typeof SettingsRouteWithChildren
   '/ssh': typeof SshRoute
   '/settings/ssh': typeof SettingsSshRoute
+  '/settings': typeof SettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,6 +78,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRouteWithChildren
   '/ssh': typeof SshRoute
   '/settings/ssh': typeof SettingsSshRoute
+  '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -81,8 +89,9 @@ export interface FileRouteTypes {
     | '/settings'
     | '/ssh'
     | '/settings/ssh'
+    | '/settings/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/overview' | '/repo' | '/settings' | '/ssh' | '/settings/ssh'
+  to: '/' | '/overview' | '/repo' | '/ssh' | '/settings/ssh' | '/settings'
   id:
     | '__root__'
     | '/'
@@ -91,6 +100,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/ssh'
     | '/settings/ssh'
+    | '/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -138,6 +148,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/': {
+      id: '/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/ssh': {
       id: '/settings/ssh'
       path: '/ssh'
@@ -150,10 +167,12 @@ declare module '@tanstack/react-router' {
 
 interface SettingsRouteChildren {
   SettingsSshRoute: typeof SettingsSshRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsSshRoute: SettingsSshRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
 }
 
 const SettingsRouteWithChildren = SettingsRoute._addFileChildren(

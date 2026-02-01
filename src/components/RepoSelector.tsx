@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/card";
 import { cloneRepoSchema, openRepoSchema } from "@/schemas/forms";
 import { gitService } from "@/services/gitService";
-import logo from "@/assets/logo.png";
+import { Settings } from "lucide-react";
+import { ThemeButton } from "@/components/ThemeButton";
 
 interface RepoSelectorProps {
   onRepoSelect: (path: string) => void;
@@ -112,53 +113,49 @@ export function RepoSelector({
   return (
     <div className="min-h-screen">
       <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10">
-        <header
-          className="relative overflow-hidden border-2 border-border bg-card pr-6 pl-16 py-7 shadow-[var(--shadow-lg)]"
-          data-tauri-drag-region
-        >
-          <div className="absolute inset-x-0 top-0 h-2 bg-primary" />
-          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 items-center justify-center border-2 border-border bg-primary shadow-[var(--shadow-sm)]">
-                <img
-                  src={logo}
-                  alt="Falck logo"
-                  className="h-7 w-7 object-contain"
-                />
+        <div className="flex justify-end gap-2">
+          <ThemeButton />
+          <Button variant="outline" size="sm" onClick={onOpenSettings}>
+            <Settings className="h-4 w-4" />
+            <span>Settings</span>
+          </Button>
+        </div>
+
+        {savedRepos.length > 0 && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle>Recent repositories</CardTitle>
+                <CardDescription>Pick up where you left off.</CardDescription>
               </div>
-              <div className="max-w-2xl space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.4em] text-foreground">
-                  Falck
-                </p>
-                <h1 className="text-3xl font-black uppercase leading-tight tracking-tight md:text-4xl">
-                  Ship commits with calm.
-                </h1>
-                <p className="text-base text-muted-foreground">
-                  Clone a new repo or open an existing one to explore history,
-                  stage files, and push updates without leaving your desktop.
-                </p>
+              <Button variant="outline" size="sm" onClick={loadSavedRepos}>
+                Refresh
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3">
+                {savedRepos.map((repo) => (
+                  <button
+                    key={repo.path}
+                    className="group flex w-full items-center justify-between gap-4 rounded-lg border-2 border-border bg-card/70 px-4 py-3 text-left shadow-[var(--shadow-xs)] transition hover:bg-secondary/20 active:shadow-none"
+                    onClick={() => handleOpenSaved(repo.path, repo.name)}
+                    disabled={loading}
+                  >
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">
+                        {repo.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {repo.path}
+                      </div>
+                    </div>
+                    <Badge variant="outline">Open</Badge>
+                  </button>
+                ))}
               </div>
-            </div>
-            <div className="grid gap-2 text-right">
-              {onOpenSettings && (
-                <div data-tauri-drag-region="false">
-                  <Button variant="outline" size="sm" onClick={onOpenSettings}>
-                    Settings
-                  </Button>
-                </div>
-              )}
-              <Badge variant="secondary" className="justify-center">
-                Tauri + React
-              </Badge>
-              <Badge variant="secondary" className="justify-center">
-                Local-first
-              </Badge>
-              <Badge variant="secondary" className="justify-center">
-                No CLI required
-              </Badge>
-            </div>
-          </div>
-        </header>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
@@ -261,44 +258,6 @@ export function RepoSelector({
             </CardContent>
           </Card>
         </div>
-
-        {savedRepos.length > 0 && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div>
-                <CardTitle>Recent repositories</CardTitle>
-                <CardDescription>Pick up where you left off.</CardDescription>
-              </div>
-              <Button variant="outline" size="sm" onClick={loadSavedRepos}>
-                Refresh
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3">
-                {savedRepos.map((repo) => (
-                  <button
-                    key={repo.path}
-                    className="group flex w-full items-center justify-between gap-4 rounded-lg border-2 border-border bg-card/70 px-4 py-3 text-left shadow-[var(--shadow-xs)] transition hover:bg-secondary/20 active:shadow-none"
-                    onClick={() => handleOpenSaved(repo.path, repo.name)}
-                    disabled={loading}
-                  >
-                    <div>
-                      <div className="text-sm font-semibold text-foreground">
-                        {repo.name}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {repo.path}
-                      </div>
-                    </div>
-                    <Badge variant="muted">
-                      Open
-                    </Badge>
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {error && (
           <Alert variant="destructive">

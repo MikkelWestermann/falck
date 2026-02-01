@@ -36,14 +36,14 @@ const statusLabel: Record<FileStatus["status"], string> = {
 
 const statusVariant: Record<
   FileStatus["status"],
-  "default" | "secondary" | "destructive" | "outline" | "muted"
+  "default" | "secondary" | "destructive" | "outline"
 > = {
   modified: "secondary",
   added: "default",
   deleted: "destructive",
   renamed: "secondary",
   untracked: "outline",
-  unknown: "muted",
+  unknown: "secondary",
 };
 
 export function SaveChangesDialog({
@@ -131,7 +131,9 @@ export function SaveChangesDialog({
 
     const validation = commitSchema.safeParse(details);
     if (!validation.success) {
-      setError(validation.error.issues[0]?.message ?? "Invalid commit details.");
+      setError(
+        validation.error.issues[0]?.message ?? "Invalid commit details.",
+      );
       return;
     }
 
@@ -193,7 +195,9 @@ export function SaveChangesDialog({
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <Label className="text-xs text-muted-foreground">Files to stage</Label>
+                <Label className="text-xs text-muted-foreground">
+                  Files to stage
+                </Label>
                 <div className="text-sm font-semibold text-foreground">
                   {selectedCount} of {totalCount} selected
                 </div>
@@ -249,7 +253,10 @@ export function SaveChangesDialog({
 
           <div className="space-y-4">
             <div className="rounded-lg border-2 border-border bg-secondary/10 p-4 shadow-[var(--shadow-xs)]">
-              <Label htmlFor="commit-message" className="text-xs text-muted-foreground">
+              <Label
+                htmlFor="commit-message"
+                className="text-xs text-muted-foreground"
+              >
                 Commit message
               </Label>
               <Textarea
@@ -262,7 +269,9 @@ export function SaveChangesDialog({
             </div>
 
             <div className="rounded-lg border-2 border-border bg-card/80 p-4 shadow-[var(--shadow-xs)]">
-              <Label className="text-xs text-muted-foreground">Commit identity</Label>
+              <Label className="text-xs text-muted-foreground">
+                Commit identity
+              </Label>
               <div className="mt-3 space-y-3">
                 <div className="space-y-2">
                   <Label htmlFor="commit-author">Author name</Label>
@@ -285,13 +294,17 @@ export function SaveChangesDialog({
             </div>
 
             <div className="rounded-lg border-2 border-border bg-secondary/15 p-4 shadow-[var(--shadow-xs)]">
-              <Label className="text-xs text-muted-foreground">Push target</Label>
+              <Label className="text-xs text-muted-foreground">
+                Push target
+              </Label>
               <div className="mt-2 text-sm font-semibold text-foreground">
-                {pushTarget ? `${pushTarget}/${currentBranch}` : "No remotes configured"}
+                {pushTarget
+                  ? `${pushTarget}/${currentBranch}`
+                  : "No remotes configured"}
               </div>
               {!pushTarget && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Add a remote before using save &amp; push.
+                  Add a remote before using save.
                 </p>
               )}
             </div>
@@ -313,7 +326,7 @@ export function SaveChangesDialog({
             Cancel
           </Button>
           <Button onClick={handleSave} disabled={!canSave}>
-            {loading ? "Saving..." : "Save & push"}
+            {loading ? "Saving..." : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>
