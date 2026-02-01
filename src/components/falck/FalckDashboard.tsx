@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,11 +19,11 @@ import {
 import {
   AlertCircle,
   CheckCircle2,
-  Lock,
+  ChevronDown,
+  ChevronUp,
   Play,
   RefreshCw,
   Square,
-  Terminal,
 } from "lucide-react";
 import {
   falckService,
@@ -58,6 +58,10 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
   const [secretsDialogApp, setSecretsDialogApp] = useState<FalckApplication | null>(
     null,
   );
+  const [detailsOpenByApp, setDetailsOpenByApp] = useState<
+    Record<string, boolean>
+  >({});
+  const lastRunningByApp = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     void loadConfig();
@@ -106,6 +110,25 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
       null,
     [config, activeAppId],
   );
+
+  useEffect(() => {
+    if (!activeApp) {
+      return;
+    }
+    const id = activeApp.id;
+    const runningNow = Boolean(runningApps[id]);
+    const last = lastRunningByApp.current[id];
+
+    if (last === undefined) {
+      setDetailsOpenByApp((prev) => ({ ...prev, [id]: !runningNow }));
+    } else if (last && !runningNow) {
+      setDetailsOpenByApp((prev) => ({ ...prev, [id]: true }));
+    } else if (!last && runningNow) {
+      setDetailsOpenByApp((prev) => ({ ...prev, [id]: false }));
+    }
+
+    lastRunningByApp.current[id] = runningNow;
+  }, [activeApp?.id, runningApps]);
 
   const checkPrereqs = async (appId: string) => {
     setPrereqLoading((prev) => ({ ...prev, [appId]: true }));
@@ -239,40 +262,21 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
       : true
     : true;
   const isRunning = activeApp ? Boolean(runningApps[activeApp.id]) : false;
+  const detailsOpen = activeApp
+    ? detailsOpenByApp[activeApp.id] ?? !isRunning
+    : false;
+  const toggleDetails = () => {
+    if (!activeApp) {
+      return;
+    }
+    setDetailsOpenByApp((prev) => ({
+      ...prev,
+      [activeApp.id]: !detailsOpen,
+    }));
+  };
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-2">
-            <CardTitle className="flex items-center gap-2">
-              <Terminal className="h-5 w-5" />
-              {config.metadata?.name || "Falck setup"}
-            </CardTitle>
-            <CardDescription>
-              {config.metadata?.description ||
-                "Run this repo with guided setup steps."}
-            </CardDescription>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            {config.install_order && config.install_order.length > 0 && (
-              <Badge variant="secondary">
-                Install order: {config.install_order.join(" -> ")}
-              </Badge>
-            )}
-            {config.launch_order && config.launch_order.length > 0 && (
-              <Badge variant="outline">
-                Launch order: {config.launch_order.join(" -> ")}
-              </Badge>
-            )}
-            <Button variant="outline" size="sm" onClick={loadConfig}>
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
-          </div>
-        </CardHeader>
-      </Card>
-
+    <div className="space-y-4">
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -280,44 +284,168 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
         </Alert>
       )}
 
-      <Card>
-        <CardHeader className="space-y-3">
-          <CardTitle>Choose an app</CardTitle>
-          <CardDescription>
-            Each application can have its own setup, secrets, and launch steps.
-          </CardDescription>
-          <Select
-            value={activeApp?.id}
-            onValueChange={(value) => setActiveAppId(value)}
-          >
-            <SelectTrigger className="max-w-sm">
-              <SelectValue placeholder="Select an app" />
-            </SelectTrigger>
-            <SelectContent>
-              {appOptions.map((app) => (
-                <SelectItem key={app.id} value={app.id}>
-                  {app.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </CardHeader>
-      </Card>
-
       {activeApp ? (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="space-y-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>{activeApp.name}</CardTitle>
-                  <CardDescription>{activeApp.description}</CardDescription>
-                </div>
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Falck
+                </span>
+                {appOptions.length > 1 ? (
+                  <Select
+                    value={activeApp.id}
+                    onValueChange={(value) => setActiveAppId(value)}
+                  >
+                    <SelectTrigger className="h-8 w-[220px]">
+                      <SelectValue placeholder="Select app" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {appOptions.map((app) => (
+                        <SelectItem key={app.id} value={app.id}>
+                          {app.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <span className="text-sm font-semibold">{activeApp.name}</span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge variant={isRunning ? "default" : "outline"}>
-                  {isRunning ? "Running" : "Idle"}
+                  {isRunning ? "Running" : "Stopped"}
                 </Badge>
+                {isRunning ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => handleStop(activeApp)}
+                  >
+                    <Square className="h-4 w-4" />
+                    Stop
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => handleLaunch(activeApp)}
+                    disabled={Boolean(prereqsMissing) || !secretsOk}
+                  >
+                    <Play className="h-4 w-4" />
+                    Start
+                  </Button>
+                )}
+                {isRunning && activeApp.launch.access?.url ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      handleOpenUrl(activeApp.launch.access!.url!)
+                    }
+                  >
+                    Open
+                  </Button>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="gap-1"
+                  onClick={toggleDetails}
+                >
+                  {detailsOpen ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                  Details
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="gap-1"
+                  onClick={loadConfig}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2 pt-0">
+              {!isRunning && prereqsMissing ? (
+                <div className="rounded-lg border-2 border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                  Missing prerequisites. Open details to see what is needed.
+                </div>
+              ) : null}
+              {!isRunning && !secretsOk && activeApp.secrets?.length ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-900">
+                  <span>Secrets required to start this app.</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSecretsDialogApp(activeApp)}
+                  >
+                    Configure
+                  </Button>
+                </div>
+              ) : null}
+              {launchError[activeApp.id] && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    {launchError[activeApp.id]}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+
+          {detailsOpen ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Setup steps</CardTitle>
+                <CardDescription>
+                  Everything needed before starting the app.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {activeApp.description && (
+                  <p className="text-sm text-muted-foreground">
+                    {activeApp.description}
+                  </p>
+                )}
+
+                {activeApp.secrets && activeApp.secrets.length > 0 && (
+                  <div
+                    className={
+                      secretsOk
+                        ? "rounded-lg border-2 border-green-200 bg-green-50 px-3 py-2"
+                        : "rounded-lg border-2 border-yellow-200 bg-yellow-50 px-3 py-2"
+                    }
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold">
+                          {secretsOk ? "Secrets ready" : "Secrets required"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {secretsOk
+                            ? "All required secrets are set."
+                            : "Add the required secrets to continue."}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSecretsDialogApp(activeApp)}
+                      >
+                        Configure
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -332,9 +460,7 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
                       onClick={() => checkPrereqs(activeApp.id)}
                       disabled={prereqLoading[activeApp.id]}
                     >
-                      {prereqLoading[activeApp.id]
-                        ? "Checking..."
-                        : "Re-check"}
+                      {prereqLoading[activeApp.id] ? "Checking..." : "Re-check"}
                     </Button>
                   </div>
 
@@ -352,15 +478,6 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
                     <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
                       No prerequisites configured.
                     </div>
-                  )}
-
-                  {prereqsMissing && (
-                    <Alert variant="destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>
-                        Install the missing prerequisites before continuing.
-                      </AlertDescription>
-                    </Alert>
                   )}
                 </div>
 
@@ -425,173 +542,17 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
                   </div>
                 )}
 
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h3 className="text-sm font-semibold">Launch</h3>
-                      <p className="text-xs text-muted-foreground">
-                        Start or stop the app when you're ready.
-                      </p>
-                    </div>
-                    {isRunning ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleStop(activeApp)}
-                      >
-                        <Square className="h-4 w-4" />
-                        Stop
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        onClick={() => handleLaunch(activeApp)}
-                        disabled={Boolean(prereqsMissing) || !secretsOk}
-                      >
-                        <Play className="h-4 w-4" />
-                        Launch
-                      </Button>
-                    )}
-                  </div>
-                  {activeApp.launch.description && (
-                    <p className="text-xs text-muted-foreground">
-                      {activeApp.launch.description}
+                {activeApp.launch.access?.url && (
+                  <div className="rounded-lg border-2 border-border bg-muted/40 px-3 py-2 text-xs">
+                    <p className="font-medium">Access</p>
+                    <p className="text-muted-foreground">
+                      {activeApp.launch.access.url}
                     </p>
-                  )}
-                  {!secretsOk && activeApp.secrets?.length ? (
-                    <Alert className="border-yellow-200 bg-yellow-50 text-yellow-900">
-                      <AlertCircle className="h-4 w-4 text-yellow-700" />
-                      <AlertDescription>
-                        Configure required secrets before launching.
-                      </AlertDescription>
-                    </Alert>
-                  ) : null}
-                  {activeApp.launch.access?.url && (
-                    <div className="rounded-lg border-2 border-border bg-muted/40 p-3 text-xs">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-medium">Access</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            handleOpenUrl(activeApp.launch.access!.url!)
-                          }
-                        >
-                          Open
-                        </Button>
-                      </div>
-                      <p className="mt-1 text-muted-foreground">
-                        {activeApp.launch.access.url}
-                      </p>
-                    </div>
-                  )}
-                  {launchError[activeApp.id] && (
-                    <Alert variant="destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>
-                        {launchError[activeApp.id]}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="space-y-6">
-            {activeApp.secrets && activeApp.secrets.length > 0 && (
-              <Card
-                className={
-                  secretsOk
-                    ? "border-green-200 bg-green-50"
-                    : "border-yellow-200 bg-yellow-50"
-                }
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Lock className="h-5 w-5" />
-                      <CardTitle className="text-base">
-                        {secretsOk
-                          ? "Secrets configured"
-                          : "Secrets required"}
-                      </CardTitle>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setSecretsDialogApp(activeApp)}
-                    >
-                      Configure
-                    </Button>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">
-                    {secretsOk
-                      ? "All required secrets are set for this app."
-                      : "Provide the required secrets before launching."}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">App details</CardTitle>
-                <CardDescription>
-                  Root: <span className="font-mono">{activeApp.root}</span>
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2 text-xs text-muted-foreground">
-                <p>
-                  ID: <span className="font-mono">{activeApp.id}</span>
-                </p>
-                <p>
-                  Type: <span className="font-mono">{activeApp.type}</span>
-                </p>
-                <p>
-                  Launch command:{" "}
-                  <span className="font-mono">{activeApp.launch.command}</span>
-                </p>
-                {activeApp.launch.ports && activeApp.launch.ports.length > 0 && (
-                  <p>
-                    Ports:{" "}
-                    <span className="font-mono">
-                      {activeApp.launch.ports.join(", ")}
-                    </span>
-                  </p>
                 )}
               </CardContent>
             </Card>
-
-            {activeApp.launch.access?.url && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Access</CardTitle>
-                  <CardDescription>
-                    How to reach the app once it is running.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2 text-xs text-muted-foreground">
-                  <p>
-                    URL:{" "}
-                    <span className="font-mono">
-                      {activeApp.launch.access.url}
-                    </span>
-                  </p>
-                  {activeApp.launch.access.port && (
-                    <p>
-                      Port:{" "}
-                      <span className="font-mono">
-                        {activeApp.launch.access.port}
-                      </span>
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-          </div>
+          ) : null}
         </div>
       ) : null}
 
