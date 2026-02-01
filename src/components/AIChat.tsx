@@ -59,11 +59,35 @@ interface AIChatProps {
   repoPath: string;
 }
 
+type ChatMessage = Message & {
+  pending?: boolean;
+};
+
+type PartSnapshot = {
+  id: string;
+  type?: string;
+  text?: string;
+  prompt?: string;
+  description?: string;
+  status?: string;
+  output?: unknown;
+  errorText?: string;
+  input?: unknown;
+  toolName?: string;
+  title?: string;
+};
+
+type ToolActivity = {
+  id: string;
+  name: string;
+  state: string;
+};
+
 export function AIChat({ repoPath }: AIChatProps) {
   const MODEL_STORAGE_KEY = "falck.opencode.model";
   const [sessions, setSessions] = useState<AISession[]>([]);
   const [currentSession, setCurrentSession] = useState<AISession | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [selectedModel, setSelectedModel] = useState("gpt-4");
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -75,7 +99,9 @@ export function AIChat({ repoPath }: AIChatProps) {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState("");
   const [initializing, setInitializing] = useState(true);
-  const partsByMessage = useRef<Map<string, Map<string, string>>>(new Map());
+  const [toolActivity, setToolActivity] = useState<ToolActivity[]>([]);
+  const partsByMessage = useRef<Map<string, Map<string, PartSnapshot>>>(new Map());
+  const roleByMessage = useRef<Map<string, "user" | "assistant">>(new Map());
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
   const readStoredModel = () => {
@@ -117,6 +143,65 @@ export function AIChat({ repoPath }: AIChatProps) {
       ? "streaming"
       : undefined;
 
+  const visibleMessages = useMemo(
+    () => messages.filter((msg) => msg.text.trim().length > 0),
+    [messages],
+  );
+
+  const hasActiveWork =
+    sending ||
+    streaming ||
+    toolActivity.length > 0 ||
+    loadingSession ||
+    creatingSession;
+
+  const activityLabel = useMemo(() => {
+    if (creatingSession) {
+      return "Creating session...";
+    }
+    if (loadingSession) {
+      return "Loading session...";
+    }
+    if (!currentSession) {
+      return "Create a session to begin";
+    }
+    if (sending) {
+      return "Sending message...";
+    }
+    if (toolActivity.length > 0) {
+      const awaitingApproval = toolActivity.some(
+        (tool) => tool.state === "approval-requested",
+      );
+      if (awaitingApproval) {
+        return `Awaiting approval (${toolActivity.length} tool${
+          toolActivity.length > 1 ? "s" : ""
+        })...`;
+      }
+      const toolNames = toolActivity
+        .map((tool) => tool.name)
+        .filter(Boolean);
+      if (toolNames.length > 0) {
+        const displayed = toolNames.slice(0, 2).join(", ");
+        const extra = toolNames.length > 2 ? ` +${toolNames.length - 2}` : "";
+        return `Running: ${displayed}${extra}...`;
+      }
+      return `Running ${toolActivity.length} tool${
+        toolActivity.length > 1 ? "s" : ""
+      }...`;
+    }
+    if (streaming) {
+      return "Generating response...";
+    }
+    return "Ready";
+  }, [
+    currentSession,
+    creatingSession,
+    loadingSession,
+    sending,
+    streaming,
+    toolActivity,
+  ]);
+
   useEffect(() => {
     void initializeOpenCode();
   }, []);
@@ -132,7 +217,7 @@ export function AIChat({ repoPath }: AIChatProps) {
     });
 
     return () => cancelAnimationFrame(raf);
-  }, [messages, sending, streaming, currentSession?.path]);
+  }, [visibleMessages, sending, streaming, currentSession?.path]);
 
   useEffect(() => {
     if (!repoPath) {
@@ -141,22 +226,249 @@ export function AIChat({ repoPath }: AIChatProps) {
 
     const source = new EventSource(eventStreamUrl);
 
-    const upsertMessage = (messageId: string, updates: Partial<Message>) => {
+    const upsertMessage = (
+      messageId: string,
+      updates: Partial<ChatMessage>,
+      options?: { requireText?: boolean },
+    ) => {
       setMessages((prev) => {
         const idx = prev.findIndex((msg) => msg.id === messageId);
+        const hasText =
+          typeof updates.text === "string" && updates.text.trim().length > 0;
         if (idx === -1) {
+          if (options?.requireText && !hasText) {
+            return prev;
+          }
+          if (!updates.role) {
+            return prev;
+          }
           return [
             ...prev,
             {
               id: messageId,
-              role: updates.role ?? "assistant",
+              role: updates.role,
               text: updates.text ?? "",
               timestamp: updates.timestamp ?? new Date().toISOString(),
+              pending: updates.pending,
             },
           ];
         }
         const next = [...prev];
-        next[idx] = { ...next[idx], ...updates, id: messageId };
+        next[idx] = {
+          ...next[idx],
+          ...updates,
+          id: messageId,
+          role: updates.role ?? next[idx].role,
+          text: hasText ? updates.text ?? "" : next[idx].text,
+          pending: updates.pending ?? next[idx].pending,
+        };
+        return next;
+      });
+    };
+
+    const normalizeToolState = (state: unknown) => {
+      if (typeof state === "string") {
+        return state;
+      }
+      if (
+        state &&
+        typeof state === "object" &&
+        "status" in state &&
+        typeof (state as { status?: unknown }).status === "string"
+      ) {
+        return (state as { status: string }).status;
+      }
+      return undefined;
+    };
+
+    const extractToolField = (value: unknown, field: string) => {
+      if (value && typeof value === "object" && field in value) {
+        return (value as Record<string, unknown>)[field];
+      }
+      return undefined;
+    };
+
+    const normalizePart = (
+      part: {
+        id?: string;
+        type?: string;
+        text?: string;
+        prompt?: string;
+        description?: string;
+        state?: unknown;
+        output?: unknown;
+        errorText?: string;
+        input?: unknown;
+        toolName?: string;
+        title?: string;
+      },
+      existing?: PartSnapshot,
+    ): PartSnapshot => {
+      const status = normalizeToolState(part.state) ?? existing?.status;
+      const output =
+        part.output ??
+        extractToolField(part.state, "output") ??
+        existing?.output;
+      const errorText =
+        part.errorText ??
+        (extractToolField(part.state, "errorText") as string | undefined) ??
+        existing?.errorText;
+      const input =
+        part.input ??
+        extractToolField(part.state, "input") ??
+        existing?.input;
+
+      return {
+        id: part.id ?? existing?.id ?? "",
+        type: part.type ?? existing?.type,
+        text: part.text ?? existing?.text,
+        prompt: part.prompt ?? existing?.prompt,
+        description: part.description ?? existing?.description,
+        toolName: part.toolName ?? existing?.toolName,
+        title: part.title ?? existing?.title,
+        status,
+        output,
+        errorText,
+        input,
+      };
+    };
+
+    const isToolPart = (part: PartSnapshot) =>
+      part.type === "dynamic-tool" ||
+      Boolean(part.type && part.type.startsWith("tool-"));
+
+    const toolLabel = (part: PartSnapshot) => {
+      if (part.type === "dynamic-tool") {
+        return part.title || part.toolName || "Tool";
+      }
+      if (part.type?.startsWith("tool-")) {
+        return part.type.replace("tool-", "") || "Tool";
+      }
+      return "Tool";
+    };
+
+    const formatOutput = (value: unknown) => {
+      if (typeof value === "string") {
+        return value.trim();
+      }
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch {
+        return String(value);
+      }
+    };
+
+    const buildMessageText = (parts: Map<string, PartSnapshot>) => {
+      const values = Array.from(parts.values());
+      const textParts = values
+        .filter((part) => part.type === "text" && part.text?.trim())
+        .map((part) => part.text!.trim());
+      if (textParts.length > 0) {
+        return textParts.join("\n");
+      }
+
+      const toolOutputs = values
+        .filter((part) => {
+          if (!isToolPart(part)) {
+            return false;
+          }
+          const hasOutput = part.output !== undefined || part.errorText;
+          if (!hasOutput) {
+            return false;
+          }
+          if (!part.status) {
+            return true;
+          }
+          return [
+            "output-available",
+            "output-error",
+            "output-denied",
+          ].includes(part.status);
+        })
+        .map((part) =>
+          part.errorText ? part.errorText.trim() : formatOutput(part.output),
+        )
+        .filter((text) => text.trim().length > 0);
+      if (toolOutputs.length > 0) {
+        return toolOutputs.join("\n");
+      }
+
+      const reasoningParts = values
+        .filter((part) => part.type === "reasoning" && part.text?.trim())
+        .map((part) => part.text!.trim());
+      if (reasoningParts.length > 0) {
+        return reasoningParts.join("\n");
+      }
+
+      const subtaskParts = values
+        .filter((part) => part.type === "subtask")
+        .map((part) => part.description || part.prompt)
+        .filter((text): text is string => Boolean(text?.trim()))
+        .map((text) => text.trim());
+      if (subtaskParts.length > 0) {
+        return subtaskParts.join("\n");
+      }
+
+      const fallback = values
+        .map((part) => part.text)
+        .filter((text): text is string => Boolean(text?.trim()))
+        .map((text) => text.trim());
+      return fallback.join("\n");
+    };
+
+    const refreshToolActivity = () => {
+      const active: ToolActivity[] = [];
+      partsByMessage.current.forEach((partMap) => {
+        partMap.forEach((part) => {
+          if (!isToolPart(part) || !part.status) {
+            return;
+          }
+          if (
+            [
+              "input-streaming",
+              "input-available",
+              "approval-requested",
+              "approval-responded",
+            ].includes(part.status)
+          ) {
+            active.push({
+              id: part.id,
+              name: toolLabel(part),
+              state: part.status,
+            });
+          }
+        });
+      });
+      setToolActivity(active);
+    };
+
+    const reconcileUserMessage = (serverId: string, timestamp: string) => {
+      setMessages((prev) => {
+        const pendingIndex = prev.findIndex(
+          (msg) => msg.role === "user" && msg.pending,
+        );
+        const existingIndex = prev.findIndex((msg) => msg.id === serverId);
+        if (pendingIndex === -1 && existingIndex === -1) {
+          return prev;
+        }
+        const next = [...prev];
+        if (pendingIndex !== -1) {
+          next[pendingIndex] = {
+            ...next[pendingIndex],
+            id: serverId,
+            pending: false,
+            timestamp,
+          };
+        }
+        if (existingIndex !== -1 && existingIndex !== pendingIndex) {
+          next[existingIndex] = {
+            ...next[existingIndex],
+            timestamp,
+          };
+          if (pendingIndex !== -1) {
+            next.splice(existingIndex, 1);
+          }
+        }
         return next;
       });
     };
@@ -179,6 +491,15 @@ export function AIChat({ repoPath }: AIChatProps) {
                 id?: string;
                 type?: string;
                 text?: string;
+                role?: "user" | "assistant";
+                prompt?: string;
+                description?: string;
+                state?: unknown;
+                output?: unknown;
+                errorText?: string;
+                input?: unknown;
+                toolName?: string;
+                title?: string;
                 time?: { start?: number; end?: number };
               }
             | undefined;
@@ -190,23 +511,34 @@ export function AIChat({ repoPath }: AIChatProps) {
           ) {
             return;
           }
-          if (part.type === "text") {
-            setStreaming(true);
-            const byPart =
-              partsByMessage.current.get(part.messageID) ?? new Map();
-            byPart.set(part.id, part.text ?? "");
-            partsByMessage.current.set(part.messageID, byPart);
-            const combined = Array.from(byPart.values())
-              .filter(Boolean)
-              .join("\n");
-            upsertMessage(part.messageID, {
-              role: "assistant",
-              text: combined,
-              timestamp: part.time?.end
-                ? new Date(part.time.end).toISOString()
-                : new Date().toISOString(),
-            });
+          const byPart =
+            partsByMessage.current.get(part.messageID) ?? new Map();
+          const normalized = normalizePart(part, byPart.get(part.id));
+          byPart.set(part.id, normalized);
+          partsByMessage.current.set(part.messageID, byPart);
+          const combined = buildMessageText(byPart);
+          const resolvedRole =
+            part.role ?? roleByMessage.current.get(part.messageID);
+          if (combined.trim().length > 0 && resolvedRole === "assistant") {
+            upsertMessage(
+              part.messageID,
+              {
+                role: resolvedRole,
+                text: combined,
+                timestamp: part.time?.end
+                  ? new Date(part.time.end).toISOString()
+                  : new Date().toISOString(),
+              },
+              { requireText: true },
+            );
           }
+          if (
+            resolvedRole === "assistant" &&
+            (normalized.type === "text" || normalized.type === "reasoning")
+          ) {
+            setStreaming(true);
+          }
+          refreshToolActivity();
           return;
         }
 
@@ -222,14 +554,30 @@ export function AIChat({ repoPath }: AIChatProps) {
           if (!info || info.sessionID !== currentSession?.path || !info.id) {
             return;
           }
-          upsertMessage(info.id, {
-            role: info.role ?? "assistant",
-            timestamp: info.time?.created
-              ? new Date(info.time.created).toISOString()
-              : new Date().toISOString(),
-          });
+          const timestamp = info.time?.created
+            ? new Date(info.time.created).toISOString()
+            : new Date().toISOString();
+          if (info.role) {
+            roleByMessage.current.set(info.id, info.role);
+          }
+          if (info.role === "user") {
+            reconcileUserMessage(info.id, timestamp);
+          } else {
+            const parts = partsByMessage.current.get(info.id);
+            const combined = parts ? buildMessageText(parts) : "";
+            upsertMessage(
+              info.id,
+              {
+                role: info.role ?? "assistant",
+                text: combined || undefined,
+                timestamp,
+              },
+              { requireText: true },
+            );
+          }
           if (info.role === "assistant" && info.time?.completed) {
             setStreaming(false);
+            refreshToolActivity();
           }
         }
       } catch (err) {
@@ -304,6 +652,8 @@ export function AIChat({ repoPath }: AIChatProps) {
       setInputMessage("");
       setStreaming(false);
       partsByMessage.current.clear();
+      setToolActivity([]);
+      roleByMessage.current.clear();
       setError("");
     } catch (err) {
       setError(`Failed to create session: ${String(err)}`);
@@ -324,6 +674,8 @@ export function AIChat({ repoPath }: AIChatProps) {
     partsByMessage.current.clear();
     setMessages([]);
     setInputMessage("");
+    setToolActivity([]);
+    roleByMessage.current.clear();
     try {
       const loadedSession = await opencodeService.getSession(
         session.path,
@@ -334,7 +686,11 @@ export function AIChat({ repoPath }: AIChatProps) {
         session.path,
         repoPath,
       );
-      setMessages(sessionMessages);
+      setMessages(
+        sessionMessages
+          .filter((msg) => msg.text.trim().length > 0)
+          .map((msg) => ({ ...msg, pending: false })),
+      );
       if (loadedSession.model) {
         setSelectedModel(loadedSession.model);
         persistModel(loadedSession.model);
@@ -353,10 +709,15 @@ export function AIChat({ repoPath }: AIChatProps) {
       return;
     }
 
-    const userMessage: Message = {
+    const userMessage: ChatMessage = {
+      id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? `local-${crypto.randomUUID()}`
+          : `local-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       role: "user",
       text,
       timestamp: new Date().toISOString(),
+      pending: true,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -392,6 +753,10 @@ export function AIChat({ repoPath }: AIChatProps) {
       if (currentSession?.path === session.path) {
         setCurrentSession(null);
         setMessages([]);
+        setStreaming(false);
+        partsByMessage.current.clear();
+        setToolActivity([]);
+        roleByMessage.current.clear();
       }
       setError("");
     } catch (err) {
@@ -425,6 +790,17 @@ export function AIChat({ repoPath }: AIChatProps) {
                   {selectedModel}
                 </Badge>
               )}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span
+                className={cn(
+                  "inline-flex size-2 rounded-full",
+                  hasActiveWork
+                    ? "bg-amber-500/80 animate-pulse"
+                    : "bg-emerald-500/80",
+                )}
+              />
+              <span>{activityLabel}</span>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -591,7 +967,7 @@ export function AIChat({ repoPath }: AIChatProps) {
                       </Button>
                     </div>
                   </div>
-                ) : messages.length === 0 ? (
+                ) : visibleMessages.length === 0 ? (
                   <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-white/70 px-6 py-12 text-center">
                     <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-foreground/5">
                       <SparklesIcon className="size-5 text-muted-foreground" />
@@ -605,7 +981,7 @@ export function AIChat({ repoPath }: AIChatProps) {
                     </p>
                   </div>
                 ) : (
-                  messages.map((msg, idx) => (
+                  visibleMessages.map((msg, idx) => (
                     <AIMessage
                       key={msg.id ?? `${msg.timestamp}-${idx}`}
                       from={msg.role}
@@ -679,9 +1055,22 @@ export function AIChat({ repoPath }: AIChatProps) {
                     </PromptInputBody>
                     <PromptInputFooter className="border-t border-border/40 bg-white/60">
                       <PromptInputTools className="text-xs text-muted-foreground">
-                        {currentSession
-                          ? "Enter to send, Shift+Enter for a new line."
-                          : "Create a session to start writing."}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>
+                            {currentSession
+                              ? "Enter to send, Shift+Enter for a new line."
+                              : "Create a session to start writing."}
+                          </span>
+                          {hasActiveWork && (
+                            <>
+                              <span className="text-muted-foreground/60">•</span>
+                              <span className="inline-flex items-center gap-1 text-amber-700">
+                                <span className="inline-flex size-1.5 rounded-full bg-amber-500/80 animate-pulse" />
+                                <span>{activityLabel}</span>
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </PromptInputTools>
                       <PromptInputTools>
                         <ModelSelector
