@@ -22,6 +22,7 @@ lazy_static! {
 pub struct FalckConfig {
     pub version: String,
     pub metadata: Option<ConfigMetadata>,
+    pub repository: Option<RepositoryConfig>,
     pub applications: Vec<Application>,
     pub global_env: Option<HashMap<String, String>>,
     pub install_order: Option<Vec<String>>,
@@ -36,6 +37,12 @@ pub struct ConfigMetadata {
     pub author: Option<String>,
     pub created: Option<String>,
     pub updated: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RepositoryConfig {
+    pub default_branch: Option<String>,
+    pub protect_default_branch: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

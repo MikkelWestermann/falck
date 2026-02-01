@@ -6,8 +6,9 @@ mod storage;
 
 use git::{
     checkout_branch, clone_repository, create_branch, create_commit, delete_branch,
-    get_commit_history, get_repository_info, list_remotes, pull_from_remote, push_to_remote,
-    stage_file, unstage_file,
+    discard_changes as discard_git_changes, get_commit_history, get_project_history,
+    get_repository_info, list_remotes, pull_from_remote, push_to_remote,
+    reset_to_commit as reset_git_to_commit, stage_file, unstage_file,
 };
 use opencode::{opencode_send, OpencodeState};
 use storage::{get_default_repo_dir, list_repos, save_repo, set_default_repo_dir, SavedRepo};
@@ -38,6 +39,15 @@ fn get_commits(path: String, count: usize) -> Result<Vec<git::CommitInfo>, Strin
 }
 
 #[tauri::command]
+fn get_project_commits(
+    path: String,
+    base_branch: String,
+    count: usize,
+) -> Result<Vec<git::CommitInfo>, String> {
+    get_project_history(&path, &base_branch, count).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn stage(path: String, file: String) -> Result<String, String> {
     stage_file(&path, &file).map_err(|e| e.to_string())?;
     Ok("File staged".to_string())
@@ -52,6 +62,18 @@ fn unstage(path: String, file: String) -> Result<String, String> {
 #[tauri::command]
 fn commit(path: String, message: String, author: String, email: String) -> Result<String, String> {
     create_commit(&path, &message, &author, &email).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn reset_to_commit(path: String, commit_id: String) -> Result<String, String> {
+    reset_git_to_commit(&path, &commit_id).map_err(|e| e.to_string())?;
+    Ok("Reset to selected commit".to_string())
+}
+
+#[tauri::command]
+fn discard_changes(path: String) -> Result<String, String> {
+    discard_git_changes(&path).map_err(|e| e.to_string())?;
+    Ok("Discarded changes".to_string())
 }
 
 #[tauri::command]
@@ -138,9 +160,12 @@ pub fn run() {
             clone_repo,
             get_repo_info,
             get_commits,
+            get_project_commits,
             stage,
             unstage,
             commit,
+            reset_to_commit,
+            discard_changes,
             create_new_branch,
             delete_current_branch,
             checkout,

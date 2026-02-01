@@ -37,7 +37,7 @@ export interface SavedRepo {
 const requireSSHKey = (): SSHKey => {
   const key = configService.getSelectedSSHKey();
   if (!key) {
-    throw new Error("SSH key is required. Set one up before using Git.");
+    throw new Error("SSH key is required. Set one up before syncing.");
   }
   return key;
 };
@@ -60,6 +60,14 @@ export const gitService = {
     return invoke("get_commits", { path, count });
   },
 
+  async getProjectHistory(
+    path: string,
+    baseBranch: string,
+    count = 50,
+  ): Promise<CommitInfo[]> {
+    return invoke("get_project_commits", { path, baseBranch, count });
+  },
+
   async stageFile(path: string, file: string): Promise<string> {
     return invoke("stage", { path, file });
   },
@@ -75,6 +83,14 @@ export const gitService = {
     email: string,
   ): Promise<string> {
     return invoke("commit", { path, message, author, email });
+  },
+
+  async resetToCommit(path: string, commitId: string): Promise<string> {
+    return invoke("reset_to_commit", { path, commitId });
+  },
+
+  async discardChanges(path: string): Promise<string> {
+    return invoke("discard_changes", { path });
   },
 
   async createBranch(path: string, branch: string): Promise<string> {

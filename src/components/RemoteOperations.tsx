@@ -22,11 +22,13 @@ import { gitService } from "@/services/gitService";
 interface RemoteOperationsProps {
   repoPath: string;
   currentBranch: string;
+  pushDisabled?: boolean;
 }
 
 export function RemoteOperations({
   repoPath,
   currentBranch,
+  pushDisabled = false,
 }: RemoteOperationsProps) {
   const [remotes, setRemotes] = useState<string[]>([]);
   const [selectedRemote, setSelectedRemote] = useState("origin");
@@ -51,12 +53,15 @@ export function RemoteOperations({
   };
 
   const handlePush = async () => {
+    if (pushDisabled) {
+      return;
+    }
     setLoading(true);
     setError(null);
     setMessage(null);
     try {
       await gitService.push(repoPath, selectedRemote, currentBranch);
-      setMessage(`Pushed to ${selectedRemote}/${currentBranch}`);
+      setMessage(`Shared to ${selectedRemote}/${currentBranch}`);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -70,7 +75,7 @@ export function RemoteOperations({
     setMessage(null);
     try {
       await gitService.pull(repoPath, selectedRemote, currentBranch);
-      setMessage(`Pulled from ${selectedRemote}/${currentBranch}`);
+      setMessage(`Updated from ${selectedRemote}/${currentBranch}`);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -81,13 +86,13 @@ export function RemoteOperations({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Remote operations</CardTitle>
-        <CardDescription>Sync changes with your configured remote.</CardDescription>
+        <CardTitle>Sync</CardTitle>
+        <CardDescription>Share your work and get updates.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {remotes.length === 0 ? (
           <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
-            No remotes configured.
+            No sync destination configured.
           </div>
         ) : (
           <>
@@ -95,7 +100,7 @@ export function RemoteOperations({
               <div className="flex-1">
                 <Select value={selectedRemote} onValueChange={setSelectedRemote}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select remote" />
+                    <SelectValue placeholder="Select destination" />
                   </SelectTrigger>
                   <SelectContent>
                     {remotes.map((remote) => (
@@ -113,15 +118,22 @@ export function RemoteOperations({
 
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={handlePull} disabled={loading}>
-                {loading ? "Pulling…" : "Pull"}
+                {loading ? "Checking…" : "Get updates"}
               </Button>
-              <Button onClick={handlePush} disabled={loading}>
-                {loading ? "Pushing…" : "Push"}
+              <Button onClick={handlePush} disabled={loading || pushDisabled}>
+                {loading ? "Sharing…" : "Share changes"}
               </Button>
             </div>
           </>
         )}
 
+        {pushDisabled && remotes.length > 0 && (
+          <Alert variant="destructive">
+            <AlertDescription>
+              Sharing is disabled on the default project.
+            </AlertDescription>
+          </Alert>
+        )}
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>

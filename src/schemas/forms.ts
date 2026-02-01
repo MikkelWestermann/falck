@@ -20,16 +20,16 @@ export const openRepoSchema = z.object({
 });
 
 export const commitSchema = z.object({
-  message: z.string().min(1, "Commit message is required"),
-  author: z.string().min(1, "Author name is required"),
-  email: z.string().email("Valid email is required"),
+  message: z.string().min(1, "Save note is required"),
+  author: z.string().min(1, "Your name is required"),
+  email: z.string().email("A valid email is required"),
 });
 
 export const createBranchSchema = z.object({
   branchName: z
     .string()
-    .min(1, "Branch name is required")
-    .regex(/^[a-zA-Z0-9._/-]+$/, "Invalid branch name"),
+    .min(1, "Project name is required")
+    .regex(/^[a-zA-Z0-9._/-]+$/, "Invalid project name"),
 });
 
 export const createAISessionSchema = z.object({

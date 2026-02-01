@@ -20,6 +20,8 @@ import { FileStatus, gitService } from "@/services/gitService";
 interface SaveChangesDialogProps {
   repoPath: string;
   currentBranch: string;
+  defaultBranch?: string;
+  protectDefaultBranch?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
@@ -49,6 +51,8 @@ const statusVariant: Record<
 export function SaveChangesDialog({
   repoPath,
   currentBranch,
+  defaultBranch,
+  protectDefaultBranch = false,
   open,
   onOpenChange,
   onSaved,
@@ -71,6 +75,9 @@ export function SaveChangesDialog({
     }
     return remotes[0];
   }, [remotes]);
+
+  const saveBlocked =
+    protectDefaultBranch && defaultBranch === currentBranch;
 
   const loadStatus = async () => {
     try {
@@ -129,21 +136,28 @@ export function SaveChangesDialog({
       email: email.trim(),
     };
 
+    if (saveBlocked) {
+      setError(
+        "Saving is disabled on the default project. Switch to another project to save.",
+      );
+      return;
+    }
+
     const validation = commitSchema.safeParse(details);
     if (!validation.success) {
       setError(
-        validation.error.issues[0]?.message ?? "Invalid commit details.",
+        validation.error.issues[0]?.message ?? "Invalid save details.",
       );
       return;
     }
 
     if (selectedFiles.size === 0) {
-      setError("Select at least one file to stage.");
+      setError("Select at least one file to save.");
       return;
     }
 
     if (!pushTarget) {
-      setError("No remotes configured to push to.");
+      setError("No sync destination configured.");
       return;
     }
 
@@ -179,7 +193,8 @@ export function SaveChangesDialog({
     hasChanges &&
     selectedCount > 0 &&
     commitMessage.trim().length > 0 &&
-    Boolean(pushTarget);
+    Boolean(pushTarget) &&
+    !saveBlocked;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -187,16 +202,24 @@ export function SaveChangesDialog({
         <DialogHeader>
           <DialogTitle>Save changes</DialogTitle>
           <DialogDescription>
-            Stage what matters, write the message, and push it upstream.
+            Choose what to save, add a note, and share it.
           </DialogDescription>
         </DialogHeader>
+
+        {saveBlocked && (
+          <Alert variant="destructive">
+            <AlertDescription>
+              Saving is disabled on the default project. Switch to another project to save.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <Label className="text-xs text-muted-foreground">
-                  Files to stage
+                  Files to save
                 </Label>
                 <div className="text-sm font-semibold text-foreground">
                   {selectedCount} of {totalCount} selected
@@ -224,7 +247,7 @@ export function SaveChangesDialog({
 
             {!hasChanges ? (
               <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
-                No changes to stage.
+                No changes to save.
               </div>
             ) : (
               <div className="max-h-72 space-y-2 overflow-y-auto pr-2">
@@ -253,12 +276,12 @@ export function SaveChangesDialog({
 
           <div className="space-y-4">
             <div className="rounded-lg border-2 border-border bg-secondary/10 p-4 shadow-[var(--shadow-xs)]">
-              <Label
-                htmlFor="commit-message"
-                className="text-xs text-muted-foreground"
-              >
-                Commit message
-              </Label>
+                <Label
+                  htmlFor="commit-message"
+                  className="text-xs text-muted-foreground"
+                >
+                Save note
+                </Label>
               <Textarea
                 id="commit-message"
                 value={commitMessage}
@@ -270,11 +293,11 @@ export function SaveChangesDialog({
 
             <div className="rounded-lg border-2 border-border bg-card/80 p-4 shadow-[var(--shadow-xs)]">
               <Label className="text-xs text-muted-foreground">
-                Commit identity
+                Saved by
               </Label>
               <div className="mt-3 space-y-3">
                 <div className="space-y-2">
-                  <Label htmlFor="commit-author">Author name</Label>
+                  <Label htmlFor="commit-author">Your name</Label>
                   <Input
                     id="commit-author"
                     value={author}
@@ -282,7 +305,7 @@ export function SaveChangesDialog({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="commit-email">Author email</Label>
+                  <Label htmlFor="commit-email">Your email</Label>
                   <Input
                     id="commit-email"
                     type="email"
@@ -295,16 +318,16 @@ export function SaveChangesDialog({
 
             <div className="rounded-lg border-2 border-border bg-secondary/15 p-4 shadow-[var(--shadow-xs)]">
               <Label className="text-xs text-muted-foreground">
-                Push target
+                Save destination
               </Label>
               <div className="mt-2 text-sm font-semibold text-foreground">
                 {pushTarget
                   ? `${pushTarget}/${currentBranch}`
-                  : "No remotes configured"}
+                  : "No sync destination configured"}
               </div>
               {!pushTarget && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Add a remote before using save.
+                  Connect a sync destination before saving.
                 </p>
               )}
             </div>

@@ -1,6 +1,6 @@
 use git2::{
     build::RepoBuilder, BranchType, Cred, CredentialType, FetchOptions, PushOptions,
-    RemoteCallbacks, Repository, Signature, Sort, StatusOptions,
+    RemoteCallbacks, Repository, ResetType, Signature, Sort, StatusOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -56,6 +56,32 @@ pub struct RepositoryInfo {
     pub is_dirty: bool,
     pub branches: Vec<BranchInfo>,
     pub status_files: Vec<FileStatus>,
+}
+
+fn resolve_reference_commit<'a>(
+    repo: &'a Repository,
+    reference: &str,
+) -> GitResult<git2::Commit<'a>> {
+    if let Ok(obj) = repo.revparse_single(reference) {
+        return Ok(obj.peel_to_commit()?);
+    }
+
+    if !reference.starts_with("refs/") {
+        let local_ref = format!("refs/heads/{}", reference);
+        if let Ok(obj) = repo.revparse_single(&local_ref) {
+            return Ok(obj.peel_to_commit()?);
+        }
+
+        let remote_ref = format!("refs/remotes/origin/{}", reference);
+        if let Ok(obj) = repo.revparse_single(&remote_ref) {
+            return Ok(obj.peel_to_commit()?);
+        }
+    }
+
+    Err(GitError::Git(format!(
+        "Branch '{}' not found",
+        reference
+    )))
 }
 
 // ============================================================================
@@ -213,6 +239,78 @@ pub fn get_commit_history(path: &str, max_count: usize) -> GitResult<Vec<CommitI
     }
 
     Ok(commits)
+}
+
+pub fn get_project_history(
+    path: &str,
+    base_branch: &str,
+    max_count: usize,
+) -> GitResult<Vec<CommitInfo>> {
+    let repo = open_repository(path)?;
+    let base_commit = resolve_reference_commit(&repo, base_branch)?;
+
+    let mut revwalk = repo.revwalk()?;
+    revwalk.push_head()?;
+    revwalk.hide(base_commit.id())?;
+    revwalk.set_sorting(Sort::TIME)?;
+
+    let mut commits = Vec::new();
+    for oid in revwalk.take(max_count) {
+        if let Ok(oid) = oid {
+            let commit = repo.find_commit(oid)?;
+            let author = commit.author().name().unwrap_or("unknown").to_string();
+            let message = commit.message().unwrap_or("").to_string();
+            let timestamp = commit.time().seconds();
+
+            commits.push(CommitInfo {
+                id: oid.to_string(),
+                author,
+                message,
+                timestamp,
+            });
+        }
+    }
+
+    Ok(commits)
+}
+
+pub fn reset_to_commit(path: &str, commit_id: &str) -> GitResult<()> {
+    let repo = open_repository(path)?;
+    let oid = git2::Oid::from_str(commit_id)?;
+    let commit = repo.find_commit(oid)?;
+    repo.reset(commit.as_object(), ResetType::Hard, None)?;
+    Ok(())
+}
+
+pub fn discard_changes(path: &str) -> GitResult<()> {
+    let repo = open_repository(path)?;
+    let head = repo.head()?.peel_to_commit()?;
+    repo.reset(head.as_object(), ResetType::Hard, None)?;
+
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| GitError::Git("Repository workdir not found".to_string()))?;
+    let mut status_options = StatusOptions::new();
+    status_options
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_ignored(false)
+        .include_unmodified(false);
+    let statuses = repo.statuses(Some(&mut status_options))?;
+    for entry in statuses.iter() {
+        if entry.status().is_wt_new() {
+            if let Some(path) = entry.path() {
+                let full_path = workdir.join(path);
+                if full_path.is_dir() {
+                    std::fs::remove_dir_all(full_path)?;
+                } else {
+                    std::fs::remove_file(full_path)?;
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub fn create_commit(

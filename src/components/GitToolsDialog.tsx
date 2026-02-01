@@ -25,6 +25,9 @@ interface GitToolsDialogProps {
   repoInfo: RepositoryInfo;
   refreshSeed: number;
   onOpenSave: () => void;
+  defaultBranch?: string;
+  protectDefaultBranch?: boolean;
+  onRefresh: () => void;
 }
 
 const statusLabel: Record<FileStatus["status"], string> = {
@@ -55,18 +58,21 @@ export function GitToolsDialog({
   repoInfo,
   refreshSeed,
   onOpenSave,
+  defaultBranch,
+  protectDefaultBranch = false,
+  onRefresh,
 }: GitToolsDialogProps) {
   const changeCount = repoInfo.status_files.length;
   const hasChanges = changeCount > 0;
+  const saveBlocked =
+    protectDefaultBranch && defaultBranch === repoInfo.head_branch;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl">
         <DialogHeader>
-          <DialogTitle>Git tools</DialogTitle>
-          <DialogDescription>
-            Keep these tucked away until you need them.
-          </DialogDescription>
+          <DialogTitle>Project tools</DialogTitle>
+          <DialogDescription>Extra controls for saving and history.</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -74,11 +80,11 @@ export function GitToolsDialog({
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <div>
-                  <CardTitle>Change radar</CardTitle>
+                  <CardTitle>Unsaved changes</CardTitle>
                   <CardDescription>
                     {hasChanges
-                      ? `${changeCount} file${changeCount === 1 ? "" : "s"} need attention.`
-                      : "Working tree is clean."}
+                      ? `${changeCount} file${changeCount === 1 ? "" : "s"} have unsaved changes.`
+                      : "Everything is saved."}
                   </CardDescription>
                 </div>
                 <Button
@@ -86,7 +92,7 @@ export function GitToolsDialog({
                     onOpenChange(false);
                     onOpenSave();
                   }}
-                  disabled={!hasChanges}
+                  disabled={!hasChanges || saveBlocked}
                 >
                   Save
                 </Button>
@@ -94,7 +100,7 @@ export function GitToolsDialog({
               <CardContent>
                 {!hasChanges ? (
                   <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
-                    Nothing to stage or commit.
+                    Nothing to save.
                   </div>
                 ) : (
                   <div className="max-h-72 space-y-2 overflow-y-auto pr-2">
@@ -116,7 +122,14 @@ export function GitToolsDialog({
               </CardContent>
             </Card>
 
-            <CommitHistory key={`history-${refreshSeed}`} repoPath={repoPath} />
+            <CommitHistory
+              key={`history-${refreshSeed}`}
+              repoPath={repoPath}
+              baseBranch={defaultBranch ?? repoInfo.head_branch}
+              currentBranch={repoInfo.head_branch}
+              hasUnsavedChanges={repoInfo.is_dirty}
+              onRestored={onRefresh}
+            />
           </div>
 
           <div className="space-y-6">
@@ -124,6 +137,7 @@ export function GitToolsDialog({
               key={`remotes-${refreshSeed}`}
               repoPath={repoPath}
               currentBranch={repoInfo.head_branch}
+              pushDisabled={saveBlocked}
             />
           </div>
         </div>

@@ -56,7 +56,7 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
 
   const handleDeleteBranch = async (branchName: string) => {
     if (currentBranch === branchName) {
-      setError("Cannot delete the current branch.");
+      setError("Cannot delete the current project.");
       return;
     }
     setError(null);
@@ -91,8 +91,8 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Branches</CardTitle>
-        <CardDescription>Switch, create, and clean up branches.</CardDescription>
+        <CardTitle>Projects</CardTitle>
+        <CardDescription>Switch, create, and clean up projects.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="flex items-center justify-between rounded-lg border-2 border-border bg-secondary/30 px-4 py-3 shadow-[var(--shadow-xs)]">
@@ -102,7 +102,7 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
 
         {loading ? (
           <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
-            Loading branches…
+            Loading projects…
           </div>
         ) : (
           <div className="space-y-2">
@@ -115,7 +115,7 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
                   <span className="text-sm font-semibold">{branch.name}</span>
                   {branch.is_head && (
                     <Badge variant="secondary">
-                      Checked out
+                      Active
                     </Badge>
                   )}
                 </div>
@@ -126,7 +126,7 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
                       size="sm"
                       onClick={() => handleCheckout(branch.name)}
                     >
-                      Checkout
+                      Open
                     </Button>
                     <Button
                       variant="destructive"
@@ -153,8 +153,8 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
             {(field) => (
               <FormField
                 field={field}
-                label="New branch"
-                placeholder="feature/branch-name"
+                label="New project"
+                placeholder="new-project-name"
                 required
               />
             )}

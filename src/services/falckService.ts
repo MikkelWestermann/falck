@@ -9,6 +9,10 @@ export interface FalckConfig {
     created?: string;
     updated?: string;
   };
+  repository?: {
+    default_branch?: string;
+    protect_default_branch?: boolean;
+  };
   applications: FalckApplication[];
   global_env?: Record<string, string>;
   install_order?: string[];

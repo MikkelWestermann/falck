@@ -20,21 +20,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createBranchSchema } from "@/schemas/forms";
-import { BranchInfo, gitService } from "@/services/gitService";
+import { BranchInfo } from "@/services/gitService";
 
 interface BranchSwitcherProps {
-  repoPath: string;
   branches: BranchInfo[];
   currentBranch: string;
-  onBranchChange: () => void;
+  onSelectProject: (projectName: string) => Promise<void>;
+  onCreateProject: (projectName: string) => Promise<void>;
   compact?: boolean;
 }
 
 export function BranchSwitcher({
-  repoPath,
   branches,
   currentBranch,
-  onBranchChange,
+  onSelectProject,
+  onCreateProject,
   compact = false,
 }: BranchSwitcherProps) {
   const [createOpen, setCreateOpen] = useState(false);
@@ -53,8 +53,7 @@ export function BranchSwitcher({
     setLoading(true);
     setError(null);
     try {
-      await gitService.checkoutBranch(repoPath, value);
-      onBranchChange();
+      await onSelectProject(value);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -62,22 +61,20 @@ export function BranchSwitcher({
     }
   };
 
-  const handleCreateBranch = async () => {
+  const handleCreateProject = async () => {
     const trimmed = branchName.trim();
     const validation = createBranchSchema.shape.branchName.safeParse(trimmed);
     if (!validation.success) {
-      setError(validation.error.issues[0]?.message ?? "Invalid branch name.");
+      setError(validation.error.issues[0]?.message ?? "Invalid project name.");
       return;
     }
 
     setLoading(true);
     setError(null);
     try {
-      await gitService.createBranch(repoPath, trimmed);
-      await gitService.checkoutBranch(repoPath, trimmed);
+      await onCreateProject(trimmed);
       setBranchName("");
       setCreateOpen(false);
-      onBranchChange();
     } catch (err) {
       setError(String(err));
     } finally {
@@ -87,10 +84,10 @@ export function BranchSwitcher({
 
   return (
     <div className={compact ? "space-y-1" : "space-y-2"}>
-      <Label className={compact ? "sr-only" : undefined}>Branch</Label>
+      <Label className={compact ? "sr-only" : undefined}>Project</Label>
       <Select value={currentBranch} onValueChange={handleSelect}>
         <SelectTrigger disabled={loading}>
-          <SelectValue placeholder="Select branch" />
+          <SelectValue placeholder="Select project" />
         </SelectTrigger>
         <SelectContent>
           {branches.map((branch) => (
@@ -98,7 +95,7 @@ export function BranchSwitcher({
               {branch.name}
             </SelectItem>
           ))}
-          <SelectItem value="__create__">+ Create new branch</SelectItem>
+          <SelectItem value="__create__">+ Create new project</SelectItem>
         </SelectContent>
       </Select>
 
@@ -120,16 +117,16 @@ export function BranchSwitcher({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create new branch</DialogTitle>
-            <DialogDescription>Spin up a fresh branch for this work.</DialogDescription>
+            <DialogTitle>Create new project</DialogTitle>
+            <DialogDescription>Start a fresh project from the default.</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="new-branch">Branch name</Label>
+            <Label htmlFor="new-branch">Project name</Label>
             <Input
               id="new-branch"
               value={branchName}
               onChange={(event) => setBranchName(event.target.value)}
-              placeholder="feature/branch-name"
+              placeholder="new-project-name"
             />
           </div>
           {error && (
@@ -145,8 +142,8 @@ export function BranchSwitcher({
             >
               Cancel
             </Button>
-            <Button onClick={handleCreateBranch} disabled={loading}>
-              {loading ? "Creating..." : "Create branch"}
+            <Button onClick={handleCreateProject} disabled={loading}>
+              {loading ? "Creating..." : "Create project"}
             </Button>
           </DialogFooter>
         </DialogContent>

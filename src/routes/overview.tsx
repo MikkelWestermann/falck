@@ -1,16 +1,23 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BranchSwitcher } from "@/components/BranchSwitcher";
-import { GitToolsDialog } from "@/components/GitToolsDialog";
+import { CommitHistory } from "@/components/CommitHistory";
+import { RemoteOperations } from "@/components/RemoteOperations";
 import { SaveChangesDialog } from "@/components/SaveChangesDialog";
+import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { AIChat } from "@/components/AIChat";
 import { FalckDashboard } from "@/components/falck/FalckDashboard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+} from "@/components/ui/dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { gitService, RepositoryInfo } from "@/services/gitService";
+import { falckService } from "@/services/falckService";
 import { useAppState } from "@/router/app-state";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, History } from "lucide-react";
 
 export const Route = createFileRoute("/overview")({
   component: OverviewRoute,
@@ -22,9 +29,16 @@ function OverviewRoute() {
   const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
   const [refreshSeed, setRefreshSeed] = useState(0);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [showGitTools, setShowGitTools] = useState(false);
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [showVersionHistoryDialog, setShowVersionHistoryDialog] = useState(false);
   const [pullLoading, setPullLoading] = useState(false);
   const [pullError, setPullError] = useState<string | null>(null);
+  const [defaultBranch, setDefaultBranch] = useState<string | null>(null);
+  const [protectDefaultBranch, setProtectDefaultBranch] = useState(false);
+  const [pendingProjectAction, setPendingProjectAction] = useState<{
+    type: "switch" | "create";
+    projectName: string;
+  } | null>(null);
 
   const loadRepoInfo = async (path: string) => {
     try {
@@ -44,6 +58,45 @@ function OverviewRoute() {
     void loadRepoInfo(repoPath);
   }, [repoPath]);
 
+  useEffect(() => {
+    if (!repoPath) {
+      setDefaultBranch(null);
+      setProtectDefaultBranch(false);
+      return;
+    }
+
+    let active = true;
+    const loadFalckConfig = async () => {
+      try {
+        const config = await falckService.loadConfig(repoPath);
+        if (!active) return;
+        setDefaultBranch(config.repository?.default_branch ?? null);
+        setProtectDefaultBranch(
+          Boolean(config.repository?.protect_default_branch),
+        );
+      } catch {
+        if (!active) return;
+        setDefaultBranch(null);
+        setProtectDefaultBranch(false);
+      }
+    };
+
+    void loadFalckConfig();
+    return () => {
+      active = false;
+    };
+  }, [repoPath]);
+
+  useEffect(() => {
+    if (!repoPath) {
+      return;
+    }
+    const interval = setInterval(() => {
+      void loadRepoInfo(repoPath);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [repoPath]);
+
   const handleRefresh = async () => {
     if (!repoPath) {
       return;
@@ -56,7 +109,8 @@ function OverviewRoute() {
     setRepoPath(null);
     setRepoInfo(null);
     setShowSaveDialog(false);
-    setShowGitTools(false);
+    setShowUnsavedDialog(false);
+    setPendingProjectAction(null);
     setPullError(null);
     navigate({ to: "/repo" });
   };
@@ -69,7 +123,7 @@ function OverviewRoute() {
       const remotes = await gitService.getRemotes(repoPath);
       const remote = remotes.includes("origin") ? "origin" : remotes[0];
       if (!remote) {
-        setPullError("No remotes configured.");
+        setPullError("No sync destination configured.");
         return;
       }
       await gitService.pull(repoPath, remote, repoInfo.head_branch);
@@ -78,6 +132,127 @@ function OverviewRoute() {
       setPullError(String(err));
     } finally {
       setPullLoading(false);
+    }
+  };
+
+  const resolvedDefaultBranch = useMemo(() => {
+    if (defaultBranch) {
+      return defaultBranch;
+    }
+    if (!repoInfo) {
+      return null;
+    }
+    const branchNames = repoInfo.branches.map((branch) => branch.name);
+    if (branchNames.includes("main")) {
+      return "main";
+    }
+    if (branchNames.includes("master")) {
+      return "master";
+    }
+    return repoInfo.head_branch;
+  }, [defaultBranch, repoInfo]);
+
+  const saveBlockedReason =
+    protectDefaultBranch && resolvedDefaultBranch === repoInfo?.head_branch
+      ? "Saving is disabled on the default project. Switch to another project to save."
+      : null;
+
+  const performProjectSwitch = async (projectName: string) => {
+    if (!repoPath) return;
+    await gitService.checkoutBranch(repoPath, projectName);
+    await loadRepoInfo(repoPath);
+  };
+
+  const performProjectCreate = async (projectName: string) => {
+    if (!repoPath || !repoInfo) return;
+    const baseBranch = resolvedDefaultBranch ?? repoInfo.head_branch;
+    await gitService.checkoutBranch(repoPath, baseBranch);
+
+    const remotes = await gitService.getRemotes(repoPath);
+    const remote = remotes.includes("origin") ? "origin" : remotes[0];
+    if (remote) {
+      await gitService.pull(repoPath, remote, baseBranch);
+    }
+
+    await gitService.createBranch(repoPath, projectName);
+    await gitService.checkoutBranch(repoPath, projectName);
+    await loadRepoInfo(repoPath);
+  };
+
+  const queueProjectAction = async (action: {
+    type: "switch" | "create";
+    projectName: string;
+  }) => {
+    if (repoInfo?.is_dirty) {
+      setPendingProjectAction(action);
+      setShowUnsavedDialog(true);
+      return;
+    }
+    if (action.type === "switch") {
+      await performProjectSwitch(action.projectName);
+      return;
+    }
+    await performProjectCreate(action.projectName);
+  };
+
+  const handleSelectProject = async (projectName: string) => {
+    await queueProjectAction({ type: "switch", projectName });
+  };
+
+  const handleCreateProject = async (projectName: string) => {
+    await queueProjectAction({ type: "create", projectName });
+  };
+
+  const handleDiscardAndContinue = async () => {
+    if (!repoPath || !pendingProjectAction) {
+      setShowUnsavedDialog(false);
+      return;
+    }
+    try {
+      await gitService.discardChanges(repoPath);
+      setShowUnsavedDialog(false);
+      if (pendingProjectAction.type === "switch") {
+        await performProjectSwitch(pendingProjectAction.projectName);
+      } else {
+        await performProjectCreate(pendingProjectAction.projectName);
+      }
+    } finally {
+      setPendingProjectAction(null);
+    }
+  };
+
+  const handleSaveAndContinue = () => {
+    setShowUnsavedDialog(false);
+    setShowSaveDialog(true);
+  };
+
+  const handleSaveComplete = async () => {
+    const action = pendingProjectAction;
+    if (action) {
+      setPendingProjectAction(null);
+    }
+    await handleRefresh();
+    if (!action) {
+      return;
+    }
+    if (action.type === "switch") {
+      await performProjectSwitch(action.projectName);
+      return;
+    }
+    await performProjectCreate(action.projectName);
+  };
+
+  const handleSaveDialogOpenChange = (open: boolean) => {
+    setShowSaveDialog(open);
+    if (!open && pendingProjectAction) {
+      setPendingProjectAction(null);
+    }
+  };
+
+  const handleUnsavedDialogOpenChange = (open: boolean) => {
+    setShowUnsavedDialog(open);
+    if (!open) {
+      setPendingProjectAction(null);
     }
   };
 
@@ -107,6 +282,7 @@ function OverviewRoute() {
 
   const hasChanges = repoInfo.is_dirty;
   const changeCount = repoInfo.status_files.length;
+  const saveBlocked = Boolean(saveBlockedReason);
   const repoName =
     repoPath
       ?.replace(/[/\\]+$/, "")
@@ -157,7 +333,7 @@ function OverviewRoute() {
                 </Badge>
                 <Button
                   onClick={() => setShowSaveDialog(true)}
-                  disabled={!hasChanges}
+                  disabled={!hasChanges || saveBlocked}
                   size="lg"
                   className="min-w-[170px] shadow-[var(--shadow-lg)]"
                 >
@@ -172,10 +348,10 @@ function OverviewRoute() {
             >
               <div className="min-w-[220px]">
                 <BranchSwitcher
-                  repoPath={repoPath}
                   branches={repoInfo.branches}
                   currentBranch={repoInfo.head_branch}
-                  onBranchChange={handleRefresh}
+                  onSelectProject={handleSelectProject}
+                  onCreateProject={handleCreateProject}
                   compact
                 />
               </div>
@@ -185,14 +361,15 @@ function OverviewRoute() {
                 disabled={pullLoading}
                 size="sm"
               >
-                {pullLoading ? "Syncing..." : "Sync"}
+                {pullLoading ? "Checking..." : "Check for updates"}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowGitTools(true)}
+                onClick={() => setShowVersionHistoryDialog(true)}
               >
-                Git tools
+                <History className="h-4 w-4" />
+                Version history
               </Button>
               <Button
                 variant="ghost"
@@ -214,36 +391,66 @@ function OverviewRoute() {
         )}
       </header>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-6 pb-12">
-        <section
-          className="space-y-6 animate-in fade-in slide-in-from-bottom-4"
-          style={{ animationDuration: "700ms" }}
-        >
-          <FalckDashboard repoPath={repoPath} />
-        </section>
-        <section
-          className="space-y-6 animate-in fade-in slide-in-from-bottom-4"
-          style={{ animationDuration: "800ms" }}
-        >
-          <AIChat repoPath={repoPath} />
-        </section>
+      <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-6 pb-12">
+        <div className="gap-6">
+          <section
+            className="space-y-6 animate-in fade-in slide-in-from-bottom-4"
+            style={{ animationDuration: "700ms" }}
+          >
+            <FalckDashboard repoPath={repoPath} />
+          </section>
+          <section
+            className="space-y-6 animate-in fade-in slide-in-from-bottom-4"
+            style={{ animationDuration: "800ms" }}
+          >
+            <AIChat repoPath={repoPath} />
+          </section>
+        </div>
       </main>
 
       <SaveChangesDialog
         open={showSaveDialog}
-        onOpenChange={setShowSaveDialog}
+        onOpenChange={handleSaveDialogOpenChange}
         repoPath={repoPath}
         currentBranch={repoInfo.head_branch}
-        onSaved={handleRefresh}
+        defaultBranch={resolvedDefaultBranch ?? undefined}
+        protectDefaultBranch={protectDefaultBranch}
+        onSaved={handleSaveComplete}
       />
-      <GitToolsDialog
-        open={showGitTools}
-        onOpenChange={setShowGitTools}
-        repoPath={repoPath}
-        repoInfo={repoInfo}
-        refreshSeed={refreshSeed}
-        onOpenSave={() => setShowSaveDialog(true)}
+      <UnsavedChangesDialog
+        open={showUnsavedDialog}
+        onOpenChange={handleUnsavedDialogOpenChange}
+        onSave={handleSaveAndContinue}
+        onDiscard={handleDiscardAndContinue}
+        targetLabel={
+          pendingProjectAction?.type === "create"
+            ? `create the "${pendingProjectAction.projectName}" project`
+            : pendingProjectAction
+              ? `switch to "${pendingProjectAction.projectName}"`
+              : undefined
+        }
+        saveDisabled={saveBlocked}
+        saveDisabledReason={
+          saveBlocked ? (saveBlockedReason ?? undefined) : undefined
+        }
       />
+      <Dialog
+        open={showVersionHistoryDialog}
+        onOpenChange={setShowVersionHistoryDialog}
+      >
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <CommitHistory
+            repoPath={repoPath}
+            baseBranch={resolvedDefaultBranch ?? repoInfo.head_branch}
+            currentBranch={repoInfo.head_branch}
+            hasUnsavedChanges={repoInfo.is_dirty}
+            onRestored={() => {
+              handleRefresh();
+              setShowVersionHistoryDialog(false);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

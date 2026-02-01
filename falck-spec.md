@@ -31,6 +31,10 @@ metadata:
   description: "Brief description of what this does"
   author: "Your Name"
 
+repository:
+  default_branch: "main"
+  protect_default_branch: true
+
 applications:
   - id: "backend"
     name: "API Server"
@@ -134,6 +138,7 @@ groups:
 |-------|------|----------|-------------|
 | `version` | string | ✓ | Configuration version (currently "1.0") |
 | `metadata` | object | ✗ | Repository and configuration metadata |
+| `repository` | object | ✗ | Repository settings for version control features |
 | `applications` | array | ✓ | List of applications to manage |
 | `global_env` | object | ✗ | Global environment variables for all apps |
 | `install_order` | array | ✗ | Order to run setup for applications |
@@ -149,6 +154,13 @@ groups:
 | `author` | string | ✗ | Configuration author |
 | `created` | string | ✗ | ISO 8601 creation timestamp |
 | `updated` | string | ✗ | ISO 8601 last update timestamp |
+
+### Repository Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `default_branch` | string | ✗ | Branch to treat as the default (used as the base for projects and history) |
+| `protect_default_branch` | boolean | ✗ | Prevent Falck from pushing to the default branch (default: false) |
 
 ### Application Object
 

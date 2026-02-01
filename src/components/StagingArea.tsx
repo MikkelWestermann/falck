@@ -76,7 +76,7 @@ export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
     },
     onSubmit: async ({ value }) => {
       if (files.length === 0) {
-        setError("No changes to commit.");
+        setError("No changes to save.");
         return;
       }
       setLoading(true);
@@ -99,13 +99,13 @@ export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Staging area</CardTitle>
-        <CardDescription>Pick files to stage and craft a commit.</CardDescription>
+        <CardTitle>Save queue</CardTitle>
+        <CardDescription>Select files and add a save note.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         {!hasChanges ? (
           <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
-            No changes to commit.
+            No changes to save.
           </div>
         ) : (
           <div className="space-y-2">
@@ -127,7 +127,7 @@ export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
                   size="sm"
                   onClick={() => handleStageFile(file.path)}
                 >
-                  Stage
+                  Add
                 </Button>
               </div>
             ))}
@@ -141,29 +141,29 @@ export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
           }}
           className="space-y-4 rounded-lg border-2 border-dashed border-border/70 bg-secondary/20 p-4 shadow-[var(--shadow-xs)]"
         >
-          <h3 className="text-base font-semibold">Create commit</h3>
+          <h3 className="text-base font-semibold">Save this version</h3>
           <commitForm.Field name="author">
             {(field) => (
-              <FormField field={field} label="Author name" required />
+              <FormField field={field} label="Your name" required />
             )}
           </commitForm.Field>
           <commitForm.Field name="email">
             {(field) => (
-              <FormField field={field} label="Author email" type="email" required />
+              <FormField field={field} label="Your email" type="email" required />
             )}
           </commitForm.Field>
           <commitForm.Field name="message">
             {(field) => (
               <FormTextarea
                 field={field}
-                label="Commit message"
+                label="Save note"
                 placeholder="Summarize what changed"
                 required
               />
             )}
           </commitForm.Field>
           <Button type="submit" disabled={loading || !hasChanges} className="w-full">
-            {loading ? "Committing…" : "Commit"}
+            {loading ? "Saving…" : "Save"}
           </Button>
         </form>
 
