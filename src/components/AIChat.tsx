@@ -277,8 +277,7 @@ export function AIChat({ repoPath }: AIChatProps) {
     }
   };
 
-  const formatSessionTime = (value: string) =>
-    new Date(value).toLocaleString();
+  const formatSessionTime = (value: string) => new Date(value).toLocaleString();
 
   const formatMessageTime = (value: string) =>
     new Date(value).toLocaleTimeString([], {
@@ -409,16 +408,12 @@ export function AIChat({ repoPath }: AIChatProps) {
   }
 
   return (
-    <div className="relative overflow-hidden rounded-[28px] border border-border/60 bg-gradient-to-br from-white via-[#fbf7f2] to-[#f6efe7] shadow-[0_30px_60px_-48px_rgba(15,23,42,0.45)]">
-      <div className="pointer-events-none absolute -right-24 -top-28 h-64 w-64 rounded-full bg-amber-200/40 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-40 left-12 h-72 w-72 rounded-full bg-orange-200/35 blur-3xl" />
+    <>
+      {/* <div className="pointer-events-none absolute -right-24 -top-28 h-64 w-64 rounded-full bg-amber-200/40 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-40 left-12 h-72 w-72 rounded-full bg-orange-200/35 blur-3xl" /> */}
       <div className="relative flex h-[min(72vh,720px)] min-h-[420px] flex-col">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/60 bg-white/70 px-6 py-5 backdrop-blur">
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-[0.65rem] uppercase tracking-[0.35em] text-muted-foreground">
-              <SparklesIcon className="size-3" />
-              Falck AI
-            </div>
             <div className="text-lg font-semibold text-foreground">
               {currentSession ? currentSession.name : "Start a new session"}
             </div>
@@ -631,7 +626,9 @@ export function AIChat({ repoPath }: AIChatProps) {
                         )}
                       >
                         <div className="flex items-center justify-between text-[0.6rem] uppercase tracking-[0.3em] opacity-70">
-                          <span>{msg.role === "user" ? "You" : "Falck AI"}</span>
+                          <span>
+                            {msg.role === "user" ? "You" : "Falck AI"}
+                          </span>
                           <span>{formatMessageTime(msg.timestamp)}</span>
                         </div>
                         <MessageResponse className="text-sm leading-relaxed text-foreground/90 group-[.is-user]:text-white">
@@ -754,7 +751,9 @@ export function AIChat({ repoPath }: AIChatProps) {
                       <PromptInputTextarea
                         rows={3}
                         value={inputMessage}
-                        onChange={(event) => setInputMessage(event.target.value)}
+                        onChange={(event) =>
+                          setInputMessage(event.target.value)
+                        }
                         placeholder={
                           currentSession
                             ? "Ask Falck AI. Press Enter to send."
@@ -799,6 +798,6 @@ export function AIChat({ repoPath }: AIChatProps) {
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }
