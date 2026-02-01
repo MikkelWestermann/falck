@@ -16,6 +16,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { configService } from "@/services/configService";
+import { falckService } from "@/services/falckService";
+import {
+  GithubDeviceResponse,
+  GithubUser,
+  githubService,
+} from "@/services/githubService";
 import { KeyType, SSHKey, sshService } from "@/services/sshService";
 import logo from "@/assets/logo.png";
 
@@ -66,6 +72,15 @@ export function SSHKeySetup({
   const [agentError, setAgentError] = useState<string | null>(null);
   const [agentPassphrase, setAgentPassphrase] = useState("");
   const [addingAgent, setAddingAgent] = useState(false);
+  const [githubDevice, setGithubDevice] = useState<GithubDeviceResponse | null>(
+    null,
+  );
+  const [githubUser, setGithubUser] = useState<GithubUser | null>(null);
+  const [githubConnected, setGithubConnected] = useState(false);
+  const [githubWorking, setGithubWorking] = useState(false);
+  const [githubKeyAdded, setGithubKeyAdded] = useState(false);
+  const [githubError, setGithubError] = useState<string | null>(null);
+  const [githubChecking, setGithubChecking] = useState(false);
   const isManageMode = mode === "manage";
 
   useEffect(() => {
@@ -76,6 +91,60 @@ export function SSHKeySetup({
     if (step === "select") {
       void loadKeys();
     }
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== "guide") {
+      return;
+    }
+
+    let active = true;
+    setGithubChecking(true);
+    setGithubError(null);
+    setGithubDevice(null);
+    setGithubKeyAdded(false);
+
+    githubService
+      .hasToken()
+      .then((hasToken) => {
+        if (!active) {
+          return;
+        }
+        setGithubConnected(hasToken);
+        if (hasToken) {
+          githubService
+            .getUser()
+            .then((user) => {
+              if (active) {
+                setGithubUser(user);
+              }
+            })
+            .catch(() => {
+              if (active) {
+                setGithubUser(null);
+              }
+            });
+        } else {
+          setGithubUser(null);
+        }
+      })
+      .catch((err) => {
+        if (!active) {
+          return;
+        }
+        setGithubConnected(false);
+        setGithubUser(null);
+        setGithubError(`GitHub auth unavailable: ${String(err)}`);
+      })
+      .finally(() => {
+        if (active) {
+          setGithubChecking(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, [step]);
 
   useEffect(() => {
@@ -110,6 +179,8 @@ export function SSHKeySetup({
     setAgentStatus(null);
     setAgentError(null);
     setAgentPassphrase("");
+    setGithubKeyAdded(false);
+    setGithubError(null);
     setStep("guide");
   };
 
@@ -157,6 +228,86 @@ export function SSHKeySetup({
     }
   };
 
+  const addKeyToGithub = async () => {
+    if (!currentKey) {
+      return;
+    }
+    try {
+      await githubService.addSshKey(
+        `Falck - ${currentKey.name}`,
+        currentKey.public_key,
+      );
+      setGithubKeyAdded(true);
+    } catch (err) {
+      const message = String(err);
+      const lowered = message.toLowerCase();
+      if (lowered.includes("already exists") || lowered.includes("already in use")) {
+        setGithubKeyAdded(true);
+        return;
+      }
+      throw err;
+    }
+  };
+
+  const handleAddKeyToGithub = async () => {
+    setGithubError(null);
+    setGithubWorking(true);
+    try {
+      await addKeyToGithub();
+    } catch (err) {
+      setGithubError(`Failed to add key to GitHub: ${String(err)}`);
+    } finally {
+      setGithubWorking(false);
+    }
+  };
+
+  const handleConnectGithub = async () => {
+    setGithubError(null);
+    setGithubWorking(true);
+    try {
+      const device = await githubService.startDeviceFlow();
+      setGithubDevice(device);
+      await falckService.openInBrowser(
+        device.verification_uri_complete ?? device.verification_uri,
+      );
+      await githubService.pollDeviceToken(
+        device.device_code,
+        device.interval,
+        device.expires_in,
+      );
+      setGithubConnected(true);
+      setGithubDevice(null);
+      try {
+        const user = await githubService.getUser();
+        setGithubUser(user);
+      } catch {
+        setGithubUser(null);
+      }
+      await addKeyToGithub();
+    } catch (err) {
+      setGithubConnected(false);
+      setGithubDevice(null);
+      setGithubError(`GitHub login failed: ${String(err)}`);
+    } finally {
+      setGithubWorking(false);
+    }
+  };
+
+  const handleDisconnectGithub = async () => {
+    setGithubError(null);
+    setGithubWorking(true);
+    try {
+      await githubService.clearToken();
+      setGithubConnected(false);
+      setGithubUser(null);
+      setGithubKeyAdded(false);
+    } catch (err) {
+      setGithubError(`Failed to disconnect: ${String(err)}`);
+    } finally {
+      setGithubWorking(false);
+    }
+  };
+
   const createForm = useForm({
     defaultValues: {
       keyName: "github",
@@ -177,6 +328,8 @@ export function SSHKeySetup({
           value.keyType,
         );
         setCurrentKey(key);
+        setGithubKeyAdded(false);
+        setGithubError(null);
         setStep("guide");
         await handleAddToAgent(key, value.passphrase || null);
       } catch (err) {
@@ -377,6 +530,81 @@ export function SSHKeySetup({
                     Paste the key you copied and click “Add SSH key”.
                   </p>
                 </div>
+              </div>
+
+              <div className="rounded-lg border-2 border-border bg-secondary/10 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="text-sm text-muted-foreground">Optional</div>
+                    <div className="text-base font-semibold">
+                      Add this key to GitHub automatically
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Connect your GitHub account and Falck will upload the key for
+                      you.
+                    </p>
+                  </div>
+                  {githubConnected ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {githubKeyAdded ? (
+                        <Badge variant="secondary">Key added</Badge>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          onClick={() => void handleAddKeyToGithub()}
+                          disabled={githubWorking}
+                        >
+                          {githubWorking ? "Uploading…" : "Upload key"}
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        onClick={() => void handleDisconnectGithub()}
+                        disabled={githubWorking}
+                      >
+                        Disconnect
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      onClick={() => void handleConnectGithub()}
+                      disabled={githubWorking || githubChecking}
+                    >
+                      {githubWorking ? "Connecting…" : "Connect GitHub"}
+                    </Button>
+                  )}
+                </div>
+
+                {githubConnected && githubUser && (
+                  <div className="mt-3 text-xs text-muted-foreground">
+                    Connected as{" "}
+                    <span className="font-semibold text-foreground">
+                      {githubUser.login}
+                    </span>
+                  </div>
+                )}
+
+                {githubDevice && (
+                  <Alert className="mt-4">
+                    <AlertDescription>
+                      Visit{" "}
+                      <span className="font-semibold">
+                        {githubDevice.verification_uri}
+                      </span>{" "}
+                      and enter code{" "}
+                      <span className="font-mono font-semibold">
+                        {githubDevice.user_code}
+                      </span>
+                      .
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {githubError && (
+                  <Alert variant="destructive" className="mt-4">
+                    <AlertDescription>{githubError}</AlertDescription>
+                  </Alert>
+                )}
               </div>
 
               <details className="rounded-lg border-2 border-border bg-secondary/10 p-4 text-sm">

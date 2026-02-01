@@ -13,8 +13,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { cloneRepoSchema, openRepoSchema } from "@/schemas/forms";
 import { gitService } from "@/services/gitService";
+import { falckService } from "@/services/falckService";
+import {
+  GithubDeviceResponse,
+  GithubRepo,
+  GithubUser,
+  githubService,
+} from "@/services/githubService";
 import { settingsService } from "@/services/settingsService";
 import { Settings } from "lucide-react";
 import { ThemeButton } from "@/components/ThemeButton";
@@ -35,10 +43,64 @@ export function RepoSelector({
   >([]);
   const [defaultRepoDir, setDefaultRepoDir] = useState<string | null>(null);
   const [defaultRepoDirLoading, setDefaultRepoDirLoading] = useState(true);
+  const [githubConnected, setGithubConnected] = useState(false);
+  const [githubChecking, setGithubChecking] = useState(true);
+  const [githubAuthBusy, setGithubAuthBusy] = useState(false);
+  const [githubDevice, setGithubDevice] = useState<GithubDeviceResponse | null>(
+    null,
+  );
+  const [githubUser, setGithubUser] = useState<GithubUser | null>(null);
+  const [githubRepos, setGithubRepos] = useState<GithubRepo[]>([]);
+  const [githubLoading, setGithubLoading] = useState(false);
+  const [githubError, setGithubError] = useState<string | null>(null);
+  const [githubQuery, setGithubQuery] = useState("");
 
   useEffect(() => {
     void loadSavedRepos();
     void loadDefaultRepoDir();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    setGithubChecking(true);
+    githubService
+      .hasToken()
+      .then((hasToken) => {
+        if (!active) {
+          return;
+        }
+        setGithubConnected(hasToken);
+        if (hasToken) {
+          githubService
+            .getUser()
+            .then((user) => {
+              if (active) {
+                setGithubUser(user);
+              }
+            })
+            .catch(() => {
+              if (active) {
+                setGithubUser(null);
+              }
+            });
+        }
+      })
+      .catch((err) => {
+        if (!active) {
+          return;
+        }
+        setGithubConnected(false);
+        setGithubError(`GitHub auth unavailable: ${String(err)}`);
+      })
+      .finally(() => {
+        if (active) {
+          setGithubChecking(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const loadSavedRepos = async () => {
@@ -58,6 +120,71 @@ export function RepoSelector({
       console.error("Failed to load default repo dir:", err);
     } finally {
       setDefaultRepoDirLoading(false);
+    }
+  };
+
+  const loadGithubRepos = async () => {
+    setGithubLoading(true);
+    setGithubError(null);
+    try {
+      const repos = await githubService.listRepos();
+      setGithubRepos(repos);
+    } catch (err) {
+      const message = String(err);
+      setGithubError(message);
+      if (message.toLowerCase().includes("token")) {
+        setGithubConnected(false);
+      }
+    } finally {
+      setGithubLoading(false);
+    }
+  };
+
+  const handleGithubLogin = async () => {
+    setGithubError(null);
+    setGithubAuthBusy(true);
+    try {
+      const device = await githubService.startDeviceFlow();
+      setGithubDevice(device);
+      await falckService.openInBrowser(
+        device.verification_uri_complete ?? device.verification_uri,
+      );
+      await githubService.pollDeviceToken(
+        device.device_code,
+        device.interval,
+        device.expires_in,
+      );
+      setGithubConnected(true);
+      setGithubDevice(null);
+      try {
+        const user = await githubService.getUser();
+        setGithubUser(user);
+      } catch {
+        setGithubUser(null);
+      }
+      await loadGithubRepos();
+    } catch (err) {
+      setGithubConnected(false);
+      setGithubDevice(null);
+      setGithubError(`GitHub login failed: ${String(err)}`);
+    } finally {
+      setGithubAuthBusy(false);
+    }
+  };
+
+  const handleGithubDisconnect = async () => {
+    setGithubError(null);
+    setGithubAuthBusy(true);
+    try {
+      await githubService.clearToken();
+      setGithubConnected(false);
+      setGithubUser(null);
+      setGithubRepos([]);
+      setGithubQuery("");
+    } catch (err) {
+      setGithubError(`Failed to disconnect: ${String(err)}`);
+    } finally {
+      setGithubAuthBusy(false);
     }
   };
 
@@ -83,10 +210,10 @@ export function RepoSelector({
       try {
         if (!defaultRepoDir) {
           throw new Error("Set a default clone folder in settings first.");
-        }
-        const folderName = normalizeRepoFolder(value.name);
-        const localPath = await join(defaultRepoDir, folderName);
-        await gitService.cloneRepository(value.url, localPath);
+    }
+    const folderName = normalizeRepoFolder(value.name);
+    const localPath = await join(defaultRepoDir, folderName);
+    await gitService.cloneRepository(value.url, localPath);
         await gitService.saveRepo(value.name, localPath);
         onRepoSelect(localPath);
         cloneForm.reset();
@@ -149,6 +276,38 @@ export function RepoSelector({
     }
   };
 
+  const handleCloneGithubRepo = async (repo: GithubRepo) => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (!defaultRepoDir) {
+        throw new Error("Set a default clone folder in settings first.");
+      }
+      const folderName = normalizeRepoFolder(repo.name);
+      const localPath = await join(defaultRepoDir, folderName);
+      await gitService.cloneRepository(repo.ssh_url, localPath);
+      await gitService.saveRepo(repo.full_name, localPath);
+      onRepoSelect(localPath);
+      await loadSavedRepos();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredGithubRepos = useMemo(() => {
+    const query = githubQuery.trim().toLowerCase();
+    if (!query) {
+      return githubRepos;
+    }
+    return githubRepos.filter((repo) => {
+      const fullName = repo.full_name.toLowerCase();
+      const owner = repo.owner?.login?.toLowerCase() ?? "";
+      return fullName.includes(query) || owner.includes(query);
+    });
+  }, [githubRepos, githubQuery]);
+
   return (
     <div className="min-h-screen">
       <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10">
@@ -195,6 +354,144 @@ export function RepoSelector({
             </CardContent>
           </Card>
         )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>GitHub repositories</CardTitle>
+            <CardDescription>
+              Connect GitHub to browse and clone repositories with SSH.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {githubConnected ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-sm text-muted-foreground">
+                    Connected as{" "}
+                    <span className="font-semibold text-foreground">
+                      {githubUser?.login ?? "GitHub user"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void loadGithubRepos()}
+                      disabled={githubLoading}
+                    >
+                      {githubLoading ? "Loading…" : "Refresh"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void handleGithubDisconnect()}
+                      disabled={githubAuthBusy}
+                    >
+                      Disconnect
+                    </Button>
+                  </div>
+                </div>
+
+                <Input
+                  value={githubQuery}
+                  onChange={(event) => setGithubQuery(event.target.value)}
+                  placeholder="Filter repositories"
+                />
+
+                {githubLoading ? (
+                  <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
+                    Loading repositories…
+                  </div>
+                ) : filteredGithubRepos.length === 0 ? (
+                  <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
+                    No repositories loaded yet.
+                  </div>
+                ) : (
+                  <div className="grid gap-3">
+                    {filteredGithubRepos.map((repo) => (
+                      <div
+                        key={repo.id}
+                        className="flex flex-col gap-3 rounded-lg border-2 border-border bg-card/70 px-4 py-3 shadow-[var(--shadow-xs)]"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold">
+                              {repo.full_name}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {repo.ssh_url}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {repo.private && (
+                              <Badge variant="secondary">Private</Badge>
+                            )}
+                            {repo.fork && <Badge variant="outline">Fork</Badge>}
+                          </div>
+                        </div>
+                        <Button
+                          onClick={() => void handleCloneGithubRepo(repo)}
+                          disabled={loading || defaultRepoDirLoading}
+                        >
+                          {loading ? "Cloning…" : "Clone"}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="space-y-4">
+                <div className="text-sm text-muted-foreground">
+                  Sign in once and Falck will remember your GitHub access token
+                  securely.
+                </div>
+                {githubDevice && (
+                  <Alert>
+                    <AlertDescription>
+                      Visit{" "}
+                      <span className="font-semibold">
+                        {githubDevice.verification_uri}
+                      </span>{" "}
+                      and enter code{" "}
+                      <span className="font-mono font-semibold">
+                        {githubDevice.user_code}
+                      </span>
+                      .
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => void handleGithubLogin()}
+                    disabled={githubAuthBusy || githubChecking}
+                  >
+                    {githubAuthBusy ? "Connecting…" : "Connect GitHub"}
+                  </Button>
+                  {githubDevice && (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        void falckService.openInBrowser(
+                          githubDevice.verification_uri_complete ??
+                            githubDevice.verification_uri,
+                        )
+                      }
+                    >
+                      Open GitHub
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {githubError && (
+              <Alert variant="destructive">
+                <AlertDescription>{githubError}</AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>

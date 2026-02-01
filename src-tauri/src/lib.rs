@@ -1,5 +1,6 @@
 mod git;
 mod falck;
+mod github;
 mod opencode;
 mod ssh;
 mod storage;
@@ -12,6 +13,7 @@ use git::{
 };
 use opencode::{opencode_send, OpencodeState};
 use storage::{get_default_repo_dir, list_repos, save_repo, set_default_repo_dir, SavedRepo};
+use reqwest::Client;
 
 // ============================================================================
 // Tauri Commands
@@ -155,6 +157,7 @@ fn set_default_repo_directory(app: tauri::AppHandle, path: String) -> Result<(),
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(Client::new())
         .manage(OpencodeState::default())
         .invoke_handler(tauri::generate_handler![
             clone_repo,
@@ -182,6 +185,13 @@ pub fn run() {
             ssh::add_ssh_key_to_agent,
             ssh::test_ssh_github,
             ssh::get_current_os,
+            github::github_start_device_flow,
+            github::github_poll_device_token,
+            github::github_has_token,
+            github::github_clear_token,
+            github::github_get_user,
+            github::github_list_repos,
+            github::github_add_ssh_key,
             falck::load_falck_config,
             falck::check_falck_prerequisites,
             falck::get_app_secrets_for_config,
