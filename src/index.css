@@ -6,30 +6,30 @@
 
 @layer base {
   :root {
-    --background: oklch(1.0000 0 0);
-    --foreground: oklch(0 0 0);
-    --card: oklch(1.0000 0 0);
-    --card-foreground: oklch(0 0 0);
-    --popover: oklch(1.0000 0 0);
-    --popover-foreground: oklch(0 0 0);
-    --primary: oklch(0.5964 0.1254 164.8952);
-    --primary-foreground: oklch(1.0000 0 0);
-    --secondary: oklch(0.7401 0.1573 164.1320);
-    --secondary-foreground: oklch(0 0 0);
-    --muted: oklch(0.9551 0 0);
-    --muted-foreground: oklch(0.2520 0 0);
-    --accent: oklch(0.7401 0.1573 164.1320);
-    --accent-foreground: oklch(1.0000 0 0);
-    --destructive: oklch(0.5770 0.2450 27.3250);
-    --destructive-foreground: oklch(1.0000 0 0);
-    --border: oklch(0.8975 0 0);
-    --input: oklch(1.0000 0 0);
-    --ring: oklch(0.7401 0.1573 164.1320);
-    --chart-1: oklch(0.5964 0.1254 164.8952);
-    --chart-2: oklch(0.7103 0.1499 163.9946);
-    --chart-3: oklch(0.7837 0.1547 164.7033);
-    --chart-4: oklch(0.9088 0.0924 165.2345);
-    --chart-5: oklch(0.9522 0.0524 164.1967);
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
     --sidebar: oklch(1.0000 0 0);
     --sidebar-foreground: oklch(0 0 0);
     --sidebar-primary: oklch(0.5964 0.1254 164.8952);
@@ -41,7 +41,7 @@
     --font-sans: DM Sans, sans-serif;
     --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
     --font-mono: Space Mono, monospace;
-    --radius: 0px;
+    --radius: 0.5rem;
     --shadow-x: 4px;
     --shadow-y: 4px;
     --shadow-blur: 0px;
@@ -61,30 +61,30 @@
   }
   
   .dark {
-    --background: oklch(0 0 0);
-    --foreground: oklch(1.0000 0 0);
-    --card: oklch(0.2520 0 0);
-    --card-foreground: oklch(1.0000 0 0);
-    --popover: oklch(0.2520 0 0);
-    --popover-foreground: oklch(1.0000 0 0);
-    --primary: oklch(0.5964 0.1254 164.8952);
-    --primary-foreground: oklch(0 0 0);
-    --secondary: oklch(0.7401 0.1573 164.1320);
-    --secondary-foreground: oklch(0 0 0);
-    --muted: oklch(0.2178 0 0);
-    --muted-foreground: oklch(0.8452 0 0);
-    --accent: oklch(0.7401 0.1573 164.1320);
-    --accent-foreground: oklch(0 0 0);
-    --destructive: oklch(0.7040 0.1910 22.2160);
-    --destructive-foreground: oklch(0 0 0);
-    --border: oklch(0.3211 0 0);
-    --input: oklch(0.3211 0 0);
-    --ring: oklch(0.7401 0.1573 164.1320);
-    --chart-1: oklch(0.5964 0.1254 164.8952);
-    --chart-2: oklch(0.7103 0.1499 163.9946);
-    --chart-3: oklch(0.7837 0.1547 164.7033);
-    --chart-4: oklch(0.8525 0.1318 166.7790);
-    --chart-5: oklch(0.9522 0.0524 164.1967);
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
     --sidebar: oklch(0 0 0);
     --sidebar-foreground: oklch(1.0000 0 0);
     --sidebar-primary: oklch(0.5964 0.1254 164.8952);
@@ -186,5 +186,16 @@
 
   p {
     @apply text-muted-foreground;
+  }
+}
+
+
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
   }
 }

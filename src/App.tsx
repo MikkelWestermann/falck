@@ -9,14 +9,6 @@ import { SettingsPage } from "@/components/SettingsPage";
 import { FalckDashboard } from "@/components/falck/FalckDashboard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Menubar,
-  MenubarContent,
-  MenubarItem,
-  MenubarMenu,
-  MenubarSeparator,
-  MenubarTrigger,
-} from "@/components/ui/menubar";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { gitService, RepositoryInfo } from "@/services/gitService";
 import { configService } from "@/services/configService";
@@ -204,65 +196,56 @@ function App() {
           onPointerDown={handleDragStart}
         />
         <div className="mx-auto w-full max-w-7xl px-6 py-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div
-              className="flex flex-wrap items-center gap-4"
-              data-tauri-drag-region="false"
-            >
-              <div className="min-w-[220px]">
-                <p className="text-sm font-semibold uppercase tracking-[0.32em] text-foreground/80">
-                  {repoName}
-                </p>
-                <p className="text-xs font-mono text-muted-foreground break-all">
-                  {repoPath}
-                </p>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div
+                className="flex flex-wrap items-center gap-3"
+                data-tauri-drag-region="false"
+              >
+                <Button variant="ghost" size="sm" onClick={handleCloseRepo}>
+                  Back to repos
+                </Button>
+                <div className="min-w-[220px]">
+                  <p className="text-sm font-semibold uppercase tracking-[0.32em] text-foreground/80">
+                    {repoName}
+                  </p>
+                  <p className="text-xs font-mono text-muted-foreground break-all">
+                    {repoPath}
+                  </p>
+                </div>
               </div>
-              <Menubar className="bg-card/70">
-                <MenubarMenu>
-                  <MenubarTrigger>Repo</MenubarTrigger>
-                  <MenubarContent align="start">
-                    <MenubarItem onSelect={handleRefresh}>Refresh</MenubarItem>
-                    <MenubarSeparator />
-                    <MenubarItem
-                      onSelect={handleCloseRepo}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      Close repo
-                    </MenubarItem>
-                  </MenubarContent>
-                </MenubarMenu>
-                <MenubarMenu>
-                  <MenubarTrigger>Git</MenubarTrigger>
-                  <MenubarContent align="start">
-                    <MenubarItem onSelect={() => setShowGitTools(true)}>
-                      Git tools
-                    </MenubarItem>
-                    <MenubarItem
-                      onSelect={handlePull}
-                      disabled={pullLoading}
-                    >
-                      {pullLoading ? "Pulling…" : "Pull"}
-                    </MenubarItem>
-                    <MenubarItem
-                      onSelect={() => setShowSaveDialog(true)}
-                      disabled={!hasChanges}
-                    >
-                      Save &amp; push
-                    </MenubarItem>
-                  </MenubarContent>
-                </MenubarMenu>
-                <MenubarMenu>
-                  <MenubarTrigger>Settings</MenubarTrigger>
-                  <MenubarContent align="start">
-                    <MenubarItem onSelect={() => setShowSettingsPage(true)}>
-                      Open settings
-                    </MenubarItem>
-                  </MenubarContent>
-                </MenubarMenu>
-              </Menubar>
+              <div
+                className="flex flex-wrap items-center gap-3"
+                data-tauri-drag-region="false"
+              >
+                <Badge
+                  variant={hasChanges ? "destructive" : "secondary"}
+                  className="gap-2 px-3 py-1"
+                >
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      hasChanges
+                        ? "bg-destructive-foreground"
+                        : "bg-muted-foreground"
+                    }`}
+                  />
+                  {hasChanges
+                    ? `${changeCount} unsaved ${changeCount === 1 ? "change" : "changes"}`
+                    : "All changes saved"}
+                </Badge>
+                <Button
+                  onClick={() => setShowSaveDialog(true)}
+                  disabled={!hasChanges}
+                  size="lg"
+                  className="min-w-[170px] shadow-[var(--shadow-lg)]"
+                >
+                  Save &amp; push
+                </Button>
+              </div>
             </div>
+
             <div
-              className="flex flex-wrap items-center gap-3"
+              className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-border bg-card/70 px-3 py-2 shadow-[var(--shadow-xs)]"
               data-tauri-drag-region="false"
             >
               <div className="min-w-[220px]">
@@ -274,37 +257,30 @@ function App() {
                   compact
                 />
               </div>
-              <Badge
-                variant={hasChanges ? "destructive" : "secondary"}
-                className="gap-2 px-3 py-1"
-              >
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    hasChanges
-                      ? "bg-destructive-foreground"
-                      : "bg-muted-foreground"
-                  }`}
-                />
-                {hasChanges
-                  ? `${changeCount} unsaved ${changeCount === 1 ? "change" : "changes"}`
-                  : "All changes saved"}
-              </Badge>
               <Button
                 variant="outline"
                 onClick={handlePull}
                 disabled={pullLoading}
-                size="lg"
-                className="min-w-[100px] shadow-[var(--shadow-lg)]"
+                size="sm"
               >
-                {pullLoading ? "Pulling…" : "Pull"}
+                {pullLoading ? "Syncing..." : "Sync"}
               </Button>
               <Button
-                onClick={() => setShowSaveDialog(true)}
-                disabled={!hasChanges}
-                size="lg"
-                className="min-w-[170px] shadow-[var(--shadow-lg)]"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowGitTools(true)}
               >
-                Save &amp; push
+                Git tools
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowSettingsPage(true)}
+              >
+                Settings
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleRefresh}>
+                Refresh
               </Button>
             </div>
           </div>
