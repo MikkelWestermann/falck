@@ -1,3 +1,7 @@
+import { useEffect, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
+
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -7,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { OpenCodeSettingsPanel } from "@/components/OpenCodeSettings";
+import { settingsService } from "@/services/settingsService";
 import { SSHKey } from "@/services/sshService";
 
 interface SettingsPageProps {
@@ -20,6 +25,62 @@ export function SettingsPage({
   onManageSSHKey,
   onClose,
 }: SettingsPageProps) {
+  const [defaultRepoDir, setDefaultRepoDir] = useState<string | null>(null);
+  const [repoDirLoading, setRepoDirLoading] = useState(true);
+  const [repoDirError, setRepoDirError] = useState<string | null>(null);
+  const [repoDirSaving, setRepoDirSaving] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadDefaultDir = async () => {
+      setRepoDirLoading(true);
+      try {
+        const dir = await settingsService.getDefaultRepoDir();
+        if (mounted) {
+          setDefaultRepoDir(dir);
+        }
+      } catch (err) {
+        if (mounted) {
+          setRepoDirError(`Failed to load default folder: ${String(err)}`);
+        }
+      } finally {
+        if (mounted) {
+          setRepoDirLoading(false);
+        }
+      }
+    };
+    void loadDefaultDir();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handlePickRepoDir = async () => {
+    setRepoDirError(null);
+    setRepoDirSaving(true);
+    try {
+      const selection = await open({
+        directory: true,
+        multiple: false,
+        defaultPath: defaultRepoDir ?? undefined,
+        title: "Choose default clone folder",
+      });
+      if (!selection) {
+        return;
+      }
+      const selectedPath = Array.isArray(selection) ? selection[0] : selection;
+      if (!selectedPath) {
+        return;
+      }
+      await settingsService.setDefaultRepoDir(selectedPath);
+      setDefaultRepoDir(selectedPath);
+    } catch (err) {
+      setRepoDirError(`Failed to update folder: ${String(err)}`);
+    } finally {
+      setRepoDirSaving(false);
+    }
+  };
+
   return (
     <div className="relative min-h-screen bg-background text-foreground">
       <header className="relative z-10 border-b-2 border-border/80 bg-card/80 backdrop-blur">
@@ -43,6 +104,36 @@ export function SettingsPage({
       </header>
 
       <main className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Repositories</CardTitle>
+            <CardDescription>Set where new clones are saved.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm">
+                <div className="font-semibold">Default clone folder</div>
+                <div className="text-xs font-mono text-muted-foreground">
+                  {repoDirLoading ? "Loading..." : defaultRepoDir || "Not set"}
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                onClick={handlePickRepoDir}
+                disabled={repoDirLoading || repoDirSaving}
+              >
+                {repoDirSaving ? "Saving..." : "Choose folder"}
+              </Button>
+            </div>
+
+            {repoDirError && (
+              <Alert variant="destructive">
+                <AlertDescription>{repoDirError}</AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>SSH key</CardTitle>

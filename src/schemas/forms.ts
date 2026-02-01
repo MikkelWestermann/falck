@@ -12,7 +12,6 @@ export const cloneRepoSchema = z.object({
       (value) => isSshUrl(value),
       "Use an SSH URL (git@github.com:org/repo.git)",
     ),
-  localPath: z.string().min(1, "Local path is required"),
 });
 
 export const openRepoSchema = z.object({

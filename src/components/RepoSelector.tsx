@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "@tanstack/react-form";
+import { join } from "@tauri-apps/api/path";
 
 import { FormField } from "@/components/form/FormField";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/card";
 import { cloneRepoSchema, openRepoSchema } from "@/schemas/forms";
 import { gitService } from "@/services/gitService";
+import { settingsService } from "@/services/settingsService";
 import { Settings } from "lucide-react";
 import { ThemeButton } from "@/components/ThemeButton";
 
@@ -31,9 +33,12 @@ export function RepoSelector({
   const [savedRepos, setSavedRepos] = useState<
     Awaited<ReturnType<typeof gitService.listSavedRepos>>
   >([]);
+  const [defaultRepoDir, setDefaultRepoDir] = useState<string | null>(null);
+  const [defaultRepoDirLoading, setDefaultRepoDirLoading] = useState(true);
 
   useEffect(() => {
     void loadSavedRepos();
+    void loadDefaultRepoDir();
   }, []);
 
   const loadSavedRepos = async () => {
@@ -45,11 +50,29 @@ export function RepoSelector({
     }
   };
 
+  const loadDefaultRepoDir = async () => {
+    try {
+      const dir = await settingsService.getDefaultRepoDir();
+      setDefaultRepoDir(dir);
+    } catch (err) {
+      console.error("Failed to load default repo dir:", err);
+    } finally {
+      setDefaultRepoDirLoading(false);
+    }
+  };
+
+  const normalizeRepoFolder = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return "repo";
+    }
+    return trimmed.replace(/[\\/]+/g, "-");
+  };
+
   const cloneForm = useForm({
     defaultValues: {
       name: "",
       url: "",
-      localPath: "",
     },
     validators: {
       onSubmit: cloneRepoSchema,
@@ -58,9 +81,14 @@ export function RepoSelector({
       setLoading(true);
       setError(null);
       try {
-        await gitService.cloneRepository(value.url, value.localPath);
-        await gitService.saveRepo(value.name, value.localPath);
-        onRepoSelect(value.localPath);
+        if (!defaultRepoDir) {
+          throw new Error("Set a default clone folder in settings first.");
+        }
+        const folderName = normalizeRepoFolder(value.name);
+        const localPath = await join(defaultRepoDir, folderName);
+        await gitService.cloneRepository(value.url, localPath);
+        await gitService.saveRepo(value.name, localPath);
+        onRepoSelect(localPath);
         cloneForm.reset();
         await loadSavedRepos();
       } catch (err) {
@@ -70,6 +98,17 @@ export function RepoSelector({
       }
     },
   });
+
+  const clonePathPreview = useMemo(() => {
+    if (!defaultRepoDir) {
+      return "";
+    }
+    const folder = normalizeRepoFolder(cloneForm.state.values.name ?? "");
+    const separator = defaultRepoDir.includes("\\") ? "\\" : "/";
+    const base = defaultRepoDir.replace(/[\\/]+$/, "");
+    const suffix = folder.replace(/^[\\/]+/, "");
+    return suffix ? `${base}${separator}${suffix}` : base;
+  }, [defaultRepoDir, cloneForm.state.values.name]);
 
   const openForm = useForm({
     defaultValues: {
@@ -162,7 +201,7 @@ export function RepoSelector({
             <CardHeader>
               <CardTitle>Clone repository</CardTitle>
               <CardDescription>
-                Start from an SSH URL and choose a local destination.
+                Start from an SSH URL and clone into your default folder.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -194,17 +233,22 @@ export function RepoSelector({
                     />
                   )}
                 </cloneForm.Field>
-                <cloneForm.Field name="localPath">
-                  {(field) => (
-                    <FormField
-                      field={field}
-                      label="Local path"
-                      placeholder="/Users/you/dev/repo"
-                      required
-                    />
-                  )}
-                </cloneForm.Field>
-                <Button type="submit" disabled={loading} className="w-full">
+                <div className="space-y-2 text-sm">
+                  <div className="font-medium">Clone destination</div>
+                  <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs font-mono text-muted-foreground">
+                    {defaultRepoDirLoading
+                      ? "Loading..."
+                      : clonePathPreview || "Set a default clone folder in settings."}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Change the default folder in Settings.
+                  </p>
+                </div>
+                <Button
+                  type="submit"
+                  disabled={loading || defaultRepoDirLoading || !defaultRepoDir}
+                  className="w-full"
+                >
                   {loading ? "Cloning…" : "Clone"}
                 </Button>
               </form>

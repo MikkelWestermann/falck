@@ -10,7 +10,7 @@ use git::{
     stage_file, unstage_file,
 };
 use opencode::{opencode_send, OpencodeState};
-use storage::{list_repos, save_repo, SavedRepo};
+use storage::{get_default_repo_dir, list_repos, save_repo, set_default_repo_dir, SavedRepo};
 
 // ============================================================================
 // Tauri Commands
@@ -20,6 +20,9 @@ use storage::{list_repos, save_repo, SavedRepo};
 fn clone_repo(url: String, path: String, ssh_key_path: Option<String>) -> Result<String, String> {
     let ssh_key_path =
         ssh_key_path.ok_or_else(|| "SSH key is required to clone repositories.".to_string())?;
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     clone_repository(&url, &path, &ssh_key_path).map_err(|e| e.to_string())?;
     Ok("Repository cloned successfully".to_string())
 }
@@ -116,9 +119,20 @@ fn list_repo_entries(app: tauri::AppHandle) -> Result<Vec<SavedRepo>, String> {
     list_repos(&app)
 }
 
+#[tauri::command]
+fn get_default_repo_directory(app: tauri::AppHandle) -> Result<String, String> {
+    get_default_repo_dir(&app)
+}
+
+#[tauri::command]
+fn set_default_repo_directory(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    set_default_repo_dir(&app, &path)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(OpencodeState::default())
         .invoke_handler(tauri::generate_handler![
             clone_repo,
@@ -135,6 +149,8 @@ pub fn run() {
             get_remotes,
             save_repo_entry,
             list_repo_entries,
+            get_default_repo_directory,
+            set_default_repo_directory,
             opencode_send,
             ssh::generate_new_ssh_key,
             ssh::list_ssh_keys,
