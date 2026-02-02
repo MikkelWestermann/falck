@@ -36,7 +36,6 @@ import {
   PromptInput,
   PromptInputBody,
   PromptInputFooter,
-  PromptInputHeader,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
@@ -149,13 +148,17 @@ export function AIChat({ repoPath }: AIChatProps) {
   const [toolActivity, setToolActivity] = useState<ToolActivity[]>([]);
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("connecting");
-  const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(
+    null,
+  );
   const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [lastEventAt, setLastEventAt] = useState<string | null>(null);
   const [lastAssistantCompletion, setLastAssistantCompletion] = useState<
     string | null
   >(null);
-  const partsByMessage = useRef<Map<string, Map<string, PartSnapshot>>>(new Map());
+  const partsByMessage = useRef<Map<string, Map<string, PartSnapshot>>>(
+    new Map(),
+  );
   const roleByMessage = useRef<Map<string, "user" | "assistant">>(new Map());
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -323,16 +326,13 @@ export function AIChat({ repoPath }: AIChatProps) {
             "Live status updates stopped. The server may still be running.",
           badgeVariant: "destructive",
           isActive: false,
-          icon: (
-            <AlertTriangleIcon className="size-4 text-destructive" />
-          ),
+          icon: <AlertTriangleIcon className="size-4 text-destructive" />,
         };
       case "queued":
         return {
           label: "Queued",
           title: "Queued for processing",
-          description:
-            "Message received - waiting for the model to start.",
+          description: "Message received - waiting for the model to start.",
           badgeVariant: "secondary",
           isActive: true,
           icon: <Loader className="text-muted-foreground" size={14} />,
@@ -377,9 +377,10 @@ export function AIChat({ repoPath }: AIChatProps) {
         };
       case "retrying":
         return {
-          label: sessionStatus?.type === "retry"
-            ? `Retrying (attempt ${sessionStatus.attempt})`
-            : "Retrying",
+          label:
+            sessionStatus?.type === "retry"
+              ? `Retrying (attempt ${sessionStatus.attempt})`
+              : "Retrying",
           title: "Retrying request",
           description: retryMessage
             ? retryMessage
@@ -403,8 +404,7 @@ export function AIChat({ repoPath }: AIChatProps) {
           return {
             label: "Create a session",
             title: "Create a session to begin",
-            description:
-              "Start a new session to see OpenCode responses here.",
+            description: "Start a new session to see OpenCode responses here.",
             badgeVariant: "outline",
             isActive: false,
             icon: <SparklesIcon className="size-4 text-muted-foreground" />,
@@ -510,7 +510,7 @@ export function AIChat({ repoPath }: AIChatProps) {
           ...updates,
           id: messageId,
           role: updates.role ?? next[idx].role,
-          text: hasText ? updates.text ?? "" : next[idx].text,
+          text: hasText ? (updates.text ?? "") : next[idx].text,
           pending: updates.pending ?? next[idx].pending,
         };
         return next;
@@ -565,9 +565,7 @@ export function AIChat({ repoPath }: AIChatProps) {
         (extractToolField(part.state, "errorText") as string | undefined) ??
         existing?.errorText;
       const input =
-        part.input ??
-        extractToolField(part.state, "input") ??
-        existing?.input;
+        part.input ?? extractToolField(part.state, "input") ?? existing?.input;
 
       return {
         id: part.id ?? existing?.id ?? "",
@@ -630,11 +628,9 @@ export function AIChat({ repoPath }: AIChatProps) {
           if (!part.status) {
             return true;
           }
-          return [
-            "output-available",
-            "output-error",
-            "output-denied",
-          ].includes(part.status);
+          return ["output-available", "output-error", "output-denied"].includes(
+            part.status,
+          );
         })
         .map((part) =>
           part.errorText ? part.errorText.trim() : formatOutput(part.output),
@@ -744,7 +740,11 @@ export function AIChat({ repoPath }: AIChatProps) {
           const props = payload.properties as
             | { sessionID?: string; status?: SessionStatus }
             | undefined;
-          if (!props || props.sessionID !== currentSession?.path || !props.status) {
+          if (
+            !props ||
+            props.sessionID !== currentSession?.path ||
+            !props.status
+          ) {
             return;
           }
           setConnectionState("connected");
@@ -1147,7 +1147,7 @@ export function AIChat({ repoPath }: AIChatProps) {
 
   return (
     <>
-      <div className="relative flex h-[min(72vh,720px)] min-h-[420px] flex-col">
+      <div className="relative flex h-[min(72vh,720px)] min-h-[420px] flex-col mt-4">
         <div className="flex flex-wrap items-start justify-between border-b border-border/60 bg-white/70 px-6 py-2 backdrop-blur">
           <div>
             <div className="text-sm font-semibold text-foreground">
@@ -1164,17 +1164,6 @@ export function AIChat({ repoPath }: AIChatProps) {
                 </Badge>
               )}
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span
-                className={cn(
-                  "inline-flex size-2 rounded-full",
-                  hasActiveWork
-                    ? "bg-amber-500/80 animate-pulse"
-                    : "bg-emerald-500/80",
-                )}
-              />
-              <span>{activityLabel}</span>
-            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
@@ -1185,7 +1174,6 @@ export function AIChat({ repoPath }: AIChatProps) {
                   className="gap-2 rounded-full border-border/60 bg-white/80 px-3 text-xs font-semibold shadow-[var(--shadow-xs)]"
                 >
                   <HistoryIcon className="size-4" />
-                  History
                   <Badge
                     variant="secondary"
                     className="rounded-full px-2 py-0 text-[0.6rem]"
@@ -1212,7 +1200,7 @@ export function AIChat({ repoPath }: AIChatProps) {
                       className="gap-2"
                     >
                       <PlusIcon className="size-4" />
-                      {creatingSession ? "Creating..." : "New session"}
+                      {creatingSession ? "Creating..." : "New chat"}
                     </Button>
                   </div>
                 </DialogHeader>
@@ -1284,7 +1272,7 @@ export function AIChat({ repoPath }: AIChatProps) {
               className="gap-2"
             >
               <PlusIcon className="size-4" />
-              {creatingSession ? "Creating..." : "New session"}
+              {creatingSession ? "Creating..." : "New chat"}
             </Button>
           </div>
         </div>
@@ -1294,7 +1282,7 @@ export function AIChat({ repoPath }: AIChatProps) {
             <div>
               <div
                 ref={messagesContainerRef}
-                className="flex flex-1 min-h-[400px] flex-col gap-6 overflow-y-auto px-6 py-6 h-[calc(100vh-450px)]"
+                className="flex flex-1 min-h-[400px] flex-col gap-6 overflow-y-auto px-6 py-6 h-[calc(100vh-400px)]"
               >
                 {loadingSession ? (
                   <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-white/70 px-6 py-12 text-center">
@@ -1314,10 +1302,10 @@ export function AIChat({ repoPath }: AIChatProps) {
                       <SparklesIcon className="size-5 text-muted-foreground" />
                     </div>
                     <h3 className="text-base font-semibold text-foreground">
-                      Start a focused AI session
+                      Start a focused AI chat
                     </h3>
                     <p className="mt-2 max-w-md text-sm text-muted-foreground">
-                      Create a new session or revisit your history to keep
+                      Create a new chat or revisit your history to keep
                       discussions organized by task.
                     </p>
                     <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -1328,7 +1316,7 @@ export function AIChat({ repoPath }: AIChatProps) {
                         className="gap-2"
                       >
                         <PlusIcon className="size-4" />
-                        {creatingSession ? "Creating..." : "New session"}
+                        {creatingSession ? "Creating..." : "New chat"}
                       </Button>
                       <Button
                         variant="outline"
@@ -1346,7 +1334,7 @@ export function AIChat({ repoPath }: AIChatProps) {
                       <SparklesIcon className="size-5 text-muted-foreground" />
                     </div>
                     <h3 className="text-base font-semibold text-foreground">
-                      Your session is ready
+                      Your chat is ready
                     </h3>
                     <p className="mt-2 max-w-md text-sm text-muted-foreground">
                       Ask Falck AI anything. Responses will appear here with
@@ -1485,7 +1473,9 @@ export function AIChat({ repoPath }: AIChatProps) {
                           </span>
                           {hasActiveWork && (
                             <>
-                              <span className="text-muted-foreground/60">•</span>
+                              <span className="text-muted-foreground/60">
+                                •
+                              </span>
                               <span className="inline-flex items-center gap-1 text-amber-700">
                                 <span className="inline-flex size-1.5 rounded-full bg-amber-500/80 animate-pulse" />
                                 <span>{activityLabel}</span>

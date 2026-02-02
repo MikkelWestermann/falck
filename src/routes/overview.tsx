@@ -2,22 +2,18 @@ import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { BranchSwitcher } from "@/components/BranchSwitcher";
 import { CommitHistory } from "@/components/CommitHistory";
-import { RemoteOperations } from "@/components/RemoteOperations";
 import { SaveChangesDialog } from "@/components/SaveChangesDialog";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { AIChat } from "@/components/AIChat";
 import { FalckDashboard } from "@/components/falck/FalckDashboard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { gitService, RepositoryInfo } from "@/services/gitService";
 import { falckService } from "@/services/falckService";
 import { useAppState } from "@/router/app-state";
-import { ArrowLeft, History } from "lucide-react";
+import { ArrowLeft, History, RefreshCcw } from "lucide-react";
 
 export const Route = createFileRoute("/overview")({
   component: OverviewRoute,
@@ -30,7 +26,8 @@ function OverviewRoute() {
   const [refreshSeed, setRefreshSeed] = useState(0);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
-  const [showVersionHistoryDialog, setShowVersionHistoryDialog] = useState(false);
+  const [showVersionHistoryDialog, setShowVersionHistoryDialog] =
+    useState(false);
   const [pullLoading, setPullLoading] = useState(false);
   const [pullError, setPullError] = useState<string | null>(null);
   const [defaultBranch, setDefaultBranch] = useState<string | null>(null);
@@ -292,7 +289,7 @@ function OverviewRoute() {
   return (
     <div className="relative min-h-screen bg-background text-foreground">
       <header className="relative z-10 bg-card/80 backdrop-blur">
-        <div className="mx-auto w-full max-w-7xl px-6 py-4">
+        <div className="mx-auto w-full max-w-7xl px-6 pb-4">
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div
@@ -343,26 +340,28 @@ function OverviewRoute() {
             </div>
 
             <div
-              className="flex flex-wrap items-center gap-3"
+              className="flex flex-wrap items-center justify-between gap-3"
               data-tauri-drag-region="false"
             >
-              <div className="min-w-[220px]">
-                <BranchSwitcher
-                  branches={repoInfo.branches}
-                  currentBranch={repoInfo.head_branch}
-                  onSelectProject={handleSelectProject}
-                  onCreateProject={handleCreateProject}
-                  compact
-                />
+              <div className="flex items-center gap-1">
+                <div className="min-w-[220px]">
+                  <BranchSwitcher
+                    branches={repoInfo.branches}
+                    currentBranch={repoInfo.head_branch}
+                    onSelectProject={handleSelectProject}
+                    onCreateProject={handleCreateProject}
+                    compact
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  onClick={handlePull}
+                  disabled={pullLoading}
+                  size="sm"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                onClick={handlePull}
-                disabled={pullLoading}
-                size="sm"
-              >
-                {pullLoading ? "Checking..." : "Check for updates"}
-              </Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -371,7 +370,7 @@ function OverviewRoute() {
                 <History className="h-4 w-4" />
                 Version history
               </Button>
-              <Button
+              {/* <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => navigate({ to: "/settings" })}
@@ -380,7 +379,7 @@ function OverviewRoute() {
               </Button>
               <Button variant="ghost" size="sm" onClick={handleRefresh}>
                 Refresh
-              </Button>
+              </Button> */}
             </div>
           </div>
         </div>
