@@ -932,7 +932,45 @@ export function AIChat({ repoPath }: AIChatProps) {
       persistModel(nextModel);
       const sessionList = await opencodeService.listSessions(repoPath);
       setSessions(sessionList);
-      setError("");
+      let shouldClearError = true;
+
+      if (sessionList.length > 0) {
+        const latestSession = [...sessionList].sort((a, b) => {
+          const aTime = new Date(a.created).getTime();
+          const bTime = new Date(b.created).getTime();
+          return bTime - aTime;
+        })[0];
+
+        if (latestSession) {
+          const didSelect = await handleSelectSession(latestSession);
+          if (!didSelect) {
+            shouldClearError = false;
+          }
+        }
+      } else {
+        const name = `AI Session - ${new Date().toLocaleString()}`;
+        const session = await opencodeService.createSession(
+          name,
+          `Chat session for ${repoPath}`,
+          nextModel,
+          repoPath,
+        );
+        setSessions([session]);
+        setCurrentSession(session);
+        setMessages([]);
+        setInputMessage("");
+        setStreaming(false);
+        partsByMessage.current.clear();
+        setToolActivity([]);
+        roleByMessage.current.clear();
+        setLastAssistantCompletion(null);
+        setSessionStatus(null);
+        setAwaitingResponse(false);
+      }
+
+      if (shouldClearError) {
+        setError("");
+      }
     } catch (err) {
       setError(`Failed to initialize OpenCode: ${String(err)}`);
     } finally {
@@ -983,7 +1021,7 @@ export function AIChat({ repoPath }: AIChatProps) {
   const handleSelectSession = async (
     session: AISession,
     options?: { closeHistory?: boolean },
-  ) => {
+  ): Promise<boolean> => {
     if (options?.closeHistory) {
       setHistoryOpen(false);
     }
@@ -1023,8 +1061,10 @@ export function AIChat({ repoPath }: AIChatProps) {
         persistModel(loadedSession.model);
       }
       setError("");
+      return true;
     } catch (err) {
       setError(`Failed to load session: ${String(err)}`);
+      return false;
     } finally {
       setLoadingSession(false);
     }
