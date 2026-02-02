@@ -4,13 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -19,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CommitInfo, gitService } from "@/services/gitService";
+import { RefreshCw } from "lucide-react";
 
 interface CommitHistoryProps {
   repoPath: string;
@@ -97,19 +91,11 @@ export function CommitHistory({
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <div>
-          <CardTitle>Version history</CardTitle>
-          <CardDescription>
-            Saves that exist only in this project compared to the default.
-          </CardDescription>
-        </div>
-        <Button variant="outline" size="sm" onClick={loadCommits}>
-          Reload
-        </Button>
-      </CardHeader>
-      <CardContent>
+    <div>
+      {/* <Button variant="ghost" size="sm" onClick={loadCommits}>
+        <RefreshCw className="h-3 w-3" />
+      </Button> */}
+      <div>
         {loading ? (
           <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
             Loading history…
@@ -154,7 +140,7 @@ export function CommitHistory({
             ))}
           </div>
         )}
-      </CardContent>
+      </div>
 
       <Dialog
         open={Boolean(restoreTarget)}
@@ -191,6 +177,6 @@ export function CommitHistory({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 }

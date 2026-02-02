@@ -131,7 +131,6 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
     [config, activeAppId],
   );
 
-
   const checkPrereqs = async (appId: string) => {
     setPrereqLoading((prev) => ({ ...prev, [appId]: true }));
     try {
@@ -146,7 +145,9 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
   };
 
   const checkSetupStatus = async (appId: string) => {
-    const app = config?.applications.find((candidate) => candidate.id === appId);
+    const app = config?.applications.find(
+      (candidate) => candidate.id === appId,
+    );
     if (!app?.setup?.check?.command) {
       setSetupStatusByApp((prev) => ({
         ...prev,
@@ -303,8 +304,8 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
     : true;
   const isRunning = activeApp ? Boolean(runningApps[activeApp.id]) : false;
   const setupStatus: SetupStatus = activeApp
-    ? setupStatusByApp[activeApp.id] ??
-      (activeApp.setup?.check?.command ? "checking" : "not_configured")
+    ? (setupStatusByApp[activeApp.id] ??
+      (activeApp.setup?.check?.command ? "checking" : "not_configured"))
     : "unknown";
   const setupStatusMeta: Record<
     SetupStatus,
@@ -347,7 +348,7 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
         <div className="space-y-4">
           <div className="border px-2 py-1 rounded">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-1">
                 {appOptions.length > 1 ? (
                   <Select
                     value={activeApp.id}
@@ -369,15 +370,44 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
                     {activeApp.name}
                   </span>
                 )}
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="gap-1"
+                  onClick={loadConfig}
+                >
+                  <RefreshCw className="h-3 w-3" />
+                </Button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={isRunning ? "default" : "outline"}>
-                  {isRunning ? "Running" : "Stopped"}
-                </Badge>
+                {isRunning && activeApp.launch.access?.url ? (
+                  <Button
+                    size="sm"
+                    variant="link"
+                    className="text-xs text-muted-foreground"
+                    onClick={() => handleOpenUrl(activeApp.launch.access!.url!)}
+                  >
+                    {activeApp.launch.access?.url}
+                  </Button>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="gap-1"
+                  onClick={() => setSetupDialogOpen(true)}
+                >
+                  <ListChecks className="h-4 w-4" />
+                  Setup steps
+                  <span
+                    className={`ml-1 inline-flex h-2 w-2 rounded-full ${setupIndicator.className}`}
+                    title={setupIndicator.label}
+                  />
+                  <span className="sr-only">{setupIndicator.label}</span>
+                </Button>
                 {isRunning ? (
                   <Button
                     size="sm"
-                    variant="outline"
                     className="gap-2"
                     onClick={() => handleStop(activeApp)}
                   >
@@ -397,38 +427,6 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
                     Start
                   </Button>
                 )}
-                {isRunning && activeApp.launch.access?.url ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleOpenUrl(activeApp.launch.access!.url!)}
-                  >
-                    Open
-                  </Button>
-                ) : null}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="gap-1"
-                  onClick={() => setSetupDialogOpen(true)}
-                >
-                  <ListChecks className="h-4 w-4" />
-                  Setup steps
-                  <span
-                    className={`ml-1 inline-flex h-2 w-2 rounded-full ${setupIndicator.className}`}
-                    title={setupIndicator.label}
-                  />
-                  <span className="sr-only">{setupIndicator.label}</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="gap-1"
-                  onClick={loadConfig}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh
-                </Button>
               </div>
             </div>
             <div className="space-y-2 pt-0">
@@ -499,7 +497,9 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
                         onClick={() => checkSetupStatus(activeApp.id)}
                         disabled={setupStatus === "checking"}
                       >
-                        {setupStatus === "checking" ? "Checking..." : "Re-check"}
+                        {setupStatus === "checking"
+                          ? "Checking..."
+                          : "Re-check"}
                       </Button>
                     </div>
                   ) : null}

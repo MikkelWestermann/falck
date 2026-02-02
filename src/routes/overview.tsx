@@ -8,7 +8,14 @@ import { AIChat } from "@/components/AIChat";
 import { FalckDashboard } from "@/components/falck/FalckDashboard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { gitService, RepositoryInfo } from "@/services/gitService";
 import { falckService } from "@/services/falckService";
@@ -26,6 +33,8 @@ function OverviewRoute() {
   const [refreshSeed, setRefreshSeed] = useState(0);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [showDiscardConfirmDialog, setShowDiscardConfirmDialog] =
+    useState(false);
   const [showVersionHistoryDialog, setShowVersionHistoryDialog] =
     useState(false);
   const [pullLoading, setPullLoading] = useState(false);
@@ -107,9 +116,21 @@ function OverviewRoute() {
     setRepoInfo(null);
     setShowSaveDialog(false);
     setShowUnsavedDialog(false);
+    setShowDiscardConfirmDialog(false);
     setPendingProjectAction(null);
     setPullError(null);
     navigate({ to: "/repo" });
+  };
+
+  const handleConfirmDiscard = async () => {
+    if (!repoPath) return;
+    try {
+      await gitService.discardChanges(repoPath);
+      setShowDiscardConfirmDialog(false);
+      await handleRefresh();
+    } catch (err) {
+      console.error("Failed to discard changes:", err);
+    }
   };
 
   const handlePull = async () => {
@@ -313,21 +334,22 @@ function OverviewRoute() {
                 className="flex flex-wrap items-center gap-3"
                 data-tauri-drag-region="false"
               >
-                <Badge
-                  variant={hasChanges ? "destructive" : "secondary"}
-                  className="gap-2 px-3 py-1"
-                >
-                  <span
-                    className={`h-2.5 w-2.5 rounded-full ${
-                      hasChanges
-                        ? "bg-destructive-foreground"
-                        : "bg-muted-foreground"
-                    }`}
-                  />
-                  {hasChanges
-                    ? `${changeCount} unsaved ${changeCount === 1 ? "change" : "changes"}`
-                    : "All changes saved"}
-                </Badge>
+                {hasChanges ? (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="h-auto cursor-pointer gap-2 l px-3 py-1 font-normal"
+                    onClick={() => setShowDiscardConfirmDialog(true)}
+                  >
+                    <span className="h-2.5 w-2.5 rounded-full bg-destructive-foreground" />
+                    {`${changeCount} unsaved ${changeCount === 1 ? "change" : "changes"}`}
+                  </Button>
+                ) : (
+                  <Badge variant="secondary" className="gap-2 px-3 py-1">
+                    <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground" />
+                    All changes saved
+                  </Badge>
+                )}
                 <Button
                   onClick={() => setShowSaveDialog(true)}
                   disabled={!hasChanges || saveBlocked}
@@ -434,10 +456,37 @@ function OverviewRoute() {
         }
       />
       <Dialog
+        open={showDiscardConfirmDialog}
+        onOpenChange={setShowDiscardConfirmDialog}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard changes?</DialogTitle>
+            <DialogDescription>
+              This will permanently discard all unsaved changes. This cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowDiscardConfirmDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDiscard}>
+              Discard changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
         open={showVersionHistoryDialog}
         onOpenChange={setShowVersionHistoryDialog}
       >
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent>
+          <DialogTitle>Version history</DialogTitle>
+          <DialogDescription>Messed up? Go back in time</DialogDescription>
           <CommitHistory
             repoPath={repoPath}
             baseBranch={resolvedDefaultBranch ?? repoInfo.head_branch}

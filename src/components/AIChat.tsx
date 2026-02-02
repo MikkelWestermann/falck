@@ -1312,22 +1312,14 @@ export function AIChat({ repoPath }: AIChatProps) {
                           : "lg:max-w-[80%]",
                       )}
                     >
-                      <MessageContent
-                        className={cn(
-                          "relative rounded-2xl border border-border/60 px-5 py-4 shadow-[var(--shadow-xs)]",
-                          "group-[.is-user]:bg-gradient-to-br group-[.is-user]:from-neutral-900 group-[.is-user]:to-neutral-700 group-[.is-user]:text-white",
-                          "group-[.is-assistant]:bg-white/80 group-[.is-assistant]:backdrop-blur",
-                        )}
-                      >
+                      <MessageContent className="min-w-[200px]">
                         <div className="flex items-center justify-between text-[0.6rem] uppercase tracking-[0.3em] opacity-70">
                           <span>
                             {msg.role === "user" ? "You" : "Falck AI"}
                           </span>
                           <span>{formatMessageTime(msg.timestamp)}</span>
                         </div>
-                        <MessageResponse className="text-sm leading-relaxed text-foreground/90 group-[.is-user]:text-white">
-                          {msg.text}
-                        </MessageResponse>
+                        <MessageResponse>{msg.text}</MessageResponse>
                       </MessageContent>
                     </AIMessage>
                   ))
