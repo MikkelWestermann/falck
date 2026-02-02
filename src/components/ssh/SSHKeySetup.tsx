@@ -283,26 +283,15 @@ export function SSHKeySetup({
       } catch {
         setGithubUser(null);
       }
-      await addKeyToGithub();
+      try {
+        await addKeyToGithub();
+      } catch (err) {
+        setGithubError(`Failed to add key to GitHub: ${String(err)}`);
+      }
     } catch (err) {
       setGithubConnected(false);
       setGithubDevice(null);
       setGithubError(`GitHub login failed: ${String(err)}`);
-    } finally {
-      setGithubWorking(false);
-    }
-  };
-
-  const handleDisconnectGithub = async () => {
-    setGithubError(null);
-    setGithubWorking(true);
-    try {
-      await githubService.clearToken();
-      setGithubConnected(false);
-      setGithubUser(null);
-      setGithubKeyAdded(false);
-    } catch (err) {
-      setGithubError(`Failed to disconnect: ${String(err)}`);
     } finally {
       setGithubWorking(false);
     }
@@ -484,64 +473,16 @@ export function SSHKeySetup({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="rounded-lg border-2 border-border bg-card p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <div className="text-sm text-muted-foreground">
-                        Step 1
-                      </div>
-                      <div className="text-base font-semibold">
-                        Copy your public key
-                      </div>
-                    </div>
-                    <Button
-                      variant="outline"
-                      onClick={handleCopyPublicKey}
-                      className="shrink-0"
-                    >
-                      {copied ? "Copied!" : "Copy key"}
-                    </Button>
-                  </div>
-                  <details className="mt-3 text-xs text-muted-foreground">
-                    <summary className="cursor-pointer">Show key</summary>
-                    <code className="mt-2 block max-h-32 overflow-auto rounded bg-muted p-3 text-xs break-all">
-                      {currentKey.public_key}
-                    </code>
-                  </details>
-                </div>
-
-                <div className="rounded-lg border-2 border-border bg-card p-4">
-                  <div className="text-sm text-muted-foreground">Step 2</div>
-                  <div className="text-base font-semibold">
-                    Open GitHub settings
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    GitHub → Settings → SSH and GPG keys → New SSH key
-                  </p>
-                </div>
-
-                <div className="rounded-lg border-2 border-border bg-card p-4">
-                  <div className="text-sm text-muted-foreground">Step 3</div>
-                  <div className="text-base font-semibold">
-                    Paste and save
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Paste the key you copied and click “Add SSH key”.
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-lg border-2 border-border bg-secondary/10 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="text-sm text-muted-foreground">Optional</div>
-                    <div className="text-base font-semibold">
-                      Add this key to GitHub automatically
+              <div className="rounded-lg border-2 border-primary/40 bg-primary/5 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="space-y-2">
+                    <Badge variant="secondary">Recommended</Badge>
+                    <div className="text-lg font-semibold">
+                      Upload with GitHub
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Connect your GitHub account and Falck will upload the key for
-                      you.
+                      Connect your GitHub account and Falck will add the SSH key
+                      automatically.
                     </p>
                   </div>
                   {githubConnected ? (
@@ -550,20 +491,12 @@ export function SSHKeySetup({
                         <Badge variant="secondary">Key added</Badge>
                       ) : (
                         <Button
-                          variant="outline"
                           onClick={() => void handleAddKeyToGithub()}
                           disabled={githubWorking}
                         >
                           {githubWorking ? "Uploading…" : "Upload key"}
                         </Button>
                       )}
-                      <Button
-                        variant="ghost"
-                        onClick={() => void handleDisconnectGithub()}
-                        disabled={githubWorking}
-                      >
-                        Disconnect
-                      </Button>
                     </div>
                   ) : (
                     <Button
@@ -581,6 +514,7 @@ export function SSHKeySetup({
                     <span className="font-semibold text-foreground">
                       {githubUser.login}
                     </span>
+                    . Manage this connection in Settings.
                   </div>
                 )}
 
@@ -606,6 +540,59 @@ export function SSHKeySetup({
                   </Alert>
                 )}
               </div>
+
+              <details className="rounded-lg border-2 border-border bg-card p-4">
+                <summary className="cursor-pointer font-semibold">
+                  Or copy/paste manually
+                </summary>
+                <div className="mt-4 space-y-4">
+                  <div className="rounded-lg border-2 border-border bg-card p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <div className="text-sm text-muted-foreground">
+                          Step 1
+                        </div>
+                        <div className="text-base font-semibold">
+                          Copy your public key
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={handleCopyPublicKey}
+                        className="shrink-0"
+                      >
+                        {copied ? "Copied!" : "Copy key"}
+                      </Button>
+                    </div>
+                    <details className="mt-3 text-xs text-muted-foreground">
+                      <summary className="cursor-pointer">Show key</summary>
+                      <code className="mt-2 block max-h-32 overflow-auto rounded bg-muted p-3 text-xs break-all">
+                        {currentKey.public_key}
+                      </code>
+                    </details>
+                  </div>
+
+                  <div className="rounded-lg border-2 border-border bg-card p-4">
+                    <div className="text-sm text-muted-foreground">Step 2</div>
+                    <div className="text-base font-semibold">
+                      Open GitHub settings
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      GitHub → Settings → SSH and GPG keys → New SSH key
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border-2 border-border bg-card p-4">
+                    <div className="text-sm text-muted-foreground">Step 3</div>
+                    <div className="text-base font-semibold">
+                      Paste and save
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Paste the key you copied and click “Add SSH key”.
+                    </p>
+                  </div>
+                </div>
+              </details>
 
               <details className="rounded-lg border-2 border-border bg-secondary/10 p-4 text-sm">
                 <summary className="cursor-pointer font-semibold">

@@ -103,6 +103,15 @@ export function RepoSelector({
     };
   }, []);
 
+  useEffect(() => {
+    if (!githubConnected || githubChecking || githubLoading) {
+      return;
+    }
+    if (githubRepos.length === 0) {
+      void loadGithubRepos();
+    }
+  }, [githubConnected, githubChecking, githubLoading, githubRepos.length]);
+
   const loadSavedRepos = async () => {
     try {
       const repos = await gitService.listSavedRepos();
@@ -167,22 +176,6 @@ export function RepoSelector({
       setGithubConnected(false);
       setGithubDevice(null);
       setGithubError(`GitHub login failed: ${String(err)}`);
-    } finally {
-      setGithubAuthBusy(false);
-    }
-  };
-
-  const handleGithubDisconnect = async () => {
-    setGithubError(null);
-    setGithubAuthBusy(true);
-    try {
-      await githubService.clearToken();
-      setGithubConnected(false);
-      setGithubUser(null);
-      setGithubRepos([]);
-      setGithubQuery("");
-    } catch (err) {
-      setGithubError(`Failed to disconnect: ${String(err)}`);
     } finally {
       setGithubAuthBusy(false);
     }
@@ -357,9 +350,9 @@ export function RepoSelector({
 
         <Card>
           <CardHeader>
-            <CardTitle>GitHub repositories</CardTitle>
+            <CardTitle>Clone from GitHub</CardTitle>
             <CardDescription>
-              Connect GitHub to browse and clone repositories with SSH.
+              Connect once to browse and clone repositories with SSH.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -381,14 +374,15 @@ export function RepoSelector({
                     >
                       {githubLoading ? "Loading…" : "Refresh"}
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => void handleGithubDisconnect()}
-                      disabled={githubAuthBusy}
-                    >
-                      Disconnect
-                    </Button>
+                    {onOpenSettings && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onOpenSettings}
+                      >
+                        Manage integration
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -493,112 +487,118 @@ export function RepoSelector({
           </CardContent>
         </Card>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Clone repository</CardTitle>
-              <CardDescription>
-                Start from an SSH URL and clone into your default folder.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void cloneForm.handleSubmit();
-                }}
-                className="space-y-4"
-              >
-                <cloneForm.Field name="name">
-                  {(field) => (
-                    <FormField
-                      field={field}
-                      label="Repo name"
-                      placeholder="Marketing site"
-                      required
-                    />
-                  )}
-                </cloneForm.Field>
-                <cloneForm.Field name="url">
-                  {(field) => (
-                    <FormField
-                      field={field}
-                      label="Repository URL"
-                      placeholder="git@github.com:org/repo.git"
-                      helpText="SSH URLs are required for authenticated Git operations."
-                      required
-                    />
-                  )}
-                </cloneForm.Field>
-                <div className="space-y-2 text-sm">
-                  <div className="font-medium">Clone destination</div>
-                  <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs font-mono text-muted-foreground">
-                    {defaultRepoDirLoading
-                      ? "Loading..."
-                      : clonePathPreview || "Set a default clone folder in settings."}
+        <details className="rounded-lg border-2 border-border bg-card p-4">
+          <summary className="cursor-pointer font-semibold">
+            Or do it manually
+          </summary>
+          <div className="mt-4 grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Clone repository</CardTitle>
+                <CardDescription>
+                  Start from an SSH URL and clone into your default folder.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void cloneForm.handleSubmit();
+                  }}
+                  className="space-y-4"
+                >
+                  <cloneForm.Field name="name">
+                    {(field) => (
+                      <FormField
+                        field={field}
+                        label="Repo name"
+                        placeholder="Marketing site"
+                        required
+                      />
+                    )}
+                  </cloneForm.Field>
+                  <cloneForm.Field name="url">
+                    {(field) => (
+                      <FormField
+                        field={field}
+                        label="Repository URL"
+                        placeholder="git@github.com:org/repo.git"
+                        helpText="SSH URLs are required for authenticated Git operations."
+                        required
+                      />
+                    )}
+                  </cloneForm.Field>
+                  <div className="space-y-2 text-sm">
+                    <div className="font-medium">Clone destination</div>
+                    <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs font-mono text-muted-foreground">
+                      {defaultRepoDirLoading
+                        ? "Loading..."
+                        : clonePathPreview ||
+                          "Set a default clone folder in settings."}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Change the default folder in Settings.
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Change the default folder in Settings.
-                  </p>
-                </div>
-                <Button
-                  type="submit"
-                  disabled={loading || defaultRepoDirLoading || !defaultRepoDir}
-                  className="w-full"
-                >
-                  {loading ? "Cloning…" : "Clone"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+                  <Button
+                    type="submit"
+                    disabled={loading || defaultRepoDirLoading || !defaultRepoDir}
+                    className="w-full"
+                  >
+                    {loading ? "Cloning…" : "Clone"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Open existing</CardTitle>
-              <CardDescription>
-                Point Falck at a folder already on your disk.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void openForm.handleSubmit();
-                }}
-                className="space-y-4"
-              >
-                <openForm.Field name="name">
-                  {(field) => (
-                    <FormField
-                      field={field}
-                      label="Repo name"
-                      placeholder="Internal tools"
-                      required
-                    />
-                  )}
-                </openForm.Field>
-                <openForm.Field name="path">
-                  {(field) => (
-                    <FormField
-                      field={field}
-                      label="Repository path"
-                      placeholder="/Users/you/dev/project"
-                      required
-                    />
-                  )}
-                </openForm.Field>
-                <Button
-                  type="submit"
-                  variant="outline"
-                  disabled={loading}
-                  className="w-full"
+            <Card>
+              <CardHeader>
+                <CardTitle>Open existing</CardTitle>
+                <CardDescription>
+                  Point Falck at a folder already on your disk.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void openForm.handleSubmit();
+                  }}
+                  className="space-y-4"
                 >
-                  {loading ? "Opening…" : "Open repo"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
+                  <openForm.Field name="name">
+                    {(field) => (
+                      <FormField
+                        field={field}
+                        label="Repo name"
+                        placeholder="Internal tools"
+                        required
+                      />
+                    )}
+                  </openForm.Field>
+                  <openForm.Field name="path">
+                    {(field) => (
+                      <FormField
+                        field={field}
+                        label="Repository path"
+                        placeholder="/Users/you/dev/project"
+                        required
+                      />
+                    )}
+                  </openForm.Field>
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    disabled={loading}
+                    className="w-full"
+                  >
+                    {loading ? "Opening…" : "Open repo"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        </details>
 
         {error && (
           <Alert variant="destructive">

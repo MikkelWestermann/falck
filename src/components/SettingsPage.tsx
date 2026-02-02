@@ -11,6 +11,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { OpenCodeSettingsPanel } from "@/components/OpenCodeSettings";
+import { falckService } from "@/services/falckService";
+import {
+  GithubDeviceResponse,
+  GithubUser,
+  githubService,
+} from "@/services/githubService";
 import { settingsService } from "@/services/settingsService";
 import { SSHKey } from "@/services/sshService";
 
@@ -29,6 +35,14 @@ export function SettingsPage({
   const [repoDirLoading, setRepoDirLoading] = useState(true);
   const [repoDirError, setRepoDirError] = useState<string | null>(null);
   const [repoDirSaving, setRepoDirSaving] = useState(false);
+  const [githubConnected, setGithubConnected] = useState(false);
+  const [githubUser, setGithubUser] = useState<GithubUser | null>(null);
+  const [githubDevice, setGithubDevice] = useState<GithubDeviceResponse | null>(
+    null,
+  );
+  const [githubWorking, setGithubWorking] = useState(false);
+  const [githubChecking, setGithubChecking] = useState(true);
+  const [githubError, setGithubError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -54,6 +68,95 @@ export function SettingsPage({
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    setGithubChecking(true);
+    githubService
+      .hasToken()
+      .then((hasToken) => {
+        if (!active) {
+          return;
+        }
+        setGithubConnected(hasToken);
+        if (hasToken) {
+          githubService
+            .getUser()
+            .then((user) => {
+              if (active) {
+                setGithubUser(user);
+              }
+            })
+            .catch(() => {
+              if (active) {
+                setGithubUser(null);
+              }
+            });
+        }
+      })
+      .catch((err) => {
+        if (!active) {
+          return;
+        }
+        setGithubConnected(false);
+        setGithubError(`GitHub auth unavailable: ${String(err)}`);
+      })
+      .finally(() => {
+        if (active) {
+          setGithubChecking(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleGithubConnect = async () => {
+    setGithubError(null);
+    setGithubWorking(true);
+    try {
+      const device = await githubService.startDeviceFlow();
+      setGithubDevice(device);
+      await falckService.openInBrowser(
+        device.verification_uri_complete ?? device.verification_uri,
+      );
+      await githubService.pollDeviceToken(
+        device.device_code,
+        device.interval,
+        device.expires_in,
+      );
+      setGithubConnected(true);
+      setGithubDevice(null);
+      try {
+        const user = await githubService.getUser();
+        setGithubUser(user);
+      } catch {
+        setGithubUser(null);
+      }
+    } catch (err) {
+      setGithubConnected(false);
+      setGithubDevice(null);
+      setGithubError(`GitHub login failed: ${String(err)}`);
+    } finally {
+      setGithubWorking(false);
+    }
+  };
+
+  const handleGithubDisconnect = async () => {
+    setGithubError(null);
+    setGithubWorking(true);
+    try {
+      await githubService.clearToken();
+      setGithubConnected(false);
+      setGithubUser(null);
+      setGithubDevice(null);
+    } catch (err) {
+      setGithubError(`Failed to disconnect: ${String(err)}`);
+    } finally {
+      setGithubWorking(false);
+    }
+  };
 
   const handlePickRepoDir = async () => {
     setRepoDirError(null);
@@ -91,7 +194,7 @@ export function SettingsPage({
                 Settings
               </p>
               <p className="text-sm text-muted-foreground">
-                Manage SSH keys and AI providers.
+                Manage GitHub, SSH keys, and AI providers.
               </p>
             </div>
             <div data-tauri-drag-region="false">
@@ -129,6 +232,82 @@ export function SettingsPage({
             {repoDirError && (
               <Alert variant="destructive">
                 <AlertDescription>{repoDirError}</AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>GitHub integration</CardTitle>
+            <CardDescription>
+              Connect once to upload SSH keys and list repositories.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {githubConnected ? (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-muted-foreground">
+                  Connected as{" "}
+                  <span className="font-semibold text-foreground">
+                    {githubUser?.login ?? "GitHub user"}
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => void handleGithubDisconnect()}
+                  disabled={githubWorking}
+                >
+                  Disconnect
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="text-sm text-muted-foreground">
+                  Sign in to let Falck add SSH keys and list your repositories.
+                </div>
+                {githubDevice && (
+                  <Alert>
+                    <AlertDescription>
+                      Visit{" "}
+                      <span className="font-semibold">
+                        {githubDevice.verification_uri}
+                      </span>{" "}
+                      and enter code{" "}
+                      <span className="font-mono font-semibold">
+                        {githubDevice.user_code}
+                      </span>
+                      .
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => void handleGithubConnect()}
+                    disabled={githubWorking || githubChecking}
+                  >
+                    {githubWorking ? "Connecting…" : "Connect GitHub"}
+                  </Button>
+                  {githubDevice && (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        void falckService.openInBrowser(
+                          githubDevice.verification_uri_complete ??
+                            githubDevice.verification_uri,
+                        )
+                      }
+                    >
+                      Open GitHub
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {githubError && (
+              <Alert variant="destructive">
+                <AlertDescription>{githubError}</AlertDescription>
               </Alert>
             )}
           </CardContent>
