@@ -20,9 +20,7 @@ export const openRepoSchema = z.object({
 });
 
 export const commitSchema = z.object({
-  message: z.string().min(1, "Save note is required"),
-  author: z.string().min(1, "Your name is required"),
-  email: z.string().email("A valid email is required"),
+  message: z.string().min(1, "Please describe what you changed"),
 });
 
 export const createBranchSchema = z.object({

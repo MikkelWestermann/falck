@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -11,8 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { commitSchema } from "@/schemas/forms";
 import { FileStatus, gitService } from "@/services/gitService";
@@ -32,8 +35,8 @@ const statusLabel: Record<FileStatus["status"], string> = {
   added: "Added",
   deleted: "Deleted",
   renamed: "Renamed",
-  untracked: "Untracked",
-  unknown: "Unknown",
+  untracked: "New",
+  unknown: "Changed",
 };
 
 const statusVariant: Record<
@@ -60,24 +63,19 @@ export function SaveChangesDialog({
   const [files, setFiles] = useState<FileStatus[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [commitMessage, setCommitMessage] = useState("");
-  const [author, setAuthor] = useState("Your Name");
-  const [email, setEmail] = useState("you@example.com");
   const [remotes, setRemotes] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showFiles, setShowFiles] = useState(false);
 
-  const pushTarget = useMemo(() => {
-    if (remotes.length === 0) {
-      return null;
-    }
-    if (remotes.includes("origin")) {
-      return "origin";
-    }
-    return remotes[0];
-  }, [remotes]);
+  const pushTarget =
+    remotes.length === 0
+      ? null
+      : remotes.includes("origin")
+        ? "origin"
+        : remotes[0];
 
-  const saveBlocked =
-    protectDefaultBranch && defaultBranch === currentBranch;
+  const saveBlocked = protectDefaultBranch && defaultBranch === currentBranch;
 
   const loadStatus = async () => {
     try {
@@ -105,6 +103,7 @@ export function SaveChangesDialog({
       return;
     }
     setCommitMessage("");
+    setShowFiles(false);
     void loadStatus();
     void loadRemotes();
   }, [open, repoPath]);
@@ -130,11 +129,16 @@ export function SaveChangesDialog({
   };
 
   const handleSave = async () => {
-    const details = {
+    const validation = commitSchema.safeParse({
       message: commitMessage.trim(),
-      author: author.trim(),
-      email: email.trim(),
-    };
+    });
+    if (!validation.success) {
+      setError(
+        validation.error.issues[0]?.message ??
+          "Please describe what you changed.",
+      );
+      return;
+    }
 
     if (saveBlocked) {
       setError(
@@ -143,16 +147,8 @@ export function SaveChangesDialog({
       return;
     }
 
-    const validation = commitSchema.safeParse(details);
-    if (!validation.success) {
-      setError(
-        validation.error.issues[0]?.message ?? "Invalid save details.",
-      );
-      return;
-    }
-
     if (selectedFiles.size === 0) {
-      setError("Select at least one file to save.");
+      setError("Select at least one change to include.");
       return;
     }
 
@@ -169,12 +165,7 @@ export function SaveChangesDialog({
           await gitService.stageFile(repoPath, file.path);
         }
       }
-      await gitService.createCommit(
-        repoPath,
-        details.message,
-        details.author,
-        details.email,
-      );
+      await gitService.createCommit(repoPath, validation.data.message, "", "");
       await gitService.push(repoPath, pushTarget, currentBranch);
       onSaved();
       onOpenChange(false);
@@ -198,39 +189,65 @@ export function SaveChangesDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Save changes</DialogTitle>
-          <DialogDescription>
-            Choose what to save, add a note, and share it.
+      <DialogContent className="max-w-lg gap-0 border-0 bg-background/95 p-0 shadow-xl backdrop-blur sm:rounded-2xl">
+        <DialogHeader className="space-y-1.5 px-6 pt-6">
+          <DialogTitle className="text-xl font-semibold tracking-tight">
+            Save your changes
+          </DialogTitle>
+          <DialogDescription className="text-base text-muted-foreground">
+            Add a short note so you remember what you did.
           </DialogDescription>
         </DialogHeader>
 
         {saveBlocked && (
-          <Alert variant="destructive">
+          <Alert variant="destructive" className="mx-6 mt-4">
             <AlertDescription>
-              Saving is disabled on the default project. Switch to another project to save.
+              Saving is disabled on the default project. Switch to another
+              project to save.
             </AlertDescription>
           </Alert>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <Label className="text-xs text-muted-foreground">
-                  Files to save
-                </Label>
-                <div className="text-sm font-semibold text-foreground">
-                  {selectedCount} of {totalCount} selected
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
+        <div className="px-6 pt-5">
+          <label
+            htmlFor="save-message"
+            className="text-sm font-medium text-foreground"
+          >
+            What did you change?
+          </label>
+          <Textarea
+            id="save-message"
+            value={commitMessage}
+            onChange={(e) => setCommitMessage(e.target.value)}
+            placeholder="e.g. Fixed the login button, updated the readme"
+            className="mt-2 min-h-[88px] resize-none rounded-xl border-2 border-input bg-muted/30 text-base placeholder:text-muted-foreground focus-visible:ring-2"
+            autoFocus
+          />
+        </div>
+
+        {hasChanges && (
+          <Collapsible
+            open={showFiles}
+            onOpenChange={setShowFiles}
+            className="mt-4 px-6"
+          >
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="-ml-2 h-auto px-2 py-1.5 text-muted-foreground hover:text-foreground"
+              >
+                {showFiles ? "Hide" : "Choose what to include"} ({selectedCount}{" "}
+                of {totalCount} selected)
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleSelectAll}
-                  disabled={!hasChanges}
+                  className="h-8 text-xs"
                 >
                   Select all
                 </Button>
@@ -238,118 +255,66 @@ export function SaveChangesDialog({
                   variant="outline"
                   size="sm"
                   onClick={handleClearAll}
-                  disabled={!hasChanges}
+                  className="h-8 text-xs"
                 >
                   Clear
                 </Button>
               </div>
-            </div>
-
-            {!hasChanges ? (
-              <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
-                No changes to save.
-              </div>
-            ) : (
-              <div className="max-h-72 space-y-2 overflow-y-auto pr-2">
+              <div className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border/80 bg-muted/20 p-2">
                 {files.map((file) => (
                   <label
                     key={file.path}
-                    className="flex cursor-pointer items-center gap-3 rounded-lg border-2 border-border bg-card/80 px-3 py-2 shadow-[var(--shadow-xs)] transition hover:bg-secondary/20"
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted/50"
                   >
                     <input
                       type="checkbox"
                       checked={selectedFiles.has(file.path)}
                       onChange={() => toggleFile(file.path)}
-                      className="h-4 w-4 rounded border-2 border-border text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="h-3.5 w-3.5 rounded border-2 border-muted-foreground/50 text-primary focus-visible:ring-2 focus-visible:ring-ring"
                     />
-                    <Badge variant={statusVariant[file.status]}>
+                    <Badge
+                      variant={statusVariant[file.status]}
+                      className="shrink-0 text-[10px] font-medium"
+                    >
                       {statusLabel[file.status]}
                     </Badge>
-                    <span className="truncate text-sm font-mono text-foreground/80">
+                    <span className="truncate text-muted-foreground">
                       {file.path}
                     </span>
                   </label>
                 ))}
               </div>
-            )}
-          </div>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
 
-          <div className="space-y-4">
-            <div className="rounded-lg border-2 border-border bg-secondary/10 p-4 shadow-[var(--shadow-xs)]">
-                <Label
-                  htmlFor="commit-message"
-                  className="text-xs text-muted-foreground"
-                >
-                Save note
-                </Label>
-              <Textarea
-                id="commit-message"
-                value={commitMessage}
-                onChange={(event) => setCommitMessage(event.target.value)}
-                placeholder="Describe what changed"
-                className="mt-2 min-h-[120px]"
-              />
-            </div>
-
-            <div className="rounded-lg border-2 border-border bg-card/80 p-4 shadow-[var(--shadow-xs)]">
-              <Label className="text-xs text-muted-foreground">
-                Saved by
-              </Label>
-              <div className="mt-3 space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="commit-author">Your name</Label>
-                  <Input
-                    id="commit-author"
-                    value={author}
-                    onChange={(event) => setAuthor(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="commit-email">Your email</Label>
-                  <Input
-                    id="commit-email"
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-lg border-2 border-border bg-secondary/15 p-4 shadow-[var(--shadow-xs)]">
-              <Label className="text-xs text-muted-foreground">
-                Save destination
-              </Label>
-              <div className="mt-2 text-sm font-semibold text-foreground">
-                {pushTarget
-                  ? `${pushTarget}/${currentBranch}`
-                  : "No sync destination configured"}
-              </div>
-              {!pushTarget && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Connect a sync destination before saving.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+        {!hasChanges && (
+          <p className="px-6 pt-2 text-sm text-muted-foreground">
+            No changes to save.
+          </p>
+        )}
 
         {error && (
-          <Alert variant="destructive">
+          <Alert variant="destructive" className="mx-6 mt-4">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
-        <DialogFooter className="gap-2">
+        <DialogFooter className="mt-6 flex-row gap-2 border-t bg-muted/20 px-6 py-4 sm:justify-end sm:rounded-b-2xl">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={loading}
+            className="rounded-xl"
           >
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={!canSave}>
-            {loading ? "Saving..." : "Save"}
+          <Button
+            onClick={handleSave}
+            disabled={!canSave}
+            className="rounded-xl"
+          >
+            {loading ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>

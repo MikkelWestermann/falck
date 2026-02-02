@@ -313,6 +313,22 @@ pub fn discard_changes(path: &str) -> GitResult<()> {
     Ok(())
 }
 
+fn get_git_user_config(path: &str) -> (String, String) {
+    let name = open_repository(path)
+        .ok()
+        .and_then(|repo| repo.config().ok())
+        .and_then(|cfg| cfg.get_string("user.name").ok())
+        .or_else(|| git2::Config::open_default().ok().and_then(|c| c.get_string("user.name").ok()))
+        .unwrap_or_else(|| "User".to_string());
+    let email = open_repository(path)
+        .ok()
+        .and_then(|repo| repo.config().ok())
+        .and_then(|cfg| cfg.get_string("user.email").ok())
+        .or_else(|| git2::Config::open_default().ok().and_then(|c| c.get_string("user.email").ok()))
+        .unwrap_or_else(|| "user@local".to_string());
+    (name, email)
+}
+
 pub fn create_commit(
     path: &str,
     message: &str,
@@ -321,7 +337,13 @@ pub fn create_commit(
 ) -> GitResult<String> {
     let repo = open_repository(path)?;
 
-    let signature = Signature::now(author_name, author_email)?;
+    let (name, email) = if author_name.trim().is_empty() || author_email.trim().is_empty() {
+        get_git_user_config(path)
+    } else {
+        (author_name.to_string(), author_email.to_string())
+    };
+
+    let signature = Signature::now(&name, &email)?;
     let tree_id = {
         let mut index = repo.index()?;
         index.write_tree()?

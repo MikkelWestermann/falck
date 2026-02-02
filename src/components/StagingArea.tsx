@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useForm } from "@tanstack/react-form";
 
-import { FormField, FormTextarea } from "@/components/form/FormField";
+import { FormTextarea } from "@/components/form/FormField";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,13 +29,13 @@ const statusLabel: Record<FileStatus["status"], string> = {
   unknown: "Unknown",
 };
 
-const statusVariant: Record<FileStatus["status"], "default" | "secondary" | "destructive" | "outline" | "muted"> = {
+const statusVariant: Record<FileStatus["status"], "default" | "secondary" | "destructive" | "outline"> = {
   modified: "secondary",
   added: "default",
   deleted: "destructive",
   renamed: "secondary",
   untracked: "outline",
-  unknown: "muted",
+  unknown: "secondary",
 };
 
 export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
@@ -67,8 +67,6 @@ export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
 
   const commitForm = useForm({
     defaultValues: {
-      author: "Your Name",
-      email: "you@example.com",
       message: "",
     },
     validators: {
@@ -82,7 +80,7 @@ export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
       setLoading(true);
       setError(null);
       try {
-        await gitService.createCommit(repoPath, value.message, value.author, value.email);
+        await gitService.createCommit(repoPath, value.message, "", "");
         commitForm.reset();
         await loadStatus();
         onCommit();
@@ -142,22 +140,12 @@ export function StagingArea({ repoPath, onCommit }: StagingAreaProps) {
           className="space-y-4 rounded-lg border-2 border-dashed border-border/70 bg-secondary/20 p-4 shadow-[var(--shadow-xs)]"
         >
           <h3 className="text-base font-semibold">Save this version</h3>
-          <commitForm.Field name="author">
-            {(field) => (
-              <FormField field={field} label="Your name" required />
-            )}
-          </commitForm.Field>
-          <commitForm.Field name="email">
-            {(field) => (
-              <FormField field={field} label="Your email" type="email" required />
-            )}
-          </commitForm.Field>
           <commitForm.Field name="message">
             {(field) => (
               <FormTextarea
                 field={field}
-                label="Save note"
-                placeholder="Summarize what changed"
+                label="What did you change?"
+                placeholder="e.g. Fixed the login button, updated the readme"
                 required
               />
             )}
