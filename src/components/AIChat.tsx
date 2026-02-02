@@ -1123,18 +1123,14 @@ export function AIChat({ repoPath }: AIChatProps) {
   return (
     <>
       <div className="relative flex h-[min(72vh,720px)] min-h-[420px] flex-col mt-4">
-        <div className="flex flex-wrap items-start justify-end border-b border-border/60 bg-white/70 px-6 py-2 backdrop-blur">
+        <div className="flex flex-wrap items-start justify-end border-b border-border/60 px-6 py-2 backdrop-blur">
           <div className="flex flex-wrap items-center gap-2">
             <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
               <DialogTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 rounded-full border-border/60 bg-white/80 px-3 text-xs font-semibold shadow-[var(--shadow-xs)]"
-                >
+                <Button variant="outline" size="sm">
                   <HistoryIcon className="size-4" />
                   <Badge
-                    variant="secondary"
+                    variant="outline"
                     className="rounded-full px-2 py-0 text-[0.6rem]"
                   >
                     {sessions.length}
@@ -1338,6 +1334,7 @@ export function AIChat({ repoPath }: AIChatProps) {
                       <PromptInputTextarea
                         rows={3}
                         value={inputMessage}
+                        className="bg-background"
                         onChange={(event) =>
                           setInputMessage(event.target.value)
                         }

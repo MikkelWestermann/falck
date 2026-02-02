@@ -20,7 +20,7 @@ function RootGate() {
 
   if (!sshReady) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+      <div className="flex min-h-screen items-center justify-center bg-page-background text-sm text-muted-foreground">
         Loading SSH configuration...
       </div>
     );
@@ -36,7 +36,7 @@ function RootGate() {
 
 function NotFound() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+    <div className="flex min-h-screen items-center justify-center bg-page-background text-sm text-muted-foreground">
       404 - Page not found
     </div>
   );

@@ -292,7 +292,7 @@ function OverviewRoute() {
 
   if (!repoInfo) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+      <div className="flex min-h-screen items-center justify-center bg-page-background text-sm text-muted-foreground">
         Loading repository...
       </div>
     );
@@ -308,8 +308,8 @@ function OverviewRoute() {
       .pop() ?? "Repository";
 
   return (
-    <div className="relative min-h-screen bg-background text-foreground">
-      <header className="relative z-10 bg-card/80 backdrop-blur">
+    <div className="relative min-h-screen text-foreground">
+      <header className="relative z-10 backdrop-blur">
         <div className="mx-auto w-full max-w-7xl px-6 pb-4">
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

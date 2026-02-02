@@ -215,7 +215,7 @@ export function SettingsPage({
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-50/70 text-foreground dark:bg-slate-950">
+    <div className="relative min-h-screen overflow-hidden bg-page-background text-foreground">
       <div className="relative mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10 lg:py-14">
         <header
           className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between animate-in fade-in slide-in-from-bottom-4"

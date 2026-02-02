@@ -8,6 +8,7 @@
   :root {
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
+    --page-background: 214 32% 97%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
@@ -63,6 +64,7 @@
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
+    --page-background: 222.2 84% 4.9%;
     --card: 222.2 84% 4.9%;
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
@@ -116,6 +118,7 @@
   @theme inline {
     --color-background: var(--background);
     --color-foreground: var(--foreground);
+    --color-page-background: var(--page-background);
     --color-card: var(--card);
     --color-card-foreground: var(--card-foreground);
     --color-popover: var(--popover);
@@ -171,7 +174,7 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased font-sans;
+    @apply bg-[hsl(var(--page-background))] text-foreground antialiased font-sans;
     min-height: 100vh;
   }
 
@@ -196,6 +199,6 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-[hsl(var(--page-background))] text-foreground;
   }
 }

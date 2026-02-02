@@ -346,7 +346,7 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
 
       {activeApp ? (
         <div className="space-y-4">
-          <div className="border px-2 py-1 rounded">
+          <div className="border px-2 py-1 rounded bg-background">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap items-center gap-1">
                 {appOptions.length > 1 ? (
