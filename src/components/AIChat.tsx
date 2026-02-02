@@ -17,8 +17,6 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import { Loader } from "@/components/ai-elements/loader";
-import { Shimmer } from "@/components/ai-elements/shimmer";
-import { getStatusBadge, type ToolPart } from "@/components/ai-elements/tool";
 import {
   ModelSelector,
   ModelSelectorContent,
@@ -110,11 +108,6 @@ type StatusMeta = {
   badgeVariant: "default" | "secondary" | "destructive" | "outline";
   isActive: boolean;
   icon: ReactElement;
-};
-
-type ConnectionMeta = {
-  label: string;
-  variant: "secondary" | "destructive" | "outline";
 };
 
 type SessionStatus =
@@ -431,24 +424,6 @@ export function AIChat({ repoPath }: AIChatProps) {
   const hasActiveWork =
     statusMeta.isActive || (connectionState === "error" && currentSession);
   const activityLabel = statusMeta.label;
-
-  const connectionMeta = useMemo<ConnectionMeta>(() => {
-    switch (connectionState) {
-      case "connected":
-        return { label: "Connected", variant: "secondary" as const };
-      case "error":
-        return { label: "Disconnected", variant: "destructive" as const };
-      case "connecting":
-      default:
-        return { label: "Connecting", variant: "outline" as const };
-    }
-  }, [connectionState]);
-
-  const showStatusCard =
-    Boolean(currentSession) &&
-    (statusMeta.isActive ||
-      Boolean(lastAssistantCompletion) ||
-      connectionState === "error");
 
   useEffect(() => {
     void initializeOpenCode();
@@ -1148,23 +1123,7 @@ export function AIChat({ repoPath }: AIChatProps) {
   return (
     <>
       <div className="relative flex h-[min(72vh,720px)] min-h-[420px] flex-col mt-4">
-        <div className="flex flex-wrap items-start justify-between border-b border-border/60 bg-white/70 px-6 py-2 backdrop-blur">
-          <div>
-            <div className="text-sm font-semibold text-foreground">
-              {currentSession ? currentSession.name : "Start a new session"}
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>Repository: {repoPath}</span>
-              {selectedModel && (
-                <Badge
-                  variant="secondary"
-                  className="rounded-full px-2 py-0 font-mono text-[0.65rem]"
-                >
-                  {selectedModel}
-                </Badge>
-              )}
-            </div>
-          </div>
+        <div className="flex flex-wrap items-start justify-end border-b border-border/60 bg-white/70 px-6 py-2 backdrop-blur">
           <div className="flex flex-wrap items-center gap-2">
             <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
               <DialogTrigger asChild>
@@ -1182,7 +1141,7 @@ export function AIChat({ repoPath }: AIChatProps) {
                   </Badge>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl border border-border/60 bg-gradient-to-br from-white via-[#fbf7f2] to-[#f6efe7] p-0">
+              <DialogContent>
                 <DialogHeader className="border-b border-border/60 px-6 py-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -1373,68 +1332,6 @@ export function AIChat({ repoPath }: AIChatProps) {
                     </AIMessage>
                   ))
                 )}
-                {showStatusCard && (
-                  <AIMessage from="assistant" className="max-w-[88%] gap-3">
-                    <MessageContent className="rounded-2xl border border-border/60 bg-gradient-to-br from-white via-[#fbf7f2] to-[#f6efe7] px-5 py-4 shadow-[var(--shadow-xs)]">
-                      <div className="flex flex-col gap-4">
-                        <div className="flex flex-wrap items-center gap-2 text-[0.6rem] uppercase tracking-[0.3em] text-muted-foreground">
-                          <span>Falck AI status</span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge
-                            variant="secondary"
-                            className="rounded-full px-2 py-0 text-[0.6rem] uppercase tracking-[0.2em]"
-                          >
-                            OpenCode
-                          </Badge>
-                          <Badge
-                            variant={connectionMeta.variant}
-                            className="rounded-full px-2 py-0 text-[0.6rem]"
-                          >
-                            {connectionMeta.label}
-                          </Badge>
-                          <Badge
-                            variant={statusMeta.badgeVariant}
-                            className="rounded-full px-2 py-0 text-[0.6rem]"
-                          >
-                            {statusMeta.label}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                          {statusMeta.icon}
-                          {statusMeta.isActive ? (
-                            <Shimmer duration={1.2}>{statusMeta.title}</Shimmer>
-                          ) : (
-                            <span>{statusMeta.title}</span>
-                          )}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {statusMeta.description}
-                        </div>
-                        {toolActivity.length > 0 && (
-                          <div className="flex flex-wrap gap-2 text-[0.65rem] text-muted-foreground">
-                            {toolActivity.map((tool) => {
-                              const name = tool.name || "Tool";
-                              return (
-                                <div
-                                  key={tool.id}
-                                  className="flex items-center gap-2 rounded-full border border-border/60 bg-white/70 px-2 py-1"
-                                >
-                                  <span className="font-semibold text-foreground">
-                                    {name}
-                                  </span>
-                                  {getStatusBadge(
-                                    tool.state as ToolPart["state"],
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </MessageContent>
-                  </AIMessage>
-                )}
               </div>
 
               <div>
@@ -1473,11 +1370,12 @@ export function AIChat({ repoPath }: AIChatProps) {
                           </span>
                           {hasActiveWork && (
                             <>
-                              <span className="text-muted-foreground/60">
-                                •
-                              </span>
-                              <span className="inline-flex items-center gap-1 text-amber-700">
-                                <span className="inline-flex size-1.5 rounded-full bg-amber-500/80 animate-pulse" />
+                              <span
+                                className="inline-flex items-center gap-1.5 text-[0.65rem] text-muted-foreground/80 animate-pulse"
+                                aria-live="polite"
+                                aria-busy="true"
+                              >
+                                <span className="inline-block size-1 shrink-0 rounded-full bg-muted-foreground/50" />
                                 <span>{activityLabel}</span>
                               </span>
                             </>
