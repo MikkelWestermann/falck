@@ -152,6 +152,13 @@ pub fn save_repo<R: Runtime>(
     Ok(())
 }
 
+pub fn remove_repo<R: Runtime>(app: &AppHandle<R>, path: &str) -> Result<(), String> {
+    let conn = open_db(app)?;
+    conn.execute("DELETE FROM repos WHERE path = ?1", params![path])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn list_repos<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<SavedRepo>, String> {
     let conn = open_db(app)?;
     let mut stmt = conn

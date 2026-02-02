@@ -15,7 +15,9 @@ use opencode::{
     check_command_exists, check_opencode_installed, install_opencode, opencode_send,
     OpencodeState,
 };
-use storage::{get_default_repo_dir, list_repos, save_repo, set_default_repo_dir, SavedRepo};
+use storage::{
+    get_default_repo_dir, list_repos, remove_repo, save_repo, set_default_repo_dir, SavedRepo,
+};
 use reqwest::Client;
 
 // ============================================================================
@@ -147,6 +149,11 @@ fn list_repo_entries(app: tauri::AppHandle) -> Result<Vec<SavedRepo>, String> {
 }
 
 #[tauri::command]
+fn remove_repo_entry(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    remove_repo(&app, &path)
+}
+
+#[tauri::command]
 fn get_default_repo_directory(app: tauri::AppHandle) -> Result<String, String> {
     get_default_repo_dir(&app)
 }
@@ -180,6 +187,7 @@ pub fn run() {
             get_remotes,
             save_repo_entry,
             list_repo_entries,
+            remove_repo_entry,
             get_default_repo_directory,
             set_default_repo_directory,
             opencode_send,

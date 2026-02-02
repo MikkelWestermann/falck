@@ -234,6 +234,7 @@ export function OpenCodeManager({
             <Button
               onClick={handleInstall}
               disabled={isInstalling || isChecking}
+              className="normal-case tracking-normal"
             >
               {isInstalling ? "Installing..." : "Install OpenCode"}
             </Button>
@@ -241,12 +242,13 @@ export function OpenCodeManager({
               variant="outline"
               onClick={handleManualInstall}
               disabled={isInstalling}
+              className="normal-case tracking-normal"
             >
               Manual install
             </Button>
             <Button
               variant="ghost"
-              className="sm:col-span-2"
+              className="sm:col-span-2 normal-case tracking-normal"
               onClick={handleCheckAgain}
               disabled={isChecking || isInstalling}
             >
@@ -256,7 +258,7 @@ export function OpenCodeManager({
 
           <Button
             variant="ghost"
-            className="w-full"
+            className="w-full normal-case tracking-normal"
             onClick={handleRemindLater}
           >
             Remind me later
@@ -267,7 +269,11 @@ export function OpenCodeManager({
   );
 }
 
-export function OpenCodeInstallPanel() {
+interface OpenCodeInstallPanelProps {
+  className?: string;
+}
+
+export function OpenCodeInstallPanel({ className }: OpenCodeInstallPanelProps) {
   const {
     status,
     isChecking,
@@ -321,14 +327,14 @@ export function OpenCodeInstallPanel() {
       : "Install OpenCode";
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className={className}>
+      <CardHeader className="border-b border-border/60 pb-5">
         <CardTitle>OpenCode dependency</CardTitle>
         <CardDescription>
           OpenCode is required for the AI features in Falck.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 pt-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
             <div className="text-sm font-semibold">Status</div>
@@ -359,6 +365,7 @@ export function OpenCodeInstallPanel() {
           <Button
             onClick={primaryAction}
             disabled={isChecking || isInstalling}
+            className="normal-case tracking-normal"
           >
             {primaryLabel}
           </Button>
@@ -366,6 +373,7 @@ export function OpenCodeInstallPanel() {
             variant="outline"
             onClick={handleManualInstall}
             disabled={isInstalling}
+            className="normal-case tracking-normal"
           >
             Manual install
           </Button>
@@ -374,6 +382,7 @@ export function OpenCodeInstallPanel() {
               variant="ghost"
               onClick={handleCheckAgain}
               disabled={isChecking || isInstalling}
+              className="normal-case tracking-normal"
             >
               {isChecking ? "Checking..." : "Check again"}
             </Button>

@@ -125,7 +125,11 @@ const OpenCodeSettingsContent = ({ active }: OpenCodeSettingsContentProps) => {
           )}
         </form.Field>
 
-        <Button type="submit" disabled={loading} className="w-full">
+        <Button
+          type="submit"
+          disabled={loading}
+          className="w-full normal-case tracking-normal"
+        >
           {loading ? "Saving…" : "Save key"}
         </Button>
       </form>
@@ -165,14 +169,18 @@ const OpenCodeSettingsContent = ({ active }: OpenCodeSettingsContentProps) => {
   );
 };
 
-export function OpenCodeSettingsPanel() {
+interface OpenCodeSettingsPanelProps {
+  className?: string;
+}
+
+export function OpenCodeSettingsPanel({ className }: OpenCodeSettingsPanelProps) {
   return (
-    <Card>
-      <CardHeader>
+    <Card className={className}>
+      <CardHeader className="border-b border-border/60 pb-5">
         <CardTitle>OpenCode settings</CardTitle>
         <CardDescription>Configure API keys and view models.</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-6">
         <OpenCodeSettingsContent active />
       </CardContent>
     </Card>

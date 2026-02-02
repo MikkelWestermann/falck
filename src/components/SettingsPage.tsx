@@ -20,11 +20,19 @@ import {
 } from "@/services/githubService";
 import { settingsService } from "@/services/settingsService";
 import { SSHKey } from "@/services/sshService";
+import { cn } from "@/lib/utils";
+import { ArrowLeft, Sparkles } from "lucide-react";
 
 interface SettingsPageProps {
   sshKey: SSHKey;
   onManageSSHKey: () => void;
   onClose: () => void;
+}
+
+function Skeleton({ className }: { className?: string }) {
+  return (
+    <div className={cn("animate-pulse rounded-lg bg-muted/60", className)} />
+  );
 }
 
 export function SettingsPage({
@@ -44,6 +52,7 @@ export function SettingsPage({
   const [githubWorking, setGithubWorking] = useState(false);
   const [githubChecking, setGithubChecking] = useState(true);
   const [githubError, setGithubError] = useState<string | null>(null);
+  const [openCodeReady, setOpenCodeReady] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -111,6 +120,26 @@ export function SettingsPage({
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const win = window as Window & {
+      requestIdleCallback?: (
+        cb: () => void,
+        options?: { timeout: number },
+      ) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+
+    if (win.requestIdleCallback) {
+      const id = win.requestIdleCallback(() => setOpenCodeReady(true), {
+        timeout: 1200,
+      });
+      return () => win.cancelIdleCallback?.(id);
+    }
+
+    const id = window.setTimeout(() => setOpenCodeReady(true), 300);
+    return () => window.clearTimeout(id);
   }, []);
 
   const handleGithubConnect = async () => {
@@ -186,155 +215,235 @@ export function SettingsPage({
   };
 
   return (
-    <div className="relative min-h-screen bg-background text-foreground">
-      <header className="relative z-10 border-b-2 border-border/80 bg-card/80 backdrop-blur">
-        <div className="mx-auto w-full max-w-5xl px-6 py-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.4em] text-muted-foreground">
-                Settings
+    <div className="relative min-h-screen overflow-hidden bg-slate-50/70 text-foreground dark:bg-slate-950">
+      <div className="relative mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10 lg:py-14">
+        <header
+          className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between animate-in fade-in slide-in-from-bottom-4"
+          style={{ animationDuration: "600ms" }}
+        >
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <h1 className="text-3xl font-semibold text-foreground">
+                Control center
+              </h1>
+              <p className="max-w-xl text-sm text-muted-foreground">
+                Manage and customize your experience
               </p>
-              <p className="text-sm text-muted-foreground">
-                Manage GitHub, SSH keys, and AI providers.
-              </p>
-            </div>
-            <div data-tauri-drag-region="false">
-              <Button variant="outline" onClick={onClose}>
-                Back
-              </Button>
             </div>
           </div>
-        </div>
-      </header>
+          <div
+            className="flex items-center gap-2"
+            data-tauri-drag-region="false"
+          >
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="normal-case tracking-normal"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+          </div>
+        </header>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Repositories</CardTitle>
-            <CardDescription>Set where new clones are saved.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm">
-                <div className="font-semibold">Default clone folder</div>
-                <div className="text-xs font-mono text-muted-foreground">
-                  {repoDirLoading ? "Loading..." : defaultRepoDir || "Not set"}
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                onClick={handlePickRepoDir}
-                disabled={repoDirLoading || repoDirSaving}
-              >
-                {repoDirSaving ? "Saving..." : "Choose folder"}
-              </Button>
-            </div>
+        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="flex flex-col gap-6">
+            <Card
+              className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4"
+              style={{ animationDuration: "720ms" }}
+            >
+              <CardHeader className="border-b border-border/60 pb-5">
+                <CardTitle className="text-xl">Repositories</CardTitle>
+                <CardDescription>
+                  Set where new clones are saved by default.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-6">
+                {repoDirLoading ? (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-40" />
+                      <Skeleton className="h-3 w-64" />
+                    </div>
+                    <Skeleton className="h-9 w-36" />
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-sm">
+                      <div className="font-semibold">Default clone folder</div>
+                      <div className="text-xs font-mono text-muted-foreground break-all">
+                        {defaultRepoDir || "Not set"}
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={handlePickRepoDir}
+                      disabled={repoDirSaving}
+                      className="normal-case tracking-normal"
+                    >
+                      {repoDirSaving ? "Saving..." : "Choose folder"}
+                    </Button>
+                  </div>
+                )}
 
-            {repoDirError && (
-              <Alert variant="destructive">
-                <AlertDescription>{repoDirError}</AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
+                {repoDirError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{repoDirError}</AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>GitHub integration</CardTitle>
-            <CardDescription>
-              Connect once to upload SSH keys and list repositories.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {githubConnected ? (
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="text-sm text-muted-foreground">
-                  Connected as{" "}
-                  <span className="font-semibold text-foreground">
-                    {githubUser?.login ?? "GitHub user"}
-                  </span>
+            <Card
+              className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4"
+              style={{ animationDuration: "800ms" }}
+            >
+              <CardHeader className="border-b border-border/60 pb-5">
+                <CardTitle className="text-xl">GitHub integration</CardTitle>
+                <CardDescription>
+                  Connect once to upload SSH keys and list repositories.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-6">
+                {githubChecking ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-3 w-64" />
+                    <Skeleton className="h-9 w-32" />
+                  </div>
+                ) : githubConnected ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-sm text-muted-foreground">
+                      Connected as{" "}
+                      <span className="font-semibold text-foreground">
+                        {githubUser?.login ?? "GitHub user"}
+                      </span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => void handleGithubDisconnect()}
+                      disabled={githubWorking}
+                      className="normal-case tracking-normal"
+                    >
+                      Disconnect
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="text-sm text-muted-foreground">
+                      Sign in to let Falck add SSH keys and list your
+                      repositories.
+                    </div>
+                    {githubDevice && (
+                      <Alert>
+                        <AlertDescription>
+                          Visit{" "}
+                          <span className="font-semibold">
+                            {githubDevice.verification_uri}
+                          </span>{" "}
+                          and enter code{" "}
+                          <span className="font-mono font-semibold">
+                            {githubDevice.user_code}
+                          </span>
+                          .
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        onClick={() => void handleGithubConnect()}
+                        disabled={githubWorking || githubChecking}
+                        className="normal-case tracking-normal"
+                      >
+                        {githubWorking ? "Connecting…" : "Connect GitHub"}
+                      </Button>
+                      {githubDevice && (
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            void falckService.openInBrowser(
+                              githubDevice.verification_uri_complete ??
+                                githubDevice.verification_uri,
+                            )
+                          }
+                          className="normal-case tracking-normal"
+                        >
+                          Open GitHub
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {githubError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{githubError}</AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card
+              className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4"
+              style={{ animationDuration: "880ms" }}
+            >
+              <CardHeader className="border-b border-border/60 pb-5">
+                <CardTitle className="text-xl">SSH key</CardTitle>
+                <CardDescription>Used for all Git operations.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm">
+                  <div className="font-semibold">{sshKey.name}</div>
+                  <div className="text-xs font-mono text-muted-foreground">
+                    {sshKey.fingerprint}
+                  </div>
                 </div>
                 <Button
                   variant="outline"
-                  onClick={() => void handleGithubDisconnect()}
-                  disabled={githubWorking}
+                  onClick={onManageSSHKey}
+                  className="normal-case tracking-normal"
                 >
-                  Disconnect
+                  Manage SSH key
                 </Button>
-              </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="flex flex-col gap-6">
+            {openCodeReady ? (
+              <>
+                <OpenCodeInstallPanel className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4" />
+                <OpenCodeSettingsPanel className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4" />
+              </>
             ) : (
-              <div className="space-y-3">
-                <div className="text-sm text-muted-foreground">
-                  Sign in to let Falck add SSH keys and list your repositories.
-                </div>
-                {githubDevice && (
-                  <Alert>
-                    <AlertDescription>
-                      Visit{" "}
-                      <span className="font-semibold">
-                        {githubDevice.verification_uri}
-                      </span>{" "}
-                      and enter code{" "}
-                      <span className="font-mono font-semibold">
-                        {githubDevice.user_code}
-                      </span>
-                      .
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    onClick={() => void handleGithubConnect()}
-                    disabled={githubWorking || githubChecking}
-                  >
-                    {githubWorking ? "Connecting…" : "Connect GitHub"}
-                  </Button>
-                  {githubDevice && (
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        void falckService.openInBrowser(
-                          githubDevice.verification_uri_complete ??
-                            githubDevice.verification_uri,
-                        )
-                      }
-                    >
-                      Open GitHub
-                    </Button>
-                  )}
-                </div>
-              </div>
+              <>
+                <Card className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+                  <CardHeader className="border-b border-border/60 pb-5">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-56" />
+                  </CardHeader>
+                  <CardContent className="space-y-4 pt-6">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-9 w-36" />
+                  </CardContent>
+                </Card>
+                <Card className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+                  <CardHeader className="border-b border-border/60 pb-5">
+                    <Skeleton className="h-4 w-44" />
+                    <Skeleton className="h-3 w-52" />
+                  </CardHeader>
+                  <CardContent className="space-y-3 pt-6">
+                    <Skeleton className="h-9 w-full" />
+                    <Skeleton className="h-9 w-full" />
+                    <Skeleton className="h-9 w-40" />
+                  </CardContent>
+                </Card>
+              </>
             )}
-
-            {githubError && (
-              <Alert variant="destructive">
-                <AlertDescription>{githubError}</AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>SSH key</CardTitle>
-            <CardDescription>Used for all Git operations.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm">
-              <div className="font-semibold">{sshKey.name}</div>
-              <div className="text-xs font-mono text-muted-foreground">
-                {sshKey.fingerprint}
-              </div>
-            </div>
-            <Button variant="outline" onClick={onManageSSHKey}>
-              Manage SSH key
-            </Button>
-          </CardContent>
-        </Card>
-
-        <OpenCodeInstallPanel />
-        <OpenCodeSettingsPanel />
-      </main>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

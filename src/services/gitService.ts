@@ -136,4 +136,8 @@ export const gitService = {
   async listSavedRepos(): Promise<SavedRepo[]> {
     return invoke("list_repo_entries");
   },
+
+  async removeSavedRepo(path: string): Promise<void> {
+    return invoke("remove_repo_entry", { path });
+  },
 };
