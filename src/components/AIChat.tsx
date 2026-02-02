@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ChatStatus } from "ai";
 import {
+  AlertTriangleIcon,
+  CheckCircleIcon,
   ChevronDownIcon,
   ClockIcon,
   HistoryIcon,
@@ -14,6 +16,9 @@ import {
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
+import { Loader } from "@/components/ai-elements/loader";
+import { Shimmer } from "@/components/ai-elements/shimmer";
+import { getStatusBadge, type ToolPart } from "@/components/ai-elements/tool";
 import {
   ModelSelector,
   ModelSelectorContent,
@@ -83,6 +88,48 @@ type ToolActivity = {
   state: string;
 };
 
+type ConnectionState = "connecting" | "connected" | "error";
+
+type ActivityPhase =
+  | "idle"
+  | "connecting"
+  | "disconnected"
+  | "creating-session"
+  | "loading-session"
+  | "queued"
+  | "processing"
+  | "streaming"
+  | "running-tools"
+  | "awaiting-approval"
+  | "retrying"
+  | "complete";
+
+type StatusMeta = {
+  label: string;
+  title: string;
+  description: string;
+  badgeVariant: "default" | "secondary" | "destructive" | "outline";
+  isActive: boolean;
+  icon: ReactElement;
+};
+
+type ConnectionMeta = {
+  label: string;
+  variant: "secondary" | "destructive" | "outline";
+};
+
+type SessionStatus =
+  | { type: "idle" }
+  | { type: "busy" }
+  | { type: "retry"; attempt: number; message: string; next: number };
+
+const formatStatusTime = (value: string) =>
+  new Date(value).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
 export function AIChat({ repoPath }: AIChatProps) {
   const MODEL_STORAGE_KEY = "falck.opencode.model";
   const [sessions, setSessions] = useState<AISession[]>([]);
@@ -100,6 +147,14 @@ export function AIChat({ repoPath }: AIChatProps) {
   const [error, setError] = useState("");
   const [initializing, setInitializing] = useState(true);
   const [toolActivity, setToolActivity] = useState<ToolActivity[]>([]);
+  const [connectionState, setConnectionState] =
+    useState<ConnectionState>("connecting");
+  const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
+  const [awaitingResponse, setAwaitingResponse] = useState(false);
+  const [lastEventAt, setLastEventAt] = useState<string | null>(null);
+  const [lastAssistantCompletion, setLastAssistantCompletion] = useState<
+    string | null
+  >(null);
   const partsByMessage = useRef<Map<string, Map<string, PartSnapshot>>>(new Map());
   const roleByMessage = useRef<Map<string, "user" | "assistant">>(new Map());
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -148,59 +203,252 @@ export function AIChat({ repoPath }: AIChatProps) {
     [messages],
   );
 
-  const hasActiveWork =
-    sending ||
-    streaming ||
-    toolActivity.length > 0 ||
-    loadingSession ||
-    creatingSession;
+  const hasPendingUserMessage = useMemo(
+    () => messages.some((msg) => msg.role === "user" && msg.pending),
+    [messages],
+  );
 
-  const activityLabel = useMemo(() => {
+  const awaitingApproval = useMemo(
+    () => toolActivity.some((tool) => tool.state === "approval-requested"),
+    [toolActivity],
+  );
+
+  const activityPhase: ActivityPhase = useMemo(() => {
     if (creatingSession) {
-      return "Creating session...";
+      return "creating-session";
     }
     if (loadingSession) {
-      return "Loading session...";
+      return "loading-session";
     }
     if (!currentSession) {
-      return "Create a session to begin";
+      return "idle";
     }
-    if (sending) {
-      return "Sending message...";
+    if (connectionState === "error") {
+      return "disconnected";
+    }
+    if (connectionState === "connecting") {
+      return "connecting";
+    }
+    if (awaitingApproval) {
+      return "awaiting-approval";
     }
     if (toolActivity.length > 0) {
-      const awaitingApproval = toolActivity.some(
-        (tool) => tool.state === "approval-requested",
-      );
-      if (awaitingApproval) {
-        return `Awaiting approval (${toolActivity.length} tool${
-          toolActivity.length > 1 ? "s" : ""
-        })...`;
-      }
-      const toolNames = toolActivity
-        .map((tool) => tool.name)
-        .filter(Boolean);
-      if (toolNames.length > 0) {
-        const displayed = toolNames.slice(0, 2).join(", ");
-        const extra = toolNames.length > 2 ? ` +${toolNames.length - 2}` : "";
-        return `Running: ${displayed}${extra}...`;
-      }
-      return `Running ${toolActivity.length} tool${
-        toolActivity.length > 1 ? "s" : ""
-      }...`;
+      return "running-tools";
+    }
+    if (sessionStatus?.type === "retry") {
+      return "retrying";
     }
     if (streaming) {
-      return "Generating response...";
+      return "streaming";
     }
-    return "Ready";
+    if (sessionStatus?.type === "busy") {
+      return "processing";
+    }
+    if (sending || hasPendingUserMessage || awaitingResponse) {
+      return "queued";
+    }
+    if (sessionStatus?.type === "idle" && lastAssistantCompletion) {
+      return "complete";
+    }
+    if (!sessionStatus && lastAssistantCompletion) {
+      return "complete";
+    }
+    return "idle";
   }, [
-    currentSession,
+    awaitingApproval,
+    connectionState,
     creatingSession,
+    currentSession,
+    hasPendingUserMessage,
+    lastAssistantCompletion,
     loadingSession,
+    awaitingResponse,
+    sessionStatus,
     sending,
     streaming,
+    toolActivity.length,
+  ]);
+
+  const statusMeta = useMemo<StatusMeta>(() => {
+    const toolNames = toolActivity.map((tool) => tool.name).filter(Boolean);
+    const toolSummary = toolNames.length
+      ? `${toolNames.slice(0, 2).join(", ")}${
+          toolNames.length > 2 ? ` +${toolNames.length - 2}` : ""
+        }`
+      : "tool calls";
+    const lastUpdate = lastEventAt
+      ? `Last update ${formatStatusTime(lastEventAt)}`
+      : "Waiting for OpenCode updates.";
+    const completedAt = lastAssistantCompletion
+      ? `Completed at ${formatStatusTime(lastAssistantCompletion)}`
+      : "Response complete.";
+    const retryMessage =
+      sessionStatus?.type === "retry"
+        ? sessionStatus.message || "Temporary error, retry scheduled."
+        : null;
+
+    switch (activityPhase) {
+      case "creating-session":
+        return {
+          label: "Creating session",
+          title: "Spinning up a new session",
+          description: "OpenCode is preparing a fresh workspace.",
+          badgeVariant: "secondary",
+          isActive: true,
+          icon: <Loader className="text-muted-foreground" size={14} />,
+        };
+      case "loading-session":
+        return {
+          label: "Loading session",
+          title: "Syncing session history",
+          description: "Fetching messages from OpenCode.",
+          badgeVariant: "secondary",
+          isActive: true,
+          icon: <Loader className="text-muted-foreground" size={14} />,
+        };
+      case "connecting":
+        return {
+          label: "Connecting",
+          title: "Connecting to OpenCode",
+          description: "Waiting for the server handshake.",
+          badgeVariant: "secondary",
+          isActive: true,
+          icon: <Loader className="text-muted-foreground" size={14} />,
+        };
+      case "disconnected":
+        return {
+          label: "Disconnected",
+          title: "Connection lost",
+          description:
+            "Live status updates stopped. The server may still be running.",
+          badgeVariant: "destructive",
+          isActive: false,
+          icon: (
+            <AlertTriangleIcon className="size-4 text-destructive" />
+          ),
+        };
+      case "queued":
+        return {
+          label: "Queued",
+          title: "Queued for processing",
+          description:
+            "Message received - waiting for the model to start.",
+          badgeVariant: "secondary",
+          isActive: true,
+          icon: <Loader className="text-muted-foreground" size={14} />,
+        };
+      case "streaming":
+        return {
+          label: "Streaming",
+          title: "Generating response",
+          description: `Streaming tokens from the model. ${lastUpdate}`,
+          badgeVariant: "secondary",
+          isActive: true,
+          icon: <Loader className="text-muted-foreground" size={14} />,
+        };
+      case "processing":
+        return {
+          label: "Processing",
+          title: "Working on your request",
+          description: `OpenCode is busy. ${lastUpdate}`,
+          badgeVariant: "secondary",
+          isActive: true,
+          icon: <Loader className="text-muted-foreground" size={14} />,
+        };
+      case "awaiting-approval":
+        return {
+          label: `Awaiting approval (${toolActivity.length})`,
+          title: "Waiting for your approval",
+          description: `Approve the tool request${
+            toolActivity.length > 1 ? "s" : ""
+          } to continue.`,
+          badgeVariant: "secondary",
+          isActive: true,
+          icon: <ClockIcon className="size-4 text-amber-600" />,
+        };
+      case "running-tools":
+        return {
+          label: `Running tools (${toolActivity.length})`,
+          title: "Executing tools",
+          description: `Running ${toolSummary}. ${lastUpdate}`,
+          badgeVariant: "secondary",
+          isActive: true,
+          icon: <Loader className="text-muted-foreground" size={14} />,
+        };
+      case "retrying":
+        return {
+          label: sessionStatus?.type === "retry"
+            ? `Retrying (attempt ${sessionStatus.attempt})`
+            : "Retrying",
+          title: "Retrying request",
+          description: retryMessage
+            ? retryMessage
+            : "OpenCode is retrying the request.",
+          badgeVariant: "secondary",
+          isActive: true,
+          icon: <ClockIcon className="size-4 text-amber-600" />,
+        };
+      case "complete":
+        return {
+          label: "Complete",
+          title: "Response complete",
+          description: completedAt,
+          badgeVariant: "outline",
+          isActive: false,
+          icon: <CheckCircleIcon className="size-4 text-emerald-600" />,
+        };
+      case "idle":
+      default:
+        if (!currentSession) {
+          return {
+            label: "Create a session",
+            title: "Create a session to begin",
+            description:
+              "Start a new session to see OpenCode responses here.",
+            badgeVariant: "outline",
+            isActive: false,
+            icon: <SparklesIcon className="size-4 text-muted-foreground" />,
+          };
+        }
+        return {
+          label: "Ready",
+          title: "Ready for the next prompt",
+          description: "Waiting for your next message.",
+          badgeVariant: "outline",
+          isActive: false,
+          icon: <SparklesIcon className="size-4 text-muted-foreground" />,
+        };
+    }
+  }, [
+    activityPhase,
+    currentSession,
+    lastAssistantCompletion,
+    lastEventAt,
+    sessionStatus,
     toolActivity,
   ]);
+
+  const hasActiveWork =
+    statusMeta.isActive || (connectionState === "error" && currentSession);
+  const activityLabel = statusMeta.label;
+
+  const connectionMeta = useMemo<ConnectionMeta>(() => {
+    switch (connectionState) {
+      case "connected":
+        return { label: "Connected", variant: "secondary" as const };
+      case "error":
+        return { label: "Disconnected", variant: "destructive" as const };
+      case "connecting":
+      default:
+        return { label: "Connecting", variant: "outline" as const };
+    }
+  }, [connectionState]);
+
+  const showStatusCard =
+    Boolean(currentSession) &&
+    (statusMeta.isActive ||
+      Boolean(lastAssistantCompletion) ||
+      connectionState === "error");
 
   useEffect(() => {
     void initializeOpenCode();
@@ -223,6 +471,9 @@ export function AIChat({ repoPath }: AIChatProps) {
     if (!repoPath) {
       return;
     }
+
+    setConnectionState("connecting");
+    setLastEventAt(null);
 
     const source = new EventSource(eventStreamUrl);
 
@@ -483,6 +734,42 @@ export function AIChat({ repoPath }: AIChatProps) {
           properties?: Record<string, unknown>;
         };
 
+        if (payload.type === "server.connected") {
+          setConnectionState("connected");
+          setLastEventAt(new Date().toISOString());
+          return;
+        }
+
+        if (payload.type === "session.status") {
+          const props = payload.properties as
+            | { sessionID?: string; status?: SessionStatus }
+            | undefined;
+          if (!props || props.sessionID !== currentSession?.path || !props.status) {
+            return;
+          }
+          setConnectionState("connected");
+          setLastEventAt(new Date().toISOString());
+          setSessionStatus(props.status);
+          if (props.status.type !== "busy") {
+            setAwaitingResponse(false);
+          }
+          return;
+        }
+
+        if (payload.type === "session.idle") {
+          const props = payload.properties as
+            | { sessionID?: string }
+            | undefined;
+          if (!props || props.sessionID !== currentSession?.path) {
+            return;
+          }
+          setConnectionState("connected");
+          setLastEventAt(new Date().toISOString());
+          setSessionStatus({ type: "idle" });
+          setAwaitingResponse(false);
+          return;
+        }
+
         if (payload.type === "message.part.updated") {
           const part = payload.properties?.part as
             | {
@@ -511,6 +798,8 @@ export function AIChat({ repoPath }: AIChatProps) {
           ) {
             return;
           }
+          setConnectionState("connected");
+          setLastEventAt(new Date().toISOString());
           const byPart =
             partsByMessage.current.get(part.messageID) ?? new Map();
           const normalized = normalizePart(part, byPart.get(part.id));
@@ -537,6 +826,25 @@ export function AIChat({ repoPath }: AIChatProps) {
             (normalized.type === "text" || normalized.type === "reasoning")
           ) {
             setStreaming(true);
+            setSessionStatus((prev) =>
+              prev?.type === "busy" ? prev : { type: "busy" },
+            );
+            setAwaitingResponse(false);
+          }
+          if (
+            isToolPart(normalized) &&
+            normalized.status &&
+            [
+              "input-streaming",
+              "input-available",
+              "approval-requested",
+              "approval-responded",
+            ].includes(normalized.status)
+          ) {
+            setSessionStatus((prev) =>
+              prev?.type === "busy" ? prev : { type: "busy" },
+            );
+            setAwaitingResponse(false);
           }
           refreshToolActivity();
           return;
@@ -554,6 +862,8 @@ export function AIChat({ repoPath }: AIChatProps) {
           if (!info || info.sessionID !== currentSession?.path || !info.id) {
             return;
           }
+          setConnectionState("connected");
+          setLastEventAt(new Date().toISOString());
           const timestamp = info.time?.created
             ? new Date(info.time.created).toISOString()
             : new Date().toISOString();
@@ -577,6 +887,10 @@ export function AIChat({ repoPath }: AIChatProps) {
           }
           if (info.role === "assistant" && info.time?.completed) {
             setStreaming(false);
+            setLastAssistantCompletion(
+              new Date(info.time.completed).toISOString(),
+            );
+            setAwaitingResponse(false);
             refreshToolActivity();
           }
         }
@@ -587,6 +901,7 @@ export function AIChat({ repoPath }: AIChatProps) {
 
     source.onerror = (err) => {
       console.error("[OpenCode] Event stream error", err);
+      setConnectionState("error");
     };
 
     return () => {
@@ -654,6 +969,9 @@ export function AIChat({ repoPath }: AIChatProps) {
       partsByMessage.current.clear();
       setToolActivity([]);
       roleByMessage.current.clear();
+      setLastAssistantCompletion(null);
+      setSessionStatus(null);
+      setAwaitingResponse(false);
       setError("");
     } catch (err) {
       setError(`Failed to create session: ${String(err)}`);
@@ -676,6 +994,9 @@ export function AIChat({ repoPath }: AIChatProps) {
     setInputMessage("");
     setToolActivity([]);
     roleByMessage.current.clear();
+    setLastAssistantCompletion(null);
+    setSessionStatus(null);
+    setAwaitingResponse(false);
     try {
       const loadedSession = await opencodeService.getSession(
         session.path,
@@ -690,6 +1011,12 @@ export function AIChat({ repoPath }: AIChatProps) {
         sessionMessages
           .filter((msg) => msg.text.trim().length > 0)
           .map((msg) => ({ ...msg, pending: false })),
+      );
+      const lastAssistantMessage = [...sessionMessages]
+        .reverse()
+        .find((msg) => msg.role === "assistant");
+      setLastAssistantCompletion(
+        lastAssistantMessage ? lastAssistantMessage.timestamp : null,
       );
       if (loadedSession.model) {
         setSelectedModel(loadedSession.model);
@@ -709,6 +1036,8 @@ export function AIChat({ repoPath }: AIChatProps) {
       return;
     }
 
+    setLastAssistantCompletion(null);
+    setAwaitingResponse(true);
     const userMessage: ChatMessage = {
       id:
         typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -737,6 +1066,7 @@ export function AIChat({ repoPath }: AIChatProps) {
       setError(`Failed to get response: ${String(err)}`);
       setMessages((prev) => prev.slice(0, -1));
       setStreaming(false);
+      setAwaitingResponse(false);
     } finally {
       setSending(false);
     }
@@ -757,6 +1087,9 @@ export function AIChat({ repoPath }: AIChatProps) {
         partsByMessage.current.clear();
         setToolActivity([]);
         roleByMessage.current.clear();
+        setLastAssistantCompletion(null);
+        setSessionStatus(null);
+        setAwaitingResponse(false);
       }
       setError("");
     } catch (err) {
@@ -1012,15 +1345,64 @@ export function AIChat({ repoPath }: AIChatProps) {
                     </AIMessage>
                   ))
                 )}
-                {(sending || streaming) && currentSession && (
-                  <AIMessage from="assistant" className="max-w-[80%] gap-3">
-                    <MessageContent className="rounded-2xl border border-border/60 bg-white/80 px-5 py-4 shadow-[var(--shadow-xs)]">
-                      <div className="flex items-center justify-between text-[0.6rem] uppercase tracking-[0.3em] opacity-70">
-                        <span>Falck AI</span>
-                        <span>Thinking</span>
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        Crafting a response...
+                {showStatusCard && (
+                  <AIMessage from="assistant" className="max-w-[88%] gap-3">
+                    <MessageContent className="rounded-2xl border border-border/60 bg-gradient-to-br from-white via-[#fbf7f2] to-[#f6efe7] px-5 py-4 shadow-[var(--shadow-xs)]">
+                      <div className="flex flex-col gap-4">
+                        <div className="flex flex-wrap items-center gap-2 text-[0.6rem] uppercase tracking-[0.3em] text-muted-foreground">
+                          <span>Falck AI status</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            variant="secondary"
+                            className="rounded-full px-2 py-0 text-[0.6rem] uppercase tracking-[0.2em]"
+                          >
+                            OpenCode
+                          </Badge>
+                          <Badge
+                            variant={connectionMeta.variant}
+                            className="rounded-full px-2 py-0 text-[0.6rem]"
+                          >
+                            {connectionMeta.label}
+                          </Badge>
+                          <Badge
+                            variant={statusMeta.badgeVariant}
+                            className="rounded-full px-2 py-0 text-[0.6rem]"
+                          >
+                            {statusMeta.label}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                          {statusMeta.icon}
+                          {statusMeta.isActive ? (
+                            <Shimmer duration={1.2}>{statusMeta.title}</Shimmer>
+                          ) : (
+                            <span>{statusMeta.title}</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {statusMeta.description}
+                        </div>
+                        {toolActivity.length > 0 && (
+                          <div className="flex flex-wrap gap-2 text-[0.65rem] text-muted-foreground">
+                            {toolActivity.map((tool) => {
+                              const name = tool.name || "Tool";
+                              return (
+                                <div
+                                  key={tool.id}
+                                  className="flex items-center gap-2 rounded-full border border-border/60 bg-white/70 px-2 py-1"
+                                >
+                                  <span className="font-semibold text-foreground">
+                                    {name}
+                                  </span>
+                                  {getStatusBadge(
+                                    tool.state as ToolPart["state"],
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     </MessageContent>
                   </AIMessage>
