@@ -438,7 +438,7 @@ export function RepoSelector({
               <div className="space-y-4">
                 <div className="text-sm text-muted-foreground">
                   Sign in once and Falck will remember your GitHub access token
-                  securely.
+                  locally on this device.
                 </div>
                 {githubDevice && (
                   <Alert>

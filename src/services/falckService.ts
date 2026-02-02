@@ -50,6 +50,7 @@ export interface Secret {
 
 export interface SetupConfig {
   steps?: SetupStep[];
+  check?: SetupCheck;
 }
 
 export interface SetupStep {
@@ -60,6 +61,26 @@ export interface SetupStep {
   silent?: boolean;
   optional?: boolean;
   only_if?: string;
+}
+
+export interface SetupCheck {
+  command: string;
+  description?: string;
+  timeout?: number;
+  silent?: boolean;
+  only_if?: string;
+  expect?: string;
+  expect_contains?: string;
+  expect_regex?: string;
+  output?: "stdout" | "stderr" | "combined";
+  trim?: boolean;
+  ignore_exit?: boolean;
+}
+
+export interface SetupCheckResult {
+  configured: boolean;
+  complete: boolean;
+  message?: string;
 }
 
 export interface LaunchConfig {
@@ -146,6 +167,16 @@ export const falckService = {
 
   async runSetup(repoPath: string, appId: string): Promise<string> {
     return invoke<string>("run_falck_setup", {
+      repoPath,
+      appId,
+    });
+  },
+
+  async checkSetupStatus(
+    repoPath: string,
+    appId: string,
+  ): Promise<SetupCheckResult> {
+    return invoke<SetupCheckResult>("check_falck_setup", {
       repoPath,
       appId,
     });

@@ -201,6 +201,7 @@ groups:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `steps` | array | ✗ | List of setup commands to execute |
+| `check` | object | ✗ | Command used to validate if setup is complete |
 
 ### Setup Step Object
 
@@ -213,6 +214,28 @@ groups:
 | `silent` | boolean | ✗ | Whether to suppress output (default: false) |
 | `optional` | boolean | ✗ | Whether to skip on failure (default: false) |
 | `only_if` | string | ✗ | Conditional execution (e.g., "os == 'macos'") |
+
+### Setup Check Object
+
+The setup check command should exit with status `0` when setup is complete and a non-zero status otherwise.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | ✓ | Shell command to check setup completion |
+| `description` | string | ✗ | What the check validates (for UI display) |
+| `timeout` | integer | ✗ | Maximum seconds to wait (default: 30) |
+| `silent` | boolean | ✗ | Whether to suppress output (default: true) |
+| `only_if` | string | ✗ | Conditional execution (e.g., "os == 'macos'") |
+| `expect` | string | ✗ | Exact output match (after trimming if `trim` is true) |
+| `expect_contains` | string | ✗ | Output must contain this substring |
+| `expect_regex` | string | ✗ | Output must match this regex |
+| `output` | string | ✗ | Which stream to compare: `stdout`, `stderr`, or `combined` (default: `stdout`) |
+| `trim` | boolean | ✗ | Trim output before comparison (default: true) |
+| `ignore_exit` | boolean | ✗ | If true, evaluate output even when exit status is non-zero (default: false) |
+
+If any `expect*` field is provided, Falck compares the selected output stream against that expectation and marks setup complete only when it matches.
+
+If configured, Falck uses the setup check during setup validation to determine whether the app is ready to launch.
 
 ### Launch Object
 
@@ -294,7 +317,7 @@ launch:
 
 ## Conditional Execution
 
-The `only_if` field supports conditions to make setup/cleanup steps conditional.
+The `only_if` field supports conditions to make setup steps, setup checks, and cleanup steps conditional.
 
 ### Operators
 
@@ -362,6 +385,10 @@ applications:
         - name: "Install Dependencies"
           command: "npm install"
           timeout: 300
+      check:
+        command: "node -e \"console.log(require('fs').existsSync('node_modules'))\""
+        expect: "true"
+        description: "Node modules installed"
     
     launch:
       command: "npm start"

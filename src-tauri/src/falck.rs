@@ -5,6 +5,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::Mutex;
@@ -81,6 +82,7 @@ pub struct Secret {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SetupConfig {
     pub steps: Option<Vec<SetupStep>>,
+    pub check: Option<SetupCheck>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -92,6 +94,28 @@ pub struct SetupStep {
     pub silent: Option<bool>,
     pub optional: Option<bool>,
     pub only_if: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SetupCheck {
+    pub command: String,
+    pub description: Option<String>,
+    pub timeout: Option<u32>,
+    pub silent: Option<bool>,
+    pub only_if: Option<String>,
+    pub expect: Option<String>,
+    pub expect_contains: Option<String>,
+    pub expect_regex: Option<String>,
+    pub output: Option<String>,
+    pub trim: Option<bool>,
+    pub ignore_exit: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SetupCheckResult {
+    pub configured: bool,
+    pub complete: bool,
+    pub message: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -329,6 +353,139 @@ pub fn run_setup(
     Ok("Setup completed successfully".to_string())
 }
 
+pub fn check_setup_status(
+    repo_path: &Path,
+    config: &FalckConfig,
+    app: &Application,
+) -> Result<SetupCheckResult> {
+    let Some(setup) = &app.setup else {
+        return Ok(SetupCheckResult {
+            configured: false,
+            complete: true,
+            message: None,
+        });
+    };
+
+    let Some(check) = &setup.check else {
+        return Ok(SetupCheckResult {
+            configured: false,
+            complete: true,
+            message: None,
+        });
+    };
+
+    let app_root = get_app_root(repo_path, app);
+    let ctx = TemplateContext::new(repo_path, &app_root);
+    let env_map = build_env_map(config, app, &ctx)?;
+
+    if let Some(condition) = &check.only_if {
+        if !evaluate_condition(condition, &ctx)? {
+            return Ok(SetupCheckResult {
+                configured: true,
+                complete: true,
+                message: Some("Setup check skipped for this environment.".to_string()),
+            });
+        }
+    }
+
+    let expectation_count = check.expect.is_some() as u8
+        + check.expect_contains.is_some() as u8
+        + check.expect_regex.is_some() as u8;
+    if expectation_count > 1 {
+        return Ok(SetupCheckResult {
+            configured: true,
+            complete: false,
+            message: Some(
+                "Setup check has multiple expectations. Use only one of expect, expect_contains, or expect_regex."
+                    .to_string(),
+            ),
+        });
+    }
+
+    let command = resolve_template(&check.command, &ctx)?;
+    let timeout = check.timeout.unwrap_or(30);
+    let ignore_exit = check.ignore_exit.unwrap_or(false);
+    let trim_output = check.trim.unwrap_or(true);
+    let output_mode = check.output.clone().unwrap_or_else(|| "stdout".to_string());
+
+    match run_command_capture(&command, &app_root, &env_map, Some(timeout)) {
+        Ok((status, stdout, stderr)) => {
+            if !status.success() && !ignore_exit {
+                return Ok(SetupCheckResult {
+                    configured: true,
+                    complete: false,
+                    message: Some("Setup check command failed.".to_string()),
+                });
+            }
+
+            let mut output = match output_mode.as_str() {
+                "stderr" => stderr,
+                "combined" => {
+                    if stdout.is_empty() {
+                        stderr
+                    } else if stderr.is_empty() {
+                        stdout
+                    } else {
+                        format!("{}\n{}", stdout, stderr)
+                    }
+                }
+                _ => stdout,
+            };
+
+            if trim_output {
+                output = output.trim().to_string();
+            }
+
+            let matched = if let Some(expect) = &check.expect {
+                output == *expect
+            } else if let Some(expect_contains) = &check.expect_contains {
+                output.contains(expect_contains)
+            } else if let Some(expect_regex) = &check.expect_regex {
+                match Regex::new(expect_regex) {
+                    Ok(re) => re.is_match(&output),
+                    Err(err) => {
+                        return Ok(SetupCheckResult {
+                            configured: true,
+                            complete: false,
+                            message: Some(format!("Invalid setup check regex: {}", err)),
+                        });
+                    }
+                }
+            } else {
+                status.success()
+            };
+
+            let complete = if expectation_count == 0 {
+                status.success()
+            } else {
+                matched
+            };
+
+            let message = if complete {
+                check
+                    .description
+                    .clone()
+                    .or_else(|| Some("Setup check passed.".to_string()))
+            } else if expectation_count > 0 {
+                Some("Setup check did not match expected output.".to_string())
+            } else {
+                Some("Setup check failed.".to_string())
+            };
+
+            Ok(SetupCheckResult {
+                configured: true,
+                complete,
+                message,
+            })
+        }
+        Err(err) => Ok(SetupCheckResult {
+            configured: true,
+            complete: false,
+            message: Some(err.to_string()),
+        }),
+    }
+}
+
 pub fn launch_app(
     repo_path: &Path,
     config: &FalckConfig,
@@ -442,6 +599,68 @@ fn run_command(
 
     let status = child.wait()?;
     Ok(status)
+}
+
+fn run_command_capture(
+    command: &str,
+    cwd: &Path,
+    env_map: &HashMap<String, String>,
+    timeout_secs: Option<u32>,
+) -> Result<(ExitStatus, String, String)> {
+    let mut cmd = build_shell_command(command);
+    cmd.current_dir(cwd)
+        .envs(env_map)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().context("Failed to spawn command")?;
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    let stdout_handle = std::thread::spawn(move || -> Vec<u8> {
+        let mut buf = Vec::new();
+        if let Some(mut out) = stdout {
+            let _ = out.read_to_end(&mut buf);
+        }
+        buf
+    });
+
+    let stderr_handle = std::thread::spawn(move || -> Vec<u8> {
+        let mut buf = Vec::new();
+        if let Some(mut err) = stderr {
+            let _ = err.read_to_end(&mut buf);
+        }
+        buf
+    });
+
+    let status = if let Some(timeout) = timeout_secs {
+        let start = Instant::now();
+        let timeout_duration = Duration::from_secs(timeout as u64);
+        loop {
+            if let Some(status) = child.try_wait()? {
+                break status;
+            }
+            if start.elapsed() > timeout_duration {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_handle.join();
+                let _ = stderr_handle.join();
+                bail!("Command timed out after {} seconds", timeout);
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    } else {
+        child.wait()?
+    };
+
+    let stdout_bytes = stdout_handle.join().unwrap_or_default();
+    let stderr_bytes = stderr_handle.join().unwrap_or_default();
+
+    let stdout = String::from_utf8_lossy(&stdout_bytes).to_string();
+    let stderr = String::from_utf8_lossy(&stderr_bytes).to_string();
+
+    Ok((status, stdout, stderr))
 }
 
 pub fn is_port_available(port: u16) -> bool {
@@ -955,6 +1174,22 @@ pub async fn check_secrets_satisfied(
         .ok_or_else(|| "Application not found".to_string())?;
 
     Ok(check_app_secrets_satisfied(app))
+}
+
+#[tauri::command]
+pub async fn check_falck_setup(
+    repo_path: String,
+    app_id: String,
+) -> Result<SetupCheckResult, String> {
+    let path = Path::new(&repo_path);
+    let config = load_config(path).map_err(|e| e.to_string())?;
+    let app = config
+        .applications
+        .iter()
+        .find(|app| app.id == app_id)
+        .ok_or_else(|| "Application not found".to_string())?;
+
+    check_setup_status(path, &config, app).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

@@ -1,17 +1,16 @@
-use keyring::Entry;
 use reqwest::{header, Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tauri::State;
+use tauri::{AppHandle, State};
 use tokio::time::{sleep, Duration, Instant};
+
+use crate::storage;
 
 const DEVICE_URL: &str = "https://github.com/login/device/code";
 const TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 const API_BASE: &str = "https://api.github.com";
 const DEFAULT_SCOPE: &str = "repo write:public_key";
 const USER_AGENT: &str = "Falck";
-const KEYRING_SERVICE: &str = "com.mikkelwestermann.falck";
-const KEYRING_ACCOUNT: &str = "github-token";
 const GITHUB_API_VERSION: &str = "2022-11-28";
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -67,33 +66,22 @@ fn github_client_id() -> Result<String, String> {
         .map_err(|_| "Missing GitHub OAuth client id. Set GITHUB_CLIENT_ID.".to_string())
 }
 
-fn keyring_entry() -> Result<Entry, String> {
-    Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT).map_err(|e| e.to_string())
+fn store_token(app: &AppHandle, token: &str) -> Result<(), String> {
+    storage::set_github_token(app, token)
 }
 
-fn token_missing_error(message: &str) -> bool {
-    let lowered = message.to_lowercase();
-    lowered.contains("no entry")
-        || lowered.contains("not found")
-        || lowered.contains("item not found")
-        || lowered.contains("not available")
-}
-
-fn store_token(token: &str) -> Result<(), String> {
-    let entry = keyring_entry()?;
-    entry.set_password(token).map_err(|e| e.to_string())
-}
-
-fn load_token() -> Result<String, String> {
-    let entry = keyring_entry()?;
-    entry.get_password().map_err(|err| {
-        let message = err.to_string();
-        if token_missing_error(&message) {
-            "GitHub token not found. Connect GitHub first.".to_string()
-        } else {
-            message
-        }
+fn load_token(app: &AppHandle) -> Result<String, String> {
+    storage::get_github_token(app)?.ok_or_else(|| {
+        "GitHub token not found. Connect GitHub first.".to_string()
     })
+}
+
+fn has_token(app: &AppHandle) -> Result<bool, String> {
+    Ok(storage::get_github_token(app)?.is_some())
+}
+
+fn clear_token(app: &AppHandle) -> Result<(), String> {
+    storage::clear_github_token(app)
 }
 
 fn build_api_headers(token: &str) -> header::HeaderMap {
@@ -168,6 +156,7 @@ pub async fn github_start_device_flow(
 
 #[tauri::command]
 pub async fn github_poll_device_token(
+    app: AppHandle,
     client: State<'_, Client>,
     device_code: String,
     interval: u64,
@@ -217,7 +206,7 @@ pub async fn github_poll_device_token(
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
 
-            store_token(access_token)?;
+            store_token(&app, access_token)?;
             return Ok(TokenInfo {
                 token_type: token_type.to_string(),
                 scope: scope.to_string(),
@@ -248,40 +237,21 @@ pub async fn github_poll_device_token(
 }
 
 #[tauri::command]
-pub async fn github_has_token() -> Result<bool, String> {
-    let entry = keyring_entry()?;
-    match entry.get_password() {
-        Ok(_) => Ok(true),
-        Err(err) => {
-            let message = err.to_string();
-            if token_missing_error(&message) {
-                Ok(false)
-            } else {
-                Err(message)
-            }
-        }
-    }
+pub async fn github_has_token(app: AppHandle) -> Result<bool, String> {
+    has_token(&app)
 }
 
 #[tauri::command]
-pub async fn github_clear_token() -> Result<(), String> {
-    let entry = keyring_entry()?;
-    match entry.delete_password() {
-        Ok(()) => Ok(()),
-        Err(err) => {
-            let message = err.to_string();
-            if token_missing_error(&message) {
-                Ok(())
-            } else {
-                Err(message)
-            }
-        }
-    }
+pub async fn github_clear_token(app: AppHandle) -> Result<(), String> {
+    clear_token(&app)
 }
 
 #[tauri::command]
-pub async fn github_get_user(client: State<'_, Client>) -> Result<GithubUser, String> {
-    let token = load_token()?;
+pub async fn github_get_user(
+    app: AppHandle,
+    client: State<'_, Client>,
+) -> Result<GithubUser, String> {
+    let token = load_token(&app)?;
     let response = client
         .get(format!("{}/user", API_BASE))
         .headers(build_api_headers(&token))
@@ -302,8 +272,11 @@ pub async fn github_get_user(client: State<'_, Client>) -> Result<GithubUser, St
 }
 
 #[tauri::command]
-pub async fn github_list_repos(client: State<'_, Client>) -> Result<Vec<GithubRepo>, String> {
-    let token = load_token()?;
+pub async fn github_list_repos(
+    app: AppHandle,
+    client: State<'_, Client>,
+) -> Result<Vec<GithubRepo>, String> {
+    let token = load_token(&app)?;
     let mut url = format!(
         "{}/user/repos?per_page=100&sort=updated&direction=desc&affiliation=owner,collaborator,organization_member",
         API_BASE
@@ -350,11 +323,12 @@ pub async fn github_list_repos(client: State<'_, Client>) -> Result<Vec<GithubRe
 
 #[tauri::command]
 pub async fn github_add_ssh_key(
+    app: AppHandle,
     client: State<'_, Client>,
     title: String,
     key: String,
 ) -> Result<(), String> {
-    let token = load_token()?;
+    let token = load_token(&app)?;
     if title.trim().is_empty() {
         return Err("Key title is required.".to_string());
     }

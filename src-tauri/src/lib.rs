@@ -197,6 +197,7 @@ pub fn run() {
             falck::get_app_secrets_for_config,
             falck::set_app_secret,
             falck::check_secrets_satisfied,
+            falck::check_falck_setup,
             falck::run_falck_setup,
             falck::launch_falck_app,
             falck::run_falck_cleanup,

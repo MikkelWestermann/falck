@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,12 +19,18 @@ import {
 import {
   AlertCircle,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
+  ListChecks,
   Play,
   RefreshCw,
   Square,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   falckService,
   FalckApplication,
@@ -33,10 +39,19 @@ import {
 } from "@/services/falckService";
 import { PrerequisiteStatus } from "@/components/falck/PrerequisiteStatus";
 import { SecretsDialog } from "@/components/falck/SecretsDialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface FalckDashboardProps {
   repoPath: string;
 }
+
+type SetupStatus =
+  | "unknown"
+  | "checking"
+  | "complete"
+  | "incomplete"
+  | "not_configured"
+  | "error";
 
 export function FalckDashboard({ repoPath }: FalckDashboardProps) {
   const [config, setConfig] = useState<FalckConfig | null>(null);
@@ -52,17 +67,20 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
   const [setupRunning, setSetupRunning] = useState<Record<string, boolean>>({});
   const [setupMessage, setSetupMessage] = useState<Record<string, string>>({});
   const [setupError, setSetupError] = useState<Record<string, string>>({});
+  const [setupStatusByApp, setSetupStatusByApp] = useState<
+    Record<string, SetupStatus>
+  >({});
+  const [setupStatusMessage, setSetupStatusMessage] = useState<
+    Record<string, string>
+  >({});
   const [launchError, setLaunchError] = useState<Record<string, string>>({});
   const [runningApps, setRunningApps] = useState<Record<string, number>>({});
+  const [setupDialogOpen, setSetupDialogOpen] = useState(false);
   const [secretsSatisfied, setSecretsSatisfied] = useState<
     Record<string, boolean>
   >({});
   const [secretsDialogApp, setSecretsDialogApp] =
     useState<FalckApplication | null>(null);
-  const [detailsOpenByApp, setDetailsOpenByApp] = useState<
-    Record<string, boolean>
-  >({});
-  const lastRunningByApp = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     void loadConfig();
@@ -96,6 +114,7 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
     }
     config.applications.forEach((app) => {
       void checkPrereqs(app.id);
+      void checkSetupStatus(app.id);
       if (app.secrets && app.secrets.length > 0) {
         void checkSecrets(app.id);
       } else {
@@ -112,24 +131,6 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
     [config, activeAppId],
   );
 
-  useEffect(() => {
-    if (!activeApp) {
-      return;
-    }
-    const id = activeApp.id;
-    const runningNow = Boolean(runningApps[id]);
-    const last = lastRunningByApp.current[id];
-
-    if (last === undefined) {
-      setDetailsOpenByApp((prev) => ({ ...prev, [id]: !runningNow }));
-    } else if (last && !runningNow) {
-      setDetailsOpenByApp((prev) => ({ ...prev, [id]: true }));
-    } else if (!last && runningNow) {
-      setDetailsOpenByApp((prev) => ({ ...prev, [id]: false }));
-    }
-
-    lastRunningByApp.current[id] = runningNow;
-  }, [activeApp?.id, runningApps]);
 
   const checkPrereqs = async (appId: string) => {
     setPrereqLoading((prev) => ({ ...prev, [appId]: true }));
@@ -141,6 +142,40 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
       setError(`Failed to check prerequisites: ${String(err)}`);
     } finally {
       setPrereqLoading((prev) => ({ ...prev, [appId]: false }));
+    }
+  };
+
+  const checkSetupStatus = async (appId: string) => {
+    const app = config?.applications.find((candidate) => candidate.id === appId);
+    if (!app?.setup?.check?.command) {
+      setSetupStatusByApp((prev) => ({
+        ...prev,
+        [appId]: "not_configured",
+      }));
+      setSetupStatusMessage((prev) => ({ ...prev, [appId]: "" }));
+      return;
+    }
+
+    setSetupStatusByApp((prev) => ({ ...prev, [appId]: "checking" }));
+    setSetupStatusMessage((prev) => ({ ...prev, [appId]: "" }));
+    try {
+      const result = await falckService.checkSetupStatus(repoPath, appId);
+      const status = result.configured
+        ? result.complete
+          ? "complete"
+          : "incomplete"
+        : "not_configured";
+      setSetupStatusByApp((prev) => ({ ...prev, [appId]: status }));
+      setSetupStatusMessage((prev) => ({
+        ...prev,
+        [appId]: result.message ?? "",
+      }));
+    } catch (err) {
+      setSetupStatusByApp((prev) => ({ ...prev, [appId]: "error" }));
+      setSetupStatusMessage((prev) => ({
+        ...prev,
+        [appId]: String(err),
+      }));
     }
   };
 
@@ -168,6 +203,7 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
       setSetupError((prev) => ({ ...prev, [app.id]: String(err) }));
     } finally {
       setSetupRunning((prev) => ({ ...prev, [app.id]: false }));
+      void checkSetupStatus(app.id);
     }
   };
 
@@ -266,18 +302,37 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
       : true
     : true;
   const isRunning = activeApp ? Boolean(runningApps[activeApp.id]) : false;
-  const detailsOpen = activeApp
-    ? (detailsOpenByApp[activeApp.id] ?? !isRunning)
-    : false;
-  const toggleDetails = () => {
-    if (!activeApp) {
-      return;
-    }
-    setDetailsOpenByApp((prev) => ({
-      ...prev,
-      [activeApp.id]: !detailsOpen,
-    }));
+  const setupStatus: SetupStatus = activeApp
+    ? setupStatusByApp[activeApp.id] ??
+      (activeApp.setup?.check?.command ? "checking" : "not_configured")
+    : "unknown";
+  const setupStatusMeta: Record<
+    SetupStatus,
+    { label: string; className: string }
+  > = {
+    complete: { label: "Setup complete", className: "bg-emerald-500" },
+    incomplete: { label: "Setup incomplete", className: "bg-amber-500" },
+    checking: {
+      label: "Checking setup",
+      className: "bg-sky-500 animate-pulse",
+    },
+    error: { label: "Setup check error", className: "bg-destructive" },
+    not_configured: {
+      label: "Setup check not configured",
+      className: "bg-muted-foreground/40",
+    },
+    unknown: {
+      label: "Setup status unknown",
+      className: "bg-muted-foreground/40",
+    },
   };
+  const setupIndicator = setupStatusMeta[setupStatus];
+  const setupCheckConfigured = activeApp
+    ? Boolean(activeApp.setup?.check?.command)
+    : false;
+  const setupBlocked = setupCheckConfigured && setupStatus !== "complete";
+  const setupNeedsAttention =
+    setupStatus === "incomplete" || setupStatus === "error";
 
   return (
     <div className="space-y-4">
@@ -334,7 +389,9 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
                     size="sm"
                     className="gap-2"
                     onClick={() => handleLaunch(activeApp)}
-                    disabled={Boolean(prereqsMissing) || !secretsOk}
+                    disabled={
+                      Boolean(prereqsMissing) || !secretsOk || setupBlocked
+                    }
                   >
                     <Play className="h-4 w-4" />
                     Start
@@ -353,14 +410,15 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
                   size="sm"
                   variant="ghost"
                   className="gap-1"
-                  onClick={toggleDetails}
+                  onClick={() => setSetupDialogOpen(true)}
                 >
-                  {detailsOpen ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                  Details
+                  <ListChecks className="h-4 w-4" />
+                  Setup steps
+                  <span
+                    className={`ml-1 inline-flex h-2 w-2 rounded-full ${setupIndicator.className}`}
+                    title={setupIndicator.label}
+                  />
+                  <span className="sr-only">{setupIndicator.label}</span>
                 </Button>
                 <Button
                   size="sm"
@@ -376,7 +434,12 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
             <div className="space-y-2 pt-0">
               {!isRunning && prereqsMissing ? (
                 <div className="rounded-lg border-2 border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                  Missing prerequisites. Open details to see what is needed.
+                  Missing prerequisites. Open setup steps to see what is needed.
+                </div>
+              ) : null}
+              {!isRunning && setupNeedsAttention ? (
+                <div className="rounded-lg border-2 border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Setup is not complete. Open setup steps to finish.
                 </div>
               ) : null}
               {!isRunning && !secretsOk && activeApp.secrets?.length ? (
@@ -402,158 +465,186 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
             </div>
           </div>
 
-          {detailsOpen ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Setup steps</CardTitle>
-                <CardDescription>
+          <Dialog open={setupDialogOpen} onOpenChange={setSetupDialogOpen}>
+            <DialogContent className="max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>Setup steps</DialogTitle>
+                <DialogDescription>
                   Everything needed before starting the app.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {activeApp.description && (
-                  <p className="text-sm text-muted-foreground">
-                    {activeApp.description}
-                  </p>
-                )}
+                </DialogDescription>
+              </DialogHeader>
+              <ScrollArea className="max-h-[70vh] pr-4">
+                <div className="space-y-6 pr-2">
+                  {activeApp.description && (
+                    <p className="text-sm text-muted-foreground">
+                      {activeApp.description}
+                    </p>
+                  )}
 
-                {activeApp.secrets && activeApp.secrets.length > 0 && (
-                  <div
-                    className={
-                      secretsOk
-                        ? "rounded-lg border-2 border-green-200 bg-green-50 px-3 py-2"
-                        : "rounded-lg border-2 border-yellow-200 bg-yellow-50 px-3 py-2"
-                    }
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
+                  {activeApp.setup?.check?.command ? (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-border bg-muted/40 px-3 py-2">
                       <div>
                         <p className="text-sm font-semibold">
-                          {secretsOk ? "Secrets ready" : "Secrets required"}
+                          Setup status: {setupIndicator.label}
                         </p>
+                        {setupStatusMessage[activeApp.id] ? (
+                          <p className="text-xs text-muted-foreground">
+                            {setupStatusMessage[activeApp.id]}
+                          </p>
+                        ) : null}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => checkSetupStatus(activeApp.id)}
+                        disabled={setupStatus === "checking"}
+                      >
+                        {setupStatus === "checking" ? "Checking..." : "Re-check"}
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  {activeApp.secrets && activeApp.secrets.length > 0 && (
+                    <div
+                      className={
+                        secretsOk
+                          ? "rounded-lg border-2 border-green-200 bg-green-50 px-3 py-2"
+                          : "rounded-lg border-2 border-yellow-200 bg-yellow-50 px-3 py-2"
+                      }
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold">
+                            {secretsOk ? "Secrets ready" : "Secrets required"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {secretsOk
+                              ? "All required secrets are set."
+                              : "Add the required secrets to continue."}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setSecretsDialogApp(activeApp)}
+                        >
+                          Configure
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-semibold">Prerequisites</h3>
                         <p className="text-xs text-muted-foreground">
-                          {secretsOk
-                            ? "All required secrets are set."
-                            : "Add the required secrets to continue."}
+                          Check required tools before running this app.
                         </p>
                       </div>
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => setSecretsDialogApp(activeApp)}
+                        onClick={() => checkPrereqs(activeApp.id)}
+                        disabled={prereqLoading[activeApp.id]}
                       >
-                        Configure
+                        {prereqLoading[activeApp.id]
+                          ? "Checking..."
+                          : "Re-check"}
                       </Button>
                     </div>
-                  </div>
-                )}
 
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h3 className="text-sm font-semibold">Prerequisites</h3>
-                      <p className="text-xs text-muted-foreground">
-                        Check required tools before running this app.
+                    {activeResults && activeResults.length > 0 ? (
+                      <div className="space-y-3">
+                        {activeResults.map((result) => (
+                          <PrerequisiteStatus
+                            key={result.name}
+                            result={result}
+                            onOpenInstallUrl={handleOpenUrl}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
+                        No prerequisites configured.
+                      </div>
+                    )}
+                  </div>
+
+                  {activeApp.setup?.steps &&
+                    activeApp.setup.steps.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <h3 className="text-sm font-semibold">Install</h3>
+                            <p className="text-xs text-muted-foreground">
+                              Run the setup steps for this app.
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => handleSetup(activeApp)}
+                            disabled={setupRunning[activeApp.id]}
+                          >
+                            {setupRunning[activeApp.id]
+                              ? "Installing..."
+                              : "Run setup"}
+                          </Button>
+                        </div>
+
+                        <div className="space-y-2">
+                          {activeApp.setup.steps.map((step) => (
+                            <div
+                              key={step.name}
+                              className="rounded-lg border-2 border-border bg-card/80 px-4 py-3"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-sm font-medium">
+                                  {step.name}
+                                </span>
+                                {step.optional && (
+                                  <Badge variant="outline">Optional</Badge>
+                                )}
+                              </div>
+                              {step.description && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {step.description}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        {setupMessage[activeApp.id] && (
+                          <Alert>
+                            <CheckCircle2 className="h-4 w-4" />
+                            <AlertDescription>
+                              {setupMessage[activeApp.id]}
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                        {setupError[activeApp.id] && (
+                          <Alert variant="destructive">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription>
+                              {setupError[activeApp.id]}
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                      </div>
+                    )}
+
+                  {activeApp.launch.access?.url && (
+                    <div className="rounded-lg border-2 border-border bg-muted/40 px-3 py-2 text-xs">
+                      <p className="font-medium">Access</p>
+                      <p className="text-muted-foreground">
+                        {activeApp.launch.access.url}
                       </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => checkPrereqs(activeApp.id)}
-                      disabled={prereqLoading[activeApp.id]}
-                    >
-                      {prereqLoading[activeApp.id] ? "Checking..." : "Re-check"}
-                    </Button>
-                  </div>
-
-                  {activeResults && activeResults.length > 0 ? (
-                    <div className="space-y-3">
-                      {activeResults.map((result) => (
-                        <PrerequisiteStatus
-                          key={result.name}
-                          result={result}
-                          onOpenInstallUrl={handleOpenUrl}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
-                      No prerequisites configured.
                     </div>
                   )}
                 </div>
-
-                {activeApp.setup?.steps && activeApp.setup.steps.length > 0 && (
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <h3 className="text-sm font-semibold">Install</h3>
-                        <p className="text-xs text-muted-foreground">
-                          Run the setup steps for this app.
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        onClick={() => handleSetup(activeApp)}
-                        disabled={setupRunning[activeApp.id]}
-                      >
-                        {setupRunning[activeApp.id]
-                          ? "Installing..."
-                          : "Run setup"}
-                      </Button>
-                    </div>
-
-                    <div className="space-y-2">
-                      {activeApp.setup.steps.map((step) => (
-                        <div
-                          key={step.name}
-                          className="rounded-lg border-2 border-border bg-card/80 px-4 py-3"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-sm font-medium">
-                              {step.name}
-                            </span>
-                            {step.optional && (
-                              <Badge variant="outline">Optional</Badge>
-                            )}
-                          </div>
-                          {step.description && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {step.description}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    {setupMessage[activeApp.id] && (
-                      <Alert>
-                        <CheckCircle2 className="h-4 w-4" />
-                        <AlertDescription>
-                          {setupMessage[activeApp.id]}
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                    {setupError[activeApp.id] && (
-                      <Alert variant="destructive">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertDescription>
-                          {setupError[activeApp.id]}
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                  </div>
-                )}
-
-                {activeApp.launch.access?.url && (
-                  <div className="rounded-lg border-2 border-border bg-muted/40 px-3 py-2 text-xs">
-                    <p className="font-medium">Access</p>
-                    <p className="text-muted-foreground">
-                      {activeApp.launch.access.url}
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ) : null}
+              </ScrollArea>
+            </DialogContent>
+          </Dialog>
         </div>
       ) : null}
 
