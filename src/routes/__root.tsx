@@ -1,4 +1,5 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
+import { OpenCodeManager } from "@/components/OpenCodeManager";
 import { AppStateProvider, useAppState } from "@/router/app-state";
 
 export const Route = createRootRoute({
@@ -25,7 +26,12 @@ function RootGate() {
     );
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <OpenCodeManager />
+      <Outlet />
+    </>
+  );
 }
 
 function NotFound() {

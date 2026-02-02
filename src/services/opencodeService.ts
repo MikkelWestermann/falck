@@ -25,6 +25,18 @@ export interface OpenCodeConfig {
   defaults: Record<string, string>;
 }
 
+export interface OpenCodeStatus {
+  installed: boolean;
+  version?: string;
+  path?: string;
+}
+
+export interface OpenCodeInstallResult {
+  success: boolean;
+  message: string;
+  requiresManualInstall?: boolean;
+}
+
 interface RetryOptions {
   maxRetries: number;
   delayMs: number;
@@ -176,5 +188,62 @@ export const opencodeService = {
     )) as { success: boolean };
 
     return result.success;
+  },
+
+  async checkInstalled(): Promise<OpenCodeStatus> {
+    try {
+      return await invoke<OpenCodeStatus>("check_opencode_installed");
+    } catch (error) {
+      console.error("Error checking OpenCode status:", error);
+      return {
+        installed: false,
+        version: undefined,
+        path: undefined,
+      };
+    }
+  },
+
+  async install(): Promise<OpenCodeInstallResult> {
+    try {
+      const result = await invoke<string>("install_opencode");
+      return {
+        success: true,
+        message: result,
+      };
+    } catch (error) {
+      const errorMsg = String(error);
+      if (errorMsg === "windows_manual_install") {
+        return {
+          success: false,
+          message: "Windows installation requires manual download.",
+          requiresManualInstall: true,
+        };
+      }
+
+      return {
+        success: false,
+        message: `Installation failed: ${errorMsg}`,
+      };
+    }
+  },
+
+  async openInstallDocs(): Promise<void> {
+    return invoke<void>("open_browser_to_url", {
+      url: "https://opencode.ai/docs/",
+    });
+  },
+
+  async openWindowsInstaller(): Promise<void> {
+    return invoke<void>("open_browser_to_url", {
+      url: "https://github.com/opencode-ai/opencode/releases/latest",
+    });
+  },
+
+  async commandExists(command: string): Promise<boolean> {
+    try {
+      return await invoke<boolean>("check_command_exists", { command });
+    } catch {
+      return false;
+    }
   },
 };

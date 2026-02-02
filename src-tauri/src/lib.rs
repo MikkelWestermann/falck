@@ -11,7 +11,10 @@ use git::{
     get_repository_info, list_remotes, pull_from_remote, push_to_remote,
     reset_to_commit as reset_git_to_commit, stage_file, unstage_file,
 };
-use opencode::{opencode_send, OpencodeState};
+use opencode::{
+    check_command_exists, check_opencode_installed, install_opencode, opencode_send,
+    OpencodeState,
+};
 use storage::{get_default_repo_dir, list_repos, save_repo, set_default_repo_dir, SavedRepo};
 use reqwest::Client;
 
@@ -180,6 +183,9 @@ pub fn run() {
             get_default_repo_directory,
             set_default_repo_directory,
             opencode_send,
+            check_opencode_installed,
+            install_opencode,
+            check_command_exists,
             ssh::generate_new_ssh_key,
             ssh::list_ssh_keys,
             ssh::add_ssh_key_to_agent,

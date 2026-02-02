@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::ffi::OsStr;
 use std::io::{BufRead, BufReader, Write};
@@ -18,6 +19,66 @@ pub struct SidecarProcess {
     _child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OpenCodeStatus {
+    pub installed: bool,
+    pub version: Option<String>,
+    pub path: Option<String>,
+}
+
+#[tauri::command]
+pub fn check_opencode_installed() -> Result<OpenCodeStatus, String> {
+    let output = Command::new("opencode").arg("--version").output();
+
+    match output {
+        Ok(result) if result.status.success() => {
+            let stdout = String::from_utf8_lossy(&result.stdout);
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            let combined = format!("{}\n{}", stdout, stderr);
+            let version = combined
+                .lines()
+                .map(str::trim)
+                .find(|line| !line.is_empty())
+                .map(str::to_string);
+            let path = get_opencode_path().ok();
+
+            Ok(OpenCodeStatus {
+                installed: true,
+                version,
+                path,
+            })
+        }
+        Ok(_) => Ok(OpenCodeStatus {
+            installed: false,
+            version: None,
+            path: None,
+        }),
+        Err(err) => {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                Ok(OpenCodeStatus {
+                    installed: false,
+                    version: None,
+                    path: None,
+                })
+            } else {
+                Err(format!("Failed to check OpenCode: {}", err))
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn install_opencode() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(install_opencode_impl)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn check_command_exists(command: String) -> bool {
+    command_exists(&command)
 }
 
 #[tauri::command]
@@ -82,6 +143,58 @@ fn build_request(cmd: String, args: Value) -> Result<String, String> {
     }
 
     serde_json::to_string(&Value::Object(map)).map_err(|e| e.to_string())
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn install_opencode_impl() -> Result<String, String> {
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg("curl -fsSL https://opencode.ai/install | bash")
+        .output()
+        .map_err(|e| format!("Failed to execute install script: {}", e))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(format!("OpenCode installed successfully.\n{}", stdout))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Installation failed:\n{}", stderr))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn install_opencode_impl() -> Result<String, String> {
+    Err("windows_manual_install".to_string())
+}
+
+fn get_opencode_path() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    let output = Command::new("where")
+        .arg("opencode")
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(not(target_os = "windows"))]
+    let output = Command::new("which")
+        .arg("opencode")
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err("Could not find OpenCode path".to_string())
+    }
+}
+
+fn command_exists(command: &str) -> bool {
+    #[cfg(target_os = "windows")]
+    let output = Command::new("where").arg(command).output();
+
+    #[cfg(not(target_os = "windows"))]
+    let output = Command::new("which").arg(command).output();
+
+    output.map(|result| result.status.success()).unwrap_or(false)
 }
 
 fn spawn_sidecar<R: Runtime>(app: &AppHandle<R>) -> Result<SidecarProcess, String> {

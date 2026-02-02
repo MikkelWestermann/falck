@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { OpenCodeInstallPanel } from "@/components/OpenCodeManager";
 import { OpenCodeSettingsPanel } from "@/components/OpenCodeSettings";
 import { falckService } from "@/services/falckService";
 import {
@@ -331,6 +332,7 @@ export function SettingsPage({
           </CardContent>
         </Card>
 
+        <OpenCodeInstallPanel />
         <OpenCodeSettingsPanel />
       </main>
     </div>
