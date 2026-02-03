@@ -30,14 +30,15 @@ export function UnsavedChangesDialog({
 }: UnsavedChangesDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>Unsaved changes</DialogTitle>
           <DialogDescription>
             {targetLabel
               ? `You're about to ${targetLabel}. `
               : "You're about to switch projects. "}
-            Save your changes or discard them before continuing. Discarding will delete them.
+            Save your changes or discard them before continuing. Discarding will
+            delete them.
           </DialogDescription>
         </DialogHeader>
 
