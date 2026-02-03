@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { branchNamePattern } from "@/lib/branching";
+
 const isSshUrl = (value: string) =>
   value.startsWith("git@") || value.startsWith("ssh://");
 
@@ -27,7 +29,7 @@ export const createBranchSchema = z.object({
   branchName: z
     .string()
     .min(1, "Project name is required")
-    .regex(/^[a-zA-Z0-9._/-]+$/, "Invalid project name"),
+    .regex(branchNamePattern, "Invalid project name"),
 });
 
 export const createAISessionSchema = z.object({

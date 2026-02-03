@@ -12,19 +12,31 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  applyBranchPrefix,
+  isValidBranchName,
+  normalizeBranchPrefix,
+  stripBranchPrefix,
+} from "@/lib/branching";
 import { createBranchSchema } from "@/schemas/forms";
 import { BranchInfo, gitService } from "@/services/gitService";
 
 interface BranchManagerProps {
   repoPath: string;
   onBranchChange: () => void;
+  branchPrefix?: string | null;
 }
 
-export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) {
+export function BranchManager({
+  repoPath,
+  onBranchChange,
+  branchPrefix,
+}: BranchManagerProps) {
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [currentBranch, setCurrentBranch] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const normalizedPrefix = normalizeBranchPrefix(branchPrefix);
 
   useEffect(() => {
     void loadBranches();
@@ -78,7 +90,24 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
     onSubmit: async ({ value }) => {
       setError(null);
       try {
-        await gitService.createBranch(repoPath, value.branchName);
+        if (normalizedPrefix && !isValidBranchName(normalizedPrefix)) {
+          setError(
+            "Branch prefix from the Falck config contains invalid characters.",
+          );
+          return;
+        }
+        const trimmed = value.branchName.trim();
+        const suffix = stripBranchPrefix(trimmed, normalizedPrefix);
+        const validation =
+          createBranchSchema.shape.branchName.safeParse(suffix);
+        if (!validation.success) {
+          setError(
+            validation.error.issues[0]?.message ?? "Invalid project name.",
+          );
+          return;
+        }
+        const resolvedName = applyBranchPrefix(suffix, normalizedPrefix);
+        await gitService.createBranch(repoPath, resolvedName);
         branchForm.reset();
         await loadBranches();
         onBranchChange();
@@ -92,7 +121,9 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
     <Card>
       <CardHeader>
         <CardTitle>Projects</CardTitle>
-        <CardDescription>Switch, create, and clean up projects.</CardDescription>
+        <CardDescription>
+          Switch, create, and clean up projects.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="flex items-center justify-between rounded-lg border-2 border-border bg-secondary/30 px-4 py-3 shadow-[var(--shadow-xs)]">
@@ -113,11 +144,7 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
               >
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold">{branch.name}</span>
-                  {branch.is_head && (
-                    <Badge variant="secondary">
-                      Active
-                    </Badge>
-                  )}
+                  {branch.is_head && <Badge variant="secondary">Active</Badge>}
                 </div>
                 {!branch.is_head && (
                   <div className="flex items-center gap-2">
@@ -139,6 +166,17 @@ export function BranchManager({ repoPath, onBranchChange }: BranchManagerProps) 
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {normalizedPrefix && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border-2 border-dashed border-border/70 bg-secondary/20 px-4 py-3 text-xs text-muted-foreground shadow-[var(--shadow-xs)]">
+            <span className="uppercase tracking-[0.24em]">Branch prefix</span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-foreground/80">
+                {normalizedPrefix}
+              </span>
+            </div>
           </div>
         )}
 

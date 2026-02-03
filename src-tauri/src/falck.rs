@@ -44,6 +44,7 @@ pub struct ConfigMetadata {
 pub struct RepositoryConfig {
     pub default_branch: Option<String>,
     pub protect_default_branch: Option<bool>,
+    pub branch_prefix: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

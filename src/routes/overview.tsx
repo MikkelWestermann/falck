@@ -21,6 +21,7 @@ import { gitService, RepositoryInfo } from "@/services/gitService";
 import { falckService } from "@/services/falckService";
 import { useAppState } from "@/router/app-state";
 import { ArrowLeft, History, RefreshCcw } from "lucide-react";
+import { applyBranchPrefix, normalizeBranchPrefix } from "@/lib/branching";
 
 export const Route = createFileRoute("/overview")({
   component: OverviewRoute,
@@ -41,6 +42,7 @@ function OverviewRoute() {
   const [pullError, setPullError] = useState<string | null>(null);
   const [defaultBranch, setDefaultBranch] = useState<string | null>(null);
   const [protectDefaultBranch, setProtectDefaultBranch] = useState(false);
+  const [branchPrefix, setBranchPrefix] = useState<string | null>(null);
   const [pendingProjectAction, setPendingProjectAction] = useState<{
     type: "switch" | "create";
     projectName: string;
@@ -68,6 +70,7 @@ function OverviewRoute() {
     if (!repoPath) {
       setDefaultBranch(null);
       setProtectDefaultBranch(false);
+      setBranchPrefix(null);
       return;
     }
 
@@ -80,10 +83,14 @@ function OverviewRoute() {
         setProtectDefaultBranch(
           Boolean(config.repository?.protect_default_branch),
         );
+        setBranchPrefix(
+          normalizeBranchPrefix(config.repository?.branch_prefix),
+        );
       } catch {
         if (!active) return;
         setDefaultBranch(null);
         setProtectDefaultBranch(false);
+        setBranchPrefix(null);
       }
     };
 
@@ -218,7 +225,8 @@ function OverviewRoute() {
   };
 
   const handleCreateProject = async (projectName: string) => {
-    await queueProjectAction({ type: "create", projectName });
+    const resolvedName = applyBranchPrefix(projectName.trim(), branchPrefix);
+    await queueProjectAction({ type: "create", projectName: resolvedName });
   };
 
   const handleDiscardAndContinue = async () => {
@@ -372,6 +380,7 @@ function OverviewRoute() {
                     currentBranch={repoInfo.head_branch}
                     onSelectProject={handleSelectProject}
                     onCreateProject={handleCreateProject}
+                    branchPrefix={branchPrefix}
                     compact
                   />
                 </div>

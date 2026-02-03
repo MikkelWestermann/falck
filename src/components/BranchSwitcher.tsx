@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,6 +21,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createBranchSchema } from "@/schemas/forms";
+import {
+  isValidBranchName,
+  normalizeBranchPrefix,
+  stripBranchPrefix,
+} from "@/lib/branching";
 import { BranchInfo } from "@/services/gitService";
 
 interface BranchSwitcherProps {
@@ -28,6 +34,7 @@ interface BranchSwitcherProps {
   onSelectProject: (projectName: string) => Promise<void>;
   onCreateProject: (projectName: string) => Promise<void>;
   compact?: boolean;
+  branchPrefix?: string | null;
 }
 
 export function BranchSwitcher({
@@ -35,12 +42,14 @@ export function BranchSwitcher({
   currentBranch,
   onSelectProject,
   onCreateProject,
+  branchPrefix,
   compact = false,
 }: BranchSwitcherProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const [branchName, setBranchName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const normalizedPrefix = normalizeBranchPrefix(branchPrefix);
 
   const handleSelect = async (value: string) => {
     if (value === "__create__") {
@@ -63,7 +72,14 @@ export function BranchSwitcher({
 
   const handleCreateProject = async () => {
     const trimmed = branchName.trim();
-    const validation = createBranchSchema.shape.branchName.safeParse(trimmed);
+    if (normalizedPrefix && !isValidBranchName(normalizedPrefix)) {
+      setError(
+        "Branch prefix from the Falck config contains invalid characters.",
+      );
+      return;
+    }
+    const suffix = stripBranchPrefix(trimmed, normalizedPrefix);
+    const validation = createBranchSchema.shape.branchName.safeParse(suffix);
     if (!validation.success) {
       setError(validation.error.issues[0]?.message ?? "Invalid project name.");
       return;
@@ -72,7 +88,7 @@ export function BranchSwitcher({
     setLoading(true);
     setError(null);
     try {
-      await onCreateProject(trimmed);
+      await onCreateProject(suffix);
       setBranchName("");
       setCreateOpen(false);
     } catch (err) {
@@ -118,16 +134,39 @@ export function BranchSwitcher({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create new project</DialogTitle>
-            <DialogDescription>Start a fresh project from the default.</DialogDescription>
+            <DialogDescription>
+              Start a fresh project from the default.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             <Label htmlFor="new-branch">Project name</Label>
-            <Input
-              id="new-branch"
-              value={branchName}
-              onChange={(event) => setBranchName(event.target.value)}
-              placeholder="new-project-name"
-            />
+            {normalizedPrefix ? (
+              <div className="space-y-2">
+                <div className="flex overflow-hidden rounded-md border border-input bg-background shadow-sm">
+                  <div className="flex items-center gap-2 border-r border-border bg-muted/60 px-3 text-xs font-mono text-muted-foreground">
+                    <span>{normalizedPrefix}</span>
+                  </div>
+                  <Input
+                    id="new-branch"
+                    value={branchName}
+                    onChange={(event) => setBranchName(event.target.value)}
+                    placeholder="new-project-name"
+                    className="h-9 flex-1 rounded-none border-0 bg-transparent px-3 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Prefix is set in .falck/config.yaml and cannot be changed
+                  here.
+                </p>
+              </div>
+            ) : (
+              <Input
+                id="new-branch"
+                value={branchName}
+                onChange={(event) => setBranchName(event.target.value)}
+                placeholder="new-project-name"
+              />
+            )}
           </div>
           {error && (
             <Alert variant="destructive">

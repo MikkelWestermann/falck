@@ -34,6 +34,7 @@ metadata:
 repository:
   default_branch: "main"
   protect_default_branch: true
+  branch_prefix: "projects/"
 
 applications:
   - id: "backend"
@@ -161,6 +162,7 @@ groups:
 |-------|------|----------|-------------|
 | `default_branch` | string | ✗ | Branch to treat as the default (used as the base for projects and history) |
 | `protect_default_branch` | boolean | ✗ | Prevent Falck from pushing to the default branch (default: false) |
+| `branch_prefix` | string | ✗ | Prefix to apply to all branches created by Falck (for example "projects/") |
 
 ### Application Object
 

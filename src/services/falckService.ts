@@ -12,6 +12,7 @@ export interface FalckConfig {
   repository?: {
     default_branch?: string;
     protect_default_branch?: boolean;
+    branch_prefix?: string;
   };
   applications: FalckApplication[];
   global_env?: Record<string, string>;
