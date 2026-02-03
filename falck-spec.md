@@ -49,6 +49,25 @@ applications:
         command: "node --version"
         version: "18.0.0"
         install_url: "https://nodejs.org"
+        install:
+          instructions: "Install Node.js 18+ before continuing."
+          options:
+            - name: "Homebrew (macOS)"
+              command: "brew install node@18"
+              only_if: "os == 'macos'"
+            - name: "Scripted installer"
+              command: "./scripts/install-node.sh"
+        install:
+          instructions:
+            - "Install Node.js 18+ before running setup."
+          options:
+            - name: "Homebrew (macOS)"
+              command: "brew install node@18"
+              only_if: "os == 'macos'"
+            - name: "nvm (cross-platform)"
+              command: "nvm install 18 && nvm use 18"
+            - name: "Scripted installer"
+              command: "./scripts/install-node.sh"
     
     secrets:
       - name: "DATABASE_URL"
@@ -188,7 +207,26 @@ groups:
 | `command` | string | ✓ | Shell command to check if installed |
 | `version` | string | ✗ | Minimum required version (semver) |
 | `install_url` | string | ✗ | URL to download/install |
+| `install` | object | ✗ | Install instructions and runnable install options |
 | `optional` | boolean | ✗ | Whether this is optional (default: false) |
+
+### Prerequisite Install Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `instructions` | string or array | ✗ | Human-readable install guidance to show in the UI |
+| `options` | array | ✗ | Install options that can be run as commands/scripts |
+
+### Prerequisite Install Option Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | ✓ | Display name for the option |
+| `command` | string | ✓ | Shell command to install (can call a script like `./scripts/install-node.sh`) |
+| `description` | string | ✗ | What this option does |
+| `timeout` | integer | ✗ | Maximum seconds to wait (default: 300) |
+| `silent` | boolean | ✗ | Whether to suppress output (default: false) |
+| `only_if` | string | ✗ | Conditional execution (e.g., "os == 'macos'") |
 
 ### Secret Object
 
@@ -319,7 +357,7 @@ launch:
 
 ## Conditional Execution
 
-The `only_if` field supports conditions to make setup steps, setup checks, and cleanup steps conditional.
+The `only_if` field supports conditions to make setup steps, setup checks, prerequisite install options, and cleanup steps conditional.
 
 ### Operators
 
@@ -639,9 +677,11 @@ launch_order:
 
 8. **Make prerequisites optional when possible**: Use `optional: true` for nice-to-have tools
 
-9. **Provide install URLs**: Always include download links for required prerequisites
+9. **Provide install options**: Add `install.options` with commands/scripts whenever possible and use `only_if` for OS-specific installers
 
-10. **Test on target platforms**: If supporting multiple OSes, test conditional steps with `only_if`
+10. **Provide install URLs**: Always include download links for required prerequisites
+
+11. **Test on target platforms**: If supporting multiple OSes, test conditional steps with `only_if`
 
 ### Environment Variable Best Practices
 

@@ -208,6 +208,7 @@ pub fn run() {
             github::github_add_ssh_key,
             falck::load_falck_config,
             falck::check_falck_prerequisites,
+            falck::run_falck_prerequisite_install,
             falck::get_app_secrets_for_config,
             falck::set_app_secret,
             falck::check_secrets_satisfied,

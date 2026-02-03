@@ -81,6 +81,15 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
   >({});
   const [secretsDialogApp, setSecretsDialogApp] =
     useState<FalckApplication | null>(null);
+  const [prereqInstallRunning, setPrereqInstallRunning] = useState<
+    Record<string, boolean>
+  >({});
+  const [prereqInstallMessage, setPrereqInstallMessage] = useState<
+    Record<string, string>
+  >({});
+  const [prereqInstallError, setPrereqInstallError] = useState<
+    Record<string, string>
+  >({});
 
   useEffect(() => {
     void loadConfig();
@@ -208,6 +217,35 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
     }
   };
 
+  const handlePrereqInstall = async (
+    appId: string,
+    prereqIndex: number,
+    optionIndex: number,
+  ) => {
+    const optionKey = `${appId}:${prereqIndex}:${optionIndex}`;
+    const prereqKey = `${appId}:${prereqIndex}`;
+    setPrereqInstallRunning((prev) => ({ ...prev, [optionKey]: true }));
+    setPrereqInstallMessage((prev) => ({ ...prev, [prereqKey]: "" }));
+    setPrereqInstallError((prev) => ({ ...prev, [prereqKey]: "" }));
+    try {
+      const message = await falckService.runPrerequisiteInstall(
+        repoPath,
+        appId,
+        prereqIndex,
+        optionIndex,
+      );
+      setPrereqInstallMessage((prev) => ({ ...prev, [prereqKey]: message }));
+    } catch (err) {
+      setPrereqInstallError((prev) => ({
+        ...prev,
+        [prereqKey]: String(err),
+      }));
+    } finally {
+      setPrereqInstallRunning((prev) => ({ ...prev, [optionKey]: false }));
+      void checkPrereqs(appId);
+    }
+  };
+
   const handleLaunch = async (app: FalckApplication) => {
     setLaunchError((prev) => ({ ...prev, [app.id]: "" }));
     try {
@@ -294,6 +332,7 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
   }));
 
   const activeResults = activeApp ? prereqResults[activeApp.id] : [];
+  const activePrereqs = activeApp?.prerequisites ?? [];
   const prereqsMissing = activeResults?.some(
     (result) => !result.installed && !result.optional,
   );
@@ -554,15 +593,36 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
                       </Button>
                     </div>
 
-                    {activeResults && activeResults.length > 0 ? (
+                    {activePrereqs.length > 0 ? (
                       <div className="space-y-3">
-                        {activeResults.map((result) => (
-                          <PrerequisiteStatus
-                            key={result.name}
-                            result={result}
-                            onOpenInstallUrl={handleOpenUrl}
-                          />
-                        ))}
+                        {activePrereqs.map((prereq, prereqIndex) => {
+                          const result = activeResults?.[prereqIndex];
+                          const prereqKey = `${activeApp.id}:${prereqIndex}`;
+                          return (
+                            <PrerequisiteStatus
+                              key={`${prereq.name}-${prereqIndex}`}
+                              prereq={prereq}
+                              result={result}
+                              onOpenInstallUrl={handleOpenUrl}
+                              onRunInstallOption={(optionIndex) =>
+                                handlePrereqInstall(
+                                  activeApp.id,
+                                  prereqIndex,
+                                  optionIndex,
+                                )
+                              }
+                              isOptionRunning={(optionIndex) =>
+                                Boolean(
+                                  prereqInstallRunning[
+                                    `${activeApp.id}:${prereqIndex}:${optionIndex}`
+                                  ],
+                                )
+                              }
+                              installMessage={prereqInstallMessage[prereqKey]}
+                              installError={prereqInstallError[prereqKey]}
+                            />
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">

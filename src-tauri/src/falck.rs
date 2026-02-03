@@ -70,7 +70,31 @@ pub struct Prerequisite {
     pub command: String,
     pub version: Option<String>,
     pub install_url: Option<String>,
+    pub install: Option<PrerequisiteInstall>,
     pub optional: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum PrerequisiteInstallInstructions {
+    Text(String),
+    List(Vec<String>),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PrerequisiteInstallOption {
+    pub name: String,
+    pub command: String,
+    pub description: Option<String>,
+    pub timeout: Option<u32>,
+    pub silent: Option<bool>,
+    pub only_if: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PrerequisiteInstall {
+    pub instructions: Option<PrerequisiteInstallInstructions>,
+    pub options: Option<Vec<PrerequisiteInstallOption>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -296,6 +320,54 @@ pub fn check_app_prerequisites(
         }
     }
     Ok(results)
+}
+
+pub fn run_prerequisite_install(
+    repo_path: &Path,
+    config: &FalckConfig,
+    app: &Application,
+    prereq_index: usize,
+    option_index: usize,
+) -> Result<String> {
+    let prereqs = app
+        .prerequisites
+        .as_ref()
+        .context("No prerequisites configured for this application")?;
+    let prereq = prereqs
+        .get(prereq_index)
+        .context("Prerequisite not found")?;
+    let install = prereq
+        .install
+        .as_ref()
+        .context("No install options configured for this prerequisite")?;
+    let options = install
+        .options
+        .as_ref()
+        .context("No install options configured for this prerequisite")?;
+    let option = options
+        .get(option_index)
+        .context("Install option not found")?;
+
+    let app_root = get_app_root(repo_path, app);
+    let ctx = TemplateContext::new(repo_path, &app_root);
+    let env_map = build_env_map(config, app, &ctx)?;
+
+    if let Some(condition) = &option.only_if {
+        if !evaluate_condition(condition, &ctx)? {
+            return Ok("Install option skipped for this environment.".to_string());
+        }
+    }
+
+    let command = resolve_template(&option.command, &ctx)?;
+    let timeout = option.timeout.unwrap_or(300);
+    let silent = option.silent.unwrap_or(false);
+    let status = run_command(&command, &app_root, &env_map, Some(timeout), silent)?;
+
+    if !status.success() {
+        bail!("Prerequisite install option '{}' failed", option.name);
+    }
+
+    Ok(format!("Ran install option '{}'.", option.name))
 }
 
 fn parse_version(output: &str) -> Option<String> {
@@ -1137,6 +1209,25 @@ pub async fn check_falck_prerequisites(
         .ok_or_else(|| "Application not found".to_string())?;
 
     check_app_prerequisites(path, app).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn run_falck_prerequisite_install(
+    repo_path: String,
+    app_id: String,
+    prereq_index: usize,
+    option_index: usize,
+) -> Result<String, String> {
+    let path = Path::new(&repo_path);
+    let config = load_config(path).map_err(|e| e.to_string())?;
+    let app = config
+        .applications
+        .iter()
+        .find(|app| app.id == app_id)
+        .ok_or_else(|| "Application not found".to_string())?;
+
+    run_prerequisite_install(path, &config, app, prereq_index, option_index)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

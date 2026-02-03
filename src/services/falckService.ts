@@ -40,7 +40,24 @@ export interface Prerequisite {
   command: string;
   version?: string;
   install_url?: string;
+  install?: PrerequisiteInstall;
   optional?: boolean;
+}
+
+export type PrerequisiteInstallInstructions = string | string[];
+
+export interface PrerequisiteInstallOption {
+  name: string;
+  command: string;
+  description?: string;
+  timeout?: number;
+  silent?: boolean;
+  only_if?: string;
+}
+
+export interface PrerequisiteInstall {
+  instructions?: PrerequisiteInstallInstructions;
+  options?: PrerequisiteInstallOption[];
 }
 
 export interface Secret {
@@ -163,6 +180,20 @@ export const falckService = {
     return invoke<PrerequisiteCheckResult[]>("check_falck_prerequisites", {
       repoPath,
       appId,
+    });
+  },
+
+  async runPrerequisiteInstall(
+    repoPath: string,
+    appId: string,
+    prereqIndex: number,
+    optionIndex: number,
+  ): Promise<string> {
+    return invoke<string>("run_falck_prerequisite_install", {
+      repoPath,
+      appId,
+      prereqIndex,
+      optionIndex,
     });
   },
 
