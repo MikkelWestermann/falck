@@ -1,4 +1,5 @@
 import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
+import { unstable_batchedUpdates } from "react-dom";
 
 import type { ChatStatus } from "ai";
 import {
@@ -61,7 +62,8 @@ interface AIChatProps {
   repoPath: string;
 }
 
-type ChatMessage = Message & {
+type ChatMessage = Omit<Message, "id"> & {
+  id: string;
   pending?: boolean;
 };
 
@@ -71,12 +73,16 @@ type PartSnapshot = {
   text?: string;
   prompt?: string;
   description?: string;
+  synthetic?: boolean;
+  ignored?: boolean;
   status?: string;
   output?: unknown;
   errorText?: string;
   input?: unknown;
   toolName?: string;
+  tool?: string;
   title?: string;
+  role?: "user" | "assistant";
 };
 
 type ToolActivity = {
@@ -122,6 +128,196 @@ const formatStatusTime = (value: string) =>
     second: "2-digit",
   });
 
+const MESSAGE_ID_PREFIX = "msg";
+const MESSAGE_ID_LENGTH = 26;
+let lastMessageTimestamp = 0;
+let messageCounter = 0;
+
+const createMessageId = () => {
+  const now = Date.now();
+  if (now !== lastMessageTimestamp) {
+    lastMessageTimestamp = now;
+    messageCounter = 0;
+  }
+  messageCounter += 1;
+
+  let stamp = BigInt(now) * BigInt(0x1000) + BigInt(messageCounter);
+  const timeBytes = new Uint8Array(6);
+  for (let i = 0; i < 6; i += 1) {
+    timeBytes[i] = Number((stamp >> BigInt(40 - 8 * i)) & BigInt(0xff));
+  }
+
+  return `${MESSAGE_ID_PREFIX}_${bytesToHex(timeBytes)}${randomBase62(
+    MESSAGE_ID_LENGTH - 12,
+  )}`;
+};
+
+const bytesToHex = (bytes: Uint8Array) => {
+  let hex = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+  }
+  return hex;
+};
+
+const randomBase62 = (length: number) => {
+  const chars =
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  const bytes = getRandomBytes(length);
+  let result = "";
+  for (let i = 0; i < length; i += 1) {
+    result += chars[bytes[i] % 62];
+  }
+  return result;
+};
+
+const getRandomBytes = (length: number) => {
+  const bytes = new Uint8Array(length);
+  if (
+    typeof globalThis !== "undefined" &&
+    globalThis.crypto &&
+    typeof globalThis.crypto.getRandomValues === "function"
+  ) {
+    globalThis.crypto.getRandomValues(bytes);
+    return bytes;
+  }
+
+  for (let i = 0; i < length; i += 1) {
+    bytes[i] = Math.floor(Math.random() * 256);
+  }
+
+  return bytes;
+};
+
+const TEXT_RENDER_THROTTLE_MS = 100;
+
+const useThrottledValue = (value: string, delay = TEXT_RENDER_THROTTLE_MS) => {
+  const [throttled, setThrottled] = useState(value);
+  const last = useRef(0);
+
+  useEffect(() => {
+    const now = Date.now();
+    const remaining = delay - (now - last.current);
+    if (remaining <= 0) {
+      last.current = now;
+      setThrottled(value);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      last.current = Date.now();
+      setThrottled(value);
+    }, remaining);
+
+    return () => clearTimeout(timer);
+  }, [delay, value]);
+
+  return throttled;
+};
+
+const ThrottledMessageResponse = ({
+  text,
+  isStreaming,
+}: {
+  text: string;
+  isStreaming: boolean;
+}) => {
+  const throttled = useThrottledValue(text);
+  if (isStreaming) {
+    return (
+      <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+        {throttled}
+      </div>
+    );
+  }
+  return <MessageResponse>{text}</MessageResponse>;
+};
+
+const normalizeSseText = (input: string) =>
+  input.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+const readSseStream = async (options: {
+  url: string;
+  signal: AbortSignal;
+  onEvent: (data: unknown) => void;
+  onError?: (error: unknown) => void;
+}) => {
+  if (typeof TextDecoderStream === "undefined") {
+    throw new Error("TextDecoderStream is not supported");
+  }
+  const response = await fetch(options.url, {
+    headers: { Accept: "text/event-stream" },
+    signal: options.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`SSE failed: ${response.status} ${response.statusText}`);
+  }
+
+  if (!response.body) {
+    throw new Error("No body in SSE response");
+  }
+
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += value;
+      buffer = normalizeSseText(buffer);
+      const chunks = buffer.split("\n\n");
+      buffer = chunks.pop() ?? "";
+
+      for (const chunk of chunks) {
+        const lines = chunk.split("\n");
+        const dataLines: string[] = [];
+        for (const line of lines) {
+          if (line.startsWith("data:")) {
+            dataLines.push(line.replace(/^data:\s*/, ""));
+          }
+        }
+        if (!dataLines.length) {
+          continue;
+        }
+        const rawData = dataLines.join("\n");
+        try {
+          options.onEvent(JSON.parse(rawData));
+        } catch (err) {
+          options.onError?.(err);
+        }
+      }
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore reader release errors
+    }
+  }
+};
+
+const compareMessageId = (a: string, b: string) =>
+  a < b ? -1 : a > b ? 1 : 0;
+
+const findInsertIndex = (list: ChatMessage[], messageId: string) => {
+  let low = 0;
+  let high = list.length;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    const midId = list[mid]?.id ?? "";
+    if (compareMessageId(midId, messageId) < 0) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+};
+
 export function AIChat({ repoPath }: AIChatProps) {
   const MODEL_STORAGE_KEY = "falck.opencode.model";
   const [sessions, setSessions] = useState<AISession[]>([]);
@@ -136,6 +332,9 @@ export function AIChat({ repoPath }: AIChatProps) {
   const [loadingSession, setLoadingSession] = useState(false);
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState("");
   const [initializing, setInitializing] = useState(true);
   const [toolActivity, setToolActivity] = useState<ToolActivity[]>([]);
@@ -153,6 +352,7 @@ export function AIChat({ repoPath }: AIChatProps) {
     new Map(),
   );
   const roleByMessage = useRef<Map<string, "user" | "assistant">>(new Map());
+  const pendingUserIds = useRef<Set<string>>(new Set());
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
   const readStoredModel = () => {
@@ -195,7 +395,7 @@ export function AIChat({ repoPath }: AIChatProps) {
       : undefined;
 
   const visibleMessages = useMemo(
-    () => messages.filter((msg) => msg.text.trim().length > 0),
+    () => messages.filter((msg) => msg.text.length > 0),
     [messages],
   );
 
@@ -450,8 +650,6 @@ export function AIChat({ repoPath }: AIChatProps) {
     setConnectionState("connecting");
     setLastEventAt(null);
 
-    const source = new EventSource(eventStreamUrl);
-
     const upsertMessage = (
       messageId: string,
       updates: Partial<ChatMessage>,
@@ -459,25 +657,25 @@ export function AIChat({ repoPath }: AIChatProps) {
     ) => {
       setMessages((prev) => {
         const idx = prev.findIndex((msg) => msg.id === messageId);
-        const hasText =
-          typeof updates.text === "string" && updates.text.trim().length > 0;
+        const hasText = typeof updates.text === "string";
+        const hasVisibleText = hasText && updates.text.length > 0;
         if (idx === -1) {
-          if (options?.requireText && !hasText) {
+          if (options?.requireText && !hasVisibleText) {
             return prev;
           }
           if (!updates.role) {
             return prev;
           }
-          return [
-            ...prev,
-            {
-              id: messageId,
-              role: updates.role,
-              text: updates.text ?? "",
-              timestamp: updates.timestamp ?? new Date().toISOString(),
-              pending: updates.pending,
-            },
-          ];
+          const next = [...prev];
+          const insertAt = findInsertIndex(next, messageId);
+          next.splice(insertAt, 0, {
+            id: messageId,
+            role: updates.role,
+            text: updates.text ?? "",
+            timestamp: updates.timestamp ?? new Date().toISOString(),
+            pending: updates.pending,
+          });
+          return next;
         }
         const next = [...prev];
         next[idx] = {
@@ -521,12 +719,16 @@ export function AIChat({ repoPath }: AIChatProps) {
         text?: string;
         prompt?: string;
         description?: string;
+        synthetic?: boolean;
+        ignored?: boolean;
         state?: unknown;
         output?: unknown;
         errorText?: string;
         input?: unknown;
         toolName?: string;
+        tool?: string;
         title?: string;
+        role?: "user" | "assistant";
       },
       existing?: PartSnapshot,
     ): PartSnapshot => {
@@ -548,8 +750,12 @@ export function AIChat({ repoPath }: AIChatProps) {
         text: part.text ?? existing?.text,
         prompt: part.prompt ?? existing?.prompt,
         description: part.description ?? existing?.description,
+        synthetic: part.synthetic ?? existing?.synthetic,
+        ignored: part.ignored ?? existing?.ignored,
         toolName: part.toolName ?? existing?.toolName,
+        tool: part.tool ?? existing?.tool,
         title: part.title ?? existing?.title,
+        role: part.role ?? existing?.role,
         status,
         output,
         errorText,
@@ -559,11 +765,19 @@ export function AIChat({ repoPath }: AIChatProps) {
 
     const isToolPart = (part: PartSnapshot) =>
       part.type === "dynamic-tool" ||
+      part.type === "tool" ||
+      Boolean(part.tool) ||
       Boolean(part.type && part.type.startsWith("tool-"));
 
     const toolLabel = (part: PartSnapshot) => {
       if (part.type === "dynamic-tool") {
         return part.title || part.toolName || "Tool";
+      }
+      if (part.type === "tool") {
+        return part.tool || part.title || part.toolName || "Tool";
+      }
+      if (part.tool) {
+        return part.tool;
       }
       if (part.type?.startsWith("tool-")) {
         return part.type.replace("tool-", "") || "Tool";
@@ -571,71 +785,33 @@ export function AIChat({ repoPath }: AIChatProps) {
       return "Tool";
     };
 
-    const formatOutput = (value: unknown) => {
-      if (typeof value === "string") {
-        return value.trim();
+    const buildMessageText = (
+      parts: Map<string, PartSnapshot>,
+      role?: "user" | "assistant",
+    ) => {
+      const values = Array.from(parts.values()).sort((a, b) =>
+        a.id.localeCompare(b.id),
+      );
+      const textParts = values.filter(
+        (part) =>
+          part.type === "text" &&
+          typeof part.text === "string" &&
+          !part.synthetic &&
+          !part.ignored,
+      );
+      if (textParts.length === 0) {
+        return "";
       }
-      try {
-        return JSON.stringify(value, null, 2);
-      } catch {
-        return String(value);
+      if (role === "assistant") {
+        return textParts[textParts.length - 1]!.text ?? "";
       }
-    };
-
-    const buildMessageText = (parts: Map<string, PartSnapshot>) => {
-      const values = Array.from(parts.values());
-      const textParts = values
-        .filter((part) => part.type === "text" && part.text?.trim())
-        .map((part) => part.text!.trim());
-      if (textParts.length > 0) {
-        return textParts.join("\n");
+      let longest = textParts[0]!;
+      for (const part of textParts) {
+        if ((part.text ?? "").length > (longest.text ?? "").length) {
+          longest = part;
+        }
       }
-
-      const toolOutputs = values
-        .filter((part) => {
-          if (!isToolPart(part)) {
-            return false;
-          }
-          const hasOutput = part.output !== undefined || part.errorText;
-          if (!hasOutput) {
-            return false;
-          }
-          if (!part.status) {
-            return true;
-          }
-          return ["output-available", "output-error", "output-denied"].includes(
-            part.status,
-          );
-        })
-        .map((part) =>
-          part.errorText ? part.errorText.trim() : formatOutput(part.output),
-        )
-        .filter((text) => text.trim().length > 0);
-      if (toolOutputs.length > 0) {
-        return toolOutputs.join("\n");
-      }
-
-      const reasoningParts = values
-        .filter((part) => part.type === "reasoning" && part.text?.trim())
-        .map((part) => part.text!.trim());
-      if (reasoningParts.length > 0) {
-        return reasoningParts.join("\n");
-      }
-
-      const subtaskParts = values
-        .filter((part) => part.type === "subtask")
-        .map((part) => part.description || part.prompt)
-        .filter((text): text is string => Boolean(text?.trim()))
-        .map((text) => text.trim());
-      if (subtaskParts.length > 0) {
-        return subtaskParts.join("\n");
-      }
-
-      const fallback = values
-        .map((part) => part.text)
-        .filter((text): text is string => Boolean(text?.trim()))
-        .map((text) => text.trim());
-      return fallback.join("\n");
+      return longest.text ?? "";
     };
 
     const refreshToolActivity = () => {
@@ -649,6 +825,7 @@ export function AIChat({ repoPath }: AIChatProps) {
             [
               "input-streaming",
               "input-available",
+              "running",
               "approval-requested",
               "approval-responded",
             ].includes(part.status)
@@ -666,88 +843,109 @@ export function AIChat({ repoPath }: AIChatProps) {
 
     const reconcileUserMessage = (serverId: string, timestamp: string) => {
       setMessages((prev) => {
-        const pendingIndex = prev.findIndex(
-          (msg) => msg.role === "user" && msg.pending,
-        );
         const existingIndex = prev.findIndex((msg) => msg.id === serverId);
-        if (pendingIndex === -1 && existingIndex === -1) {
-          return prev;
-        }
-        const next = [...prev];
-        if (pendingIndex !== -1) {
-          next[pendingIndex] = {
-            ...next[pendingIndex],
+        if (existingIndex !== -1) {
+          const next = [...prev];
+          next[existingIndex] = {
+            ...next[existingIndex],
             id: serverId,
             pending: false,
             timestamp,
           };
+          pendingUserIds.current.delete(serverId);
+          return next;
         }
-        if (existingIndex !== -1 && existingIndex !== pendingIndex) {
-          next[existingIndex] = {
-            ...next[existingIndex],
-            timestamp,
-          };
-          if (pendingIndex !== -1) {
-            next.splice(existingIndex, 1);
-          }
+
+        const pendingIndex = prev.findIndex(
+          (msg) => msg.role === "user" && msg.pending,
+        );
+        if (pendingIndex === -1) {
+          return prev;
         }
+        const pendingId = prev[pendingIndex]?.id;
+        if (pendingId) {
+          pendingUserIds.current.delete(pendingId);
+        }
+        const next = [...prev];
+        const pendingMessage = {
+          ...next[pendingIndex],
+          id: serverId,
+          pending: false,
+          timestamp,
+        };
+        next.splice(pendingIndex, 1);
+        const insertAt = findInsertIndex(next, serverId);
+        next.splice(insertAt, 0, pendingMessage);
         return next;
       });
     };
 
-    source.onmessage = (event) => {
-      if (!event.data) {
+    const handlePayload = (payload: {
+      type?: string;
+      properties?: Record<string, unknown>;
+    }) => {
+      if (payload.type === "server.connected") {
+        setConnectionState("connected");
+        setLastEventAt(new Date().toISOString());
         return;
       }
-      try {
-        const payload = JSON.parse(event.data) as {
-          type?: string;
-          properties?: Record<string, unknown>;
-        };
 
-        if (payload.type === "server.connected") {
-          setConnectionState("connected");
-          setLastEventAt(new Date().toISOString());
+      if (payload.type === "session.status") {
+        const props = payload.properties as
+          | { sessionID?: string; status?: SessionStatus }
+          | undefined;
+        if (!props || props.sessionID !== currentSession?.path || !props.status) {
           return;
         }
-
-        if (payload.type === "session.status") {
-          const props = payload.properties as
-            | { sessionID?: string; status?: SessionStatus }
-            | undefined;
-          if (
-            !props ||
-            props.sessionID !== currentSession?.path ||
-            !props.status
-          ) {
-            return;
-          }
-          setConnectionState("connected");
-          setLastEventAt(new Date().toISOString());
-          setSessionStatus(props.status);
-          if (props.status.type !== "busy") {
-            setAwaitingResponse(false);
-          }
-          return;
-        }
-
-        if (payload.type === "session.idle") {
-          const props = payload.properties as
-            | { sessionID?: string }
-            | undefined;
-          if (!props || props.sessionID !== currentSession?.path) {
-            return;
-          }
-          setConnectionState("connected");
-          setLastEventAt(new Date().toISOString());
-          setSessionStatus({ type: "idle" });
+        setConnectionState("connected");
+        setLastEventAt(new Date().toISOString());
+        setSessionStatus(props.status);
+        if (props.status.type !== "busy") {
           setAwaitingResponse(false);
+        }
+        return;
+      }
+
+      if (payload.type === "session.idle") {
+        const props = payload.properties as
+          | { sessionID?: string }
+          | undefined;
+        if (!props || props.sessionID !== currentSession?.path) {
           return;
         }
+        setConnectionState("connected");
+        setLastEventAt(new Date().toISOString());
+        setSessionStatus({ type: "idle" });
+        setStreaming(false);
+        setStreamingMessageId(null);
+        setAwaitingResponse(false);
+        return;
+      }
 
-        if (payload.type === "message.part.updated") {
-          const part = payload.properties?.part as
-            | {
+      if (payload.type === "session.error") {
+        const props = payload.properties as
+          | { sessionID?: string; error?: unknown; message?: string }
+          | undefined;
+        if (!props || props.sessionID !== currentSession?.path) {
+          return;
+        }
+        setConnectionState("connected");
+        setLastEventAt(new Date().toISOString());
+        setSessionStatus({ type: "idle" });
+        setStreaming(false);
+        setStreamingMessageId(null);
+        setAwaitingResponse(false);
+        const detail =
+          props.message ??
+          (props.error ? String(props.error) : "Unknown error");
+        setError(`OpenCode error: ${detail}`);
+        return;
+      }
+
+      if (payload.type === "message.part.updated") {
+        const props = payload.properties as
+          | {
+              part?: {
                 sessionID?: string;
                 messageID?: string;
                 id?: string;
@@ -761,126 +959,354 @@ export function AIChat({ repoPath }: AIChatProps) {
                 errorText?: string;
                 input?: unknown;
                 toolName?: string;
+                tool?: string;
+                synthetic?: boolean;
+                ignored?: boolean;
                 title?: string;
                 time?: { start?: number; end?: number };
-              }
-            | undefined;
-          if (
-            !part ||
-            part.sessionID !== currentSession?.path ||
-            !part.messageID ||
-            !part.id
-          ) {
-            return;
-          }
-          setConnectionState("connected");
-          setLastEventAt(new Date().toISOString());
-          const byPart =
-            partsByMessage.current.get(part.messageID) ?? new Map();
-          const normalized = normalizePart(part, byPart.get(part.id));
-          byPart.set(part.id, normalized);
-          partsByMessage.current.set(part.messageID, byPart);
-          const combined = buildMessageText(byPart);
-          const resolvedRole =
-            part.role ?? roleByMessage.current.get(part.messageID);
-          if (combined.trim().length > 0 && resolvedRole === "assistant") {
-            upsertMessage(
-              part.messageID,
-              {
-                role: resolvedRole,
-                text: combined,
-                timestamp: part.time?.end
-                  ? new Date(part.time.end).toISOString()
-                  : new Date().toISOString(),
-              },
-              { requireText: true },
-            );
-          }
-          if (
-            resolvedRole === "assistant" &&
-            (normalized.type === "text" || normalized.type === "reasoning")
-          ) {
-            setStreaming(true);
-            setSessionStatus((prev) =>
-              prev?.type === "busy" ? prev : { type: "busy" },
-            );
-            setAwaitingResponse(false);
-          }
-          if (
-            isToolPart(normalized) &&
-            normalized.status &&
-            [
-              "input-streaming",
-              "input-available",
-              "approval-requested",
-              "approval-responded",
-            ].includes(normalized.status)
-          ) {
-            setSessionStatus((prev) =>
-              prev?.type === "busy" ? prev : { type: "busy" },
-            );
-            setAwaitingResponse(false);
-          }
-          refreshToolActivity();
+              };
+              delta?: string;
+            }
+          | undefined;
+        const part = props?.part;
+        if (
+          !part ||
+          part.sessionID !== currentSession?.path ||
+          !part.messageID ||
+          !part.id
+        ) {
           return;
         }
+        setConnectionState("connected");
+        setLastEventAt(new Date().toISOString());
+        const byPart = partsByMessage.current.get(part.messageID) ?? new Map();
+        const prevPart = byPart.get(part.id);
+        let hydratedPart = part;
+        if (typeof props?.delta === "string") {
+          const prevText = prevPart?.text ?? "";
+          const nextText =
+            typeof part.text === "string" ? part.text : undefined;
+          const shouldAppend =
+            typeof nextText !== "string" || nextText === prevText;
+          if (shouldAppend) {
+            hydratedPart = {
+              ...part,
+              text: prevText + props.delta,
+            };
+          } else if (prevText && nextText.length < prevText.length) {
+            hydratedPart = {
+              ...part,
+              text: prevText + props.delta,
+            };
+          }
+        }
+        const normalized = normalizePart(hydratedPart, prevPart);
+        byPart.set(part.id, normalized);
+        partsByMessage.current.set(part.messageID, byPart);
+        let resolvedRole =
+          normalized.role ??
+          part.role ??
+          roleByMessage.current.get(part.messageID) ??
+          (pendingUserIds.current.has(part.messageID) ? "user" : undefined);
+        if (!resolvedRole) {
+          if (
+            normalized.type === "text" ||
+            normalized.type === "reasoning" ||
+            isToolPart(normalized)
+          ) {
+            resolvedRole = "assistant";
+          }
+        }
+        if (resolvedRole) {
+          roleByMessage.current.set(part.messageID, resolvedRole);
+        }
+        const combined = buildMessageText(byPart, resolvedRole);
+        if (resolvedRole && combined.length > 0) {
+          const partTimestamp = part.time?.end ?? part.time?.start ?? Date.now();
+          upsertMessage(
+            part.messageID,
+            {
+              role: resolvedRole,
+              text: combined,
+              timestamp: new Date(partTimestamp).toISOString(),
+            },
+            { requireText: true },
+          );
+        }
+        if (
+          resolvedRole === "assistant" &&
+          (normalized.type === "text" || normalized.type === "reasoning")
+        ) {
+          setStreaming(true);
+          setStreamingMessageId(part.messageID);
+          setSessionStatus((prev) => (prev?.type === "busy" ? prev : { type: "busy" }));
+          setAwaitingResponse(false);
+        }
+        if (
+          isToolPart(normalized) &&
+          normalized.status &&
+          [
+            "input-streaming",
+            "input-available",
+            "approval-requested",
+            "approval-responded",
+          ].includes(normalized.status)
+        ) {
+          setSessionStatus((prev) => (prev?.type === "busy" ? prev : { type: "busy" }));
+          setAwaitingResponse(false);
+        }
+        refreshToolActivity();
+        return;
+      }
 
-        if (payload.type === "message.updated") {
-          const info = payload.properties?.info as
-            | {
-                id?: string;
-                sessionID?: string;
-                role?: "user" | "assistant";
-                time?: { created?: number; completed?: number };
-              }
-            | undefined;
-          if (!info || info.sessionID !== currentSession?.path || !info.id) {
-            return;
+      if (payload.type === "message.updated") {
+        const info = payload.properties?.info as
+          | {
+              id?: string;
+              sessionID?: string;
+              role?: "user" | "assistant";
+              time?: { created?: number; completed?: number };
+            }
+          | undefined;
+        if (!info || info.sessionID !== currentSession?.path || !info.id) {
+          return;
+        }
+        setConnectionState("connected");
+        setLastEventAt(new Date().toISOString());
+        const timestamp = info.time?.created
+          ? new Date(info.time.created).toISOString()
+          : new Date().toISOString();
+        const resolvedRole = info.role ?? roleByMessage.current.get(info.id) ?? undefined;
+        if (resolvedRole) {
+          roleByMessage.current.set(info.id, resolvedRole);
+        }
+        if (resolvedRole === "user") {
+          pendingUserIds.current.delete(info.id);
+          reconcileUserMessage(info.id, timestamp);
+          const parts = partsByMessage.current.get(info.id);
+          if (parts) {
+            const combined = buildMessageText(parts, "user");
+            if (combined.length > 0) {
+              upsertMessage(info.id, { text: combined, timestamp });
+            }
           }
-          setConnectionState("connected");
-          setLastEventAt(new Date().toISOString());
-          const timestamp = info.time?.created
-            ? new Date(info.time.created).toISOString()
-            : new Date().toISOString();
-          if (info.role) {
-            roleByMessage.current.set(info.id, info.role);
-          }
-          if (info.role === "user") {
-            reconcileUserMessage(info.id, timestamp);
-          } else {
-            const parts = partsByMessage.current.get(info.id);
-            const combined = parts ? buildMessageText(parts) : "";
+        } else {
+          const parts = partsByMessage.current.get(info.id);
+          const combined = parts ? buildMessageText(parts, "assistant") : "";
+          if (combined.length > 0) {
             upsertMessage(
               info.id,
               {
-                role: info.role ?? "assistant",
-                text: combined || undefined,
+                role: resolvedRole ?? "assistant",
+                text: combined,
                 timestamp,
               },
               { requireText: true },
             );
-          }
-          if (info.role === "assistant" && info.time?.completed) {
-            setStreaming(false);
-            setLastAssistantCompletion(
-              new Date(info.time.completed).toISOString(),
-            );
-            setAwaitingResponse(false);
-            refreshToolActivity();
+          } else if (resolvedRole) {
+            upsertMessage(info.id, { role: resolvedRole, timestamp });
           }
         }
-      } catch (err) {
-        console.error("[OpenCode] Failed to parse event:", err);
+        if (resolvedRole === "assistant" && info.time?.completed) {
+          setStreaming(false);
+          setStreamingMessageId((prev) => (prev === info.id ? null : prev));
+          setLastAssistantCompletion(new Date(info.time.completed).toISOString());
+          setAwaitingResponse(false);
+          refreshToolActivity();
+        }
+      }
+
+      if (payload.type === "message.removed") {
+        const props = payload.properties as
+          | { sessionID?: string; messageID?: string }
+          | undefined;
+        if (!props || props.sessionID !== currentSession?.path || !props.messageID) {
+          return;
+        }
+        setConnectionState("connected");
+        setLastEventAt(new Date().toISOString());
+        pendingUserIds.current.delete(props.messageID);
+        roleByMessage.current.delete(props.messageID);
+        partsByMessage.current.delete(props.messageID);
+        setStreamingMessageId((prev) => (prev === props.messageID ? null : prev));
+        setMessages((prev) => prev.filter((msg) => msg.id !== props.messageID));
+        refreshToolActivity();
+        return;
+      }
+
+      if (payload.type === "message.part.removed") {
+        const props = payload.properties as
+          | { messageID?: string; partID?: string }
+          | undefined;
+        if (!props?.messageID || !props.partID) {
+          return;
+        }
+        const parts = partsByMessage.current.get(props.messageID);
+        if (parts) {
+          parts.delete(props.partID);
+          if (parts.size === 0) {
+            partsByMessage.current.delete(props.messageID);
+          }
+        }
+        const role = roleByMessage.current.get(props.messageID);
+        const combined = parts ? buildMessageText(parts, role) : "";
+        upsertMessage(props.messageID, { text: combined });
+        refreshToolActivity();
       }
     };
 
-    source.onerror = (err) => {
-      console.error("[OpenCode] Event stream error", err);
-      setConnectionState("error");
+    const enqueueEvent = (payload: {
+      type?: string;
+      properties?: Record<string, unknown>;
+    }) => {
+      const key = (() => {
+        if (payload.type === "session.status") {
+          const props = payload.properties as { sessionID?: string } | undefined;
+          return props?.sessionID
+            ? `session.status:${props.sessionID}`
+            : undefined;
+        }
+        if (payload.type === "message.part.updated") {
+          const props = payload.properties as
+            | { part?: { messageID?: string; id?: string } }
+            | undefined;
+          const messageId = props?.part?.messageID;
+          const partId = props?.part?.id;
+          if (messageId && partId) {
+            return `message.part.updated:${messageId}:${partId}`;
+          }
+        }
+        return undefined;
+      })();
+
+      if (key) {
+        const existing = coalesced.get(key);
+        if (existing !== undefined) {
+          queue[existing] = undefined;
+        }
+        coalesced.set(key, queue.length);
+      }
+      queue.push(payload);
+      schedule();
     };
 
+    let queue: Array<
+      | { type?: string; properties?: Record<string, unknown> }
+      | undefined
+    > = [];
+    let buffer: Array<
+      | { type?: string; properties?: Record<string, unknown> }
+      | undefined
+    > = [];
+    const coalesced = new Map<string, number>();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let lastFlush = 0;
+
+    const flush = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      if (queue.length === 0) {
+        return;
+      }
+      const events = queue;
+      queue = buffer;
+      buffer = events;
+      queue.length = 0;
+      coalesced.clear();
+      lastFlush = Date.now();
+      unstable_batchedUpdates(() => {
+        for (const event of events) {
+          if (!event) {
+            continue;
+          }
+          handlePayload(event);
+        }
+      });
+      buffer.length = 0;
+    };
+
+    const schedule = () => {
+      if (timer) {
+        return;
+      }
+      const elapsed = Date.now() - lastFlush;
+      timer = setTimeout(flush, Math.max(0, 16 - elapsed));
+    };
+
+    const handleRawEvent = (data: unknown) => {
+      if (!data || typeof data !== "object") {
+        return;
+      }
+      if ("payload" in data) {
+        const directory =
+          "directory" in data && typeof data.directory === "string"
+            ? data.directory
+            : undefined;
+        if (directory && directory !== repoPath) {
+          return;
+        }
+        const payload = (data as { payload?: unknown }).payload;
+        if (payload && typeof payload === "object") {
+          enqueueEvent(payload as { type?: string; properties?: Record<string, unknown> });
+        }
+        return;
+      }
+      enqueueEvent(data as { type?: string; properties?: Record<string, unknown> });
+    };
+
+    const abortController = new AbortController();
+    let eventSource: EventSource | null = null;
+
+    const startEventSource = () => {
+      if (eventSource) {
+        return;
+      }
+      eventSource = new EventSource(eventStreamUrl);
+      eventSource.onmessage = (event) => {
+        if (!event.data) {
+          return;
+        }
+        try {
+          handleRawEvent(JSON.parse(event.data));
+        } catch (err) {
+          console.error("[OpenCode] Failed to parse event:", err);
+        }
+      };
+      eventSource.onerror = (err) => {
+        console.error("[OpenCode] Event stream error", err);
+        setConnectionState("error");
+      };
+    };
+
+    const startStream = async () => {
+      try {
+        await readSseStream({
+          url: eventStreamUrl,
+          signal: abortController.signal,
+          onEvent: handleRawEvent,
+          onError: (err) =>
+            console.error("[OpenCode] SSE parse error", err),
+        });
+      } catch (err) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        console.error("[OpenCode] SSE stream failed", err);
+        setConnectionState("error");
+        startEventSource();
+      }
+    };
+
+    void startStream();
+
     return () => {
-      source.close();
+      abortController.abort();
+      if (eventSource) {
+        eventSource.close();
+      }
+      flush();
     };
   }, [currentSession?.path, eventStreamUrl, repoPath]);
 
@@ -935,9 +1361,11 @@ export function AIChat({ repoPath }: AIChatProps) {
         setMessages([]);
         setInputMessage("");
         setStreaming(false);
+        setStreamingMessageId(null);
         partsByMessage.current.clear();
         setToolActivity([]);
         roleByMessage.current.clear();
+        pendingUserIds.current.clear();
         setLastAssistantCompletion(null);
         setSessionStatus(null);
         setAwaitingResponse(false);
@@ -979,9 +1407,11 @@ export function AIChat({ repoPath }: AIChatProps) {
       setMessages([]);
       setInputMessage("");
       setStreaming(false);
+      setStreamingMessageId(null);
       partsByMessage.current.clear();
       setToolActivity([]);
       roleByMessage.current.clear();
+      pendingUserIds.current.clear();
       setLastAssistantCompletion(null);
       setSessionStatus(null);
       setAwaitingResponse(false);
@@ -1007,9 +1437,11 @@ export function AIChat({ repoPath }: AIChatProps) {
     setInputMessage("");
     setToolActivity([]);
     roleByMessage.current.clear();
+    pendingUserIds.current.clear();
     setLastAssistantCompletion(null);
     setSessionStatus(null);
     setAwaitingResponse(false);
+    setStreamingMessageId(null);
     try {
       const loadedSession = await opencodeService.getSession(
         session.path,
@@ -1020,12 +1452,16 @@ export function AIChat({ repoPath }: AIChatProps) {
         session.path,
         repoPath,
       );
-      setMessages(
-        sessionMessages
-          .filter((msg) => msg.text.trim().length > 0)
-          .map((msg) => ({ ...msg, pending: false })),
-      );
-      const lastAssistantMessage = [...sessionMessages]
+      const sortedMessages = sessionMessages
+        .filter((msg): msg is Message & { id: string } => Boolean(msg.id))
+        .map((msg) => ({ ...msg, id: msg.id, pending: false }))
+        .sort((a, b) => compareMessageId(a.id, b.id));
+      setMessages(sortedMessages);
+      roleByMessage.current.clear();
+      sortedMessages.forEach((msg) => {
+        roleByMessage.current.set(msg.id, msg.role);
+      });
+      const lastAssistantMessage = [...sortedMessages]
         .reverse()
         .find((msg) => msg.role === "assistant");
       setLastAssistantCompletion(
@@ -1053,18 +1489,24 @@ export function AIChat({ repoPath }: AIChatProps) {
 
     setLastAssistantCompletion(null);
     setAwaitingResponse(true);
+    setStreamingMessageId(null);
+    const messageId = createMessageId();
     const userMessage: ChatMessage = {
-      id:
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? `local-${crypto.randomUUID()}`
-          : `local-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      id: messageId,
       role: "user",
       text,
       timestamp: new Date().toISOString(),
       pending: true,
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    pendingUserIds.current.add(messageId);
+    roleByMessage.current.set(messageId, "user");
+    setMessages((prev) => {
+      const next = [...prev];
+      const insertAt = findInsertIndex(next, messageId);
+      next.splice(insertAt, 0, userMessage);
+      return next;
+    });
     setInputMessage("");
     setSending(true);
     setStreaming(true);
@@ -1075,12 +1517,16 @@ export function AIChat({ repoPath }: AIChatProps) {
         currentSession.path,
         text,
         selectedModel,
+        messageId,
         repoPath,
       );
     } catch (err) {
       setError(`Failed to get response: ${String(err)}`);
-      setMessages((prev) => prev.slice(0, -1));
+      pendingUserIds.current.delete(messageId);
+      roleByMessage.current.delete(messageId);
+      setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
       setStreaming(false);
+      setStreamingMessageId(null);
       setAwaitingResponse(false);
     } finally {
       setSending(false);
@@ -1099,9 +1545,11 @@ export function AIChat({ repoPath }: AIChatProps) {
         setCurrentSession(null);
         setMessages([]);
         setStreaming(false);
+        setStreamingMessageId(null);
         partsByMessage.current.clear();
         setToolActivity([]);
         roleByMessage.current.clear();
+        pendingUserIds.current.clear();
         setLastAssistantCompletion(null);
         setSessionStatus(null);
         setAwaitingResponse(false);
@@ -1315,7 +1763,14 @@ export function AIChat({ repoPath }: AIChatProps) {
                           </span>
                           <span>{formatMessageTime(msg.timestamp)}</span>
                         </div>
-                        <MessageResponse>{msg.text}</MessageResponse>
+                        <ThrottledMessageResponse
+                          text={msg.text}
+                          isStreaming={
+                            msg.role === "assistant" &&
+                            streaming &&
+                            streamingMessageId === msg.id
+                          }
+                        />
                       </MessageContent>
                     </AIMessage>
                   ))

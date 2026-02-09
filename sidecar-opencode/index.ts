@@ -6,6 +6,7 @@ type RequestMessage = {
   cmd: string;
   sessionPath?: string;
   directory?: string;
+  messageID?: string;
   name?: string;
   description?: string;
   model?: string;
@@ -111,47 +112,37 @@ type AnyPart = {
   text?: string;
   prompt?: string;
   description?: string;
+  synthetic?: boolean;
+  ignored?: boolean;
   state?: { status?: string; output?: string };
 };
 
-function extractMessageText(parts: Array<AnyPart> | undefined) {
+function extractMessageText(
+  parts: Array<AnyPart> | undefined,
+  role?: "user" | "assistant",
+) {
   if (!parts || parts.length === 0) {
     return "";
   }
 
-  const textParts = parts
-    .filter((part) => part?.type === "text" && part.text?.trim())
-    .map((part) => part.text!.trim());
+  const textParts = parts.filter(
+    (part) =>
+      part?.type === "text" &&
+      typeof part.text === "string" &&
+      !part.synthetic &&
+      !part.ignored,
+  );
   if (textParts.length > 0) {
-    return textParts.join("\n");
-  }
-
-  const toolOutputs = parts
-    .filter(
-      (part) =>
-        part?.type === "tool" &&
-        part.state?.status === "completed" &&
-        part.state.output?.trim(),
-    )
-    .map((part) => part.state!.output!.trim());
-  if (toolOutputs.length > 0) {
-    return toolOutputs.join("\n");
-  }
-
-  const reasoningParts = parts
-    .filter((part) => part?.type === "reasoning" && part.text?.trim())
-    .map((part) => part.text!.trim());
-  if (reasoningParts.length > 0) {
-    return reasoningParts.join("\n");
-  }
-
-  const subtaskParts = parts
-    .filter((part) => part?.type === "subtask")
-    .map((part) => part.description || part.prompt)
-    .filter((text): text is string => Boolean(text?.trim()))
-    .map((text) => text.trim());
-  if (subtaskParts.length > 0) {
-    return subtaskParts.join("\n");
+    if (role === "assistant") {
+      return textParts[textParts.length - 1]!.text ?? "";
+    }
+    let longest = textParts[0]!;
+    for (const part of textParts) {
+      if ((part.text ?? "").length > (longest.text ?? "").length) {
+        longest = part;
+      }
+    }
+    return longest.text ?? "";
   }
 
   return "";
@@ -351,7 +342,7 @@ async function handleListSessions(directory?: string) {
 
 async function handlePrompt(
   sessionPath?: string,
-  { message, model }: RequestMessage = {},
+  { message, model, messageID }: RequestMessage = {},
   directory?: string,
 ) {
   if (!sessionPath) {
@@ -368,6 +359,7 @@ async function handlePrompt(
   const response = await client.session.prompt({
     sessionID: sessionPath,
     directory,
+    messageID,
     model: modelParts,
     parts: [{ type: "text", text: message ?? "" }],
   });
@@ -380,7 +372,7 @@ async function handlePrompt(
       messageId: data.info?.id,
       sessionId: data.info?.sessionID,
       message,
-      response: extractMessageText(data.parts),
+      response: extractMessageText(data.parts, "assistant"),
       model,
       timestamp: new Date().toISOString(),
     },
@@ -389,7 +381,7 @@ async function handlePrompt(
 
 async function handlePromptAsync(
   sessionPath?: string,
-  { message, model }: RequestMessage = {},
+  { message, model, messageID }: RequestMessage = {},
   directory?: string,
 ) {
   if (!sessionPath) {
@@ -407,6 +399,7 @@ async function handlePromptAsync(
   await client.session.promptAsync({
     sessionID: sessionPath,
     directory,
+    messageID,
     model: modelParts,
     parts: [{ type: "text", text: message ?? "" }],
   });
@@ -436,7 +429,7 @@ async function handleListMessages(sessionPath?: string, directory?: string) {
     timestamp: msg.info.time?.created
       ? new Date(msg.info.time.created).toISOString()
       : new Date().toISOString(),
-    text: extractMessageText(msg.parts),
+    text: extractMessageText(msg.parts, msg.info.role),
   }));
 
   sendMessage({

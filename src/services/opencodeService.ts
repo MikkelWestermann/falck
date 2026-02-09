@@ -134,6 +134,7 @@ export const opencodeService = {
     sessionPath: string,
     message: string,
     model?: string,
+    messageId?: string,
     directory?: string,
   ): Promise<{
     messageId?: string;
@@ -144,7 +145,7 @@ export const opencodeService = {
     timestamp: string;
   }> {
     return withRetry(() =>
-      sendCommand("prompt", { sessionPath, message, model }, directory),
+      sendCommand("prompt", { sessionPath, message, model, messageID: messageId }, directory),
     ) as Promise<{
       messageId?: string;
       sessionId?: string;
@@ -159,10 +160,11 @@ export const opencodeService = {
     sessionPath: string,
     message: string,
     model?: string,
+    messageId?: string,
     directory?: string,
   ): Promise<{ queued: boolean; sessionId?: string }> {
     return withRetry(() =>
-      sendCommand("promptAsync", { sessionPath, message, model }, directory),
+      sendCommand("promptAsync", { sessionPath, message, model, messageID: messageId }, directory),
     ) as Promise<{ queued: boolean; sessionId?: string }>;
   },
 
