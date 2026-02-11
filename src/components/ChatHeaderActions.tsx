@@ -57,7 +57,7 @@ export function ChatHeaderActions() {
           </DialogHeader>
           <div className="max-h-[60vh] space-y-3 overflow-y-auto px-6 py-5">
             {sortedSessions.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border/60 bg-white/70 px-4 py-8 text-center text-sm text-muted-foreground">
+              <div className="rounded-xl border border-dashed border-border/60 bg-card/80 px-4 py-8 text-center text-sm text-muted-foreground">
                 No sessions yet. Start a new one to build your history.
               </div>
             ) : (
@@ -65,7 +65,7 @@ export function ChatHeaderActions() {
                 <div
                   key={session.path}
                   className={cn(
-                    "flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-white/80 px-4 py-3 shadow-[var(--shadow-xs)] transition hover:-translate-y-[1px] hover:shadow-[var(--shadow-sm)]",
+                    "flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/85 px-4 py-3 shadow-[var(--shadow-xs)] transition hover:-translate-y-[1px] hover:shadow-[var(--shadow-sm)]",
                     currentSession?.path === session.path
                       ? "border-primary/40 bg-secondary/40"
                       : "",

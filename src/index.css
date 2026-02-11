@@ -9,6 +9,7 @@
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
     --page-background: 214 32% 97%;
+    --page-background-hex: #f5f7fa;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
@@ -62,26 +63,27 @@
   }
   
   .dark {
-    --background: 222.2 84% 4.9%;
+    --background: 214 22% 12%;
     --foreground: 210 40% 98%;
-    --page-background: 222.2 84% 4.9%;
-    --card: 222.2 84% 4.9%;
+    --page-background: 214 24% 9%;
+    --page-background-hex: #11161c;
+    --card: 214 20% 16%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 214 20% 16%;
     --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
+    --primary: 163.1 98.7% 29.6%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 214 18% 18%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
+    --muted: 214 18% 18%;
     --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
+    --accent: 214 18% 18%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --border: 214 16% 24%;
+    --input: 214 16% 24%;
+    --ring: 163.1 98.7% 29.6%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -98,7 +100,7 @@
     --font-sans: DM Sans, sans-serif;
     --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
     --font-mono: Space Mono, monospace;
-    --radius: 0px;
+    --radius: 0.5rem;
     --shadow-x: 4px;
     --shadow-y: 4px;
     --shadow-blur: 0px;
@@ -177,6 +179,7 @@
     @apply bg-[hsl(var(--page-background))] text-foreground antialiased font-sans;
     min-height: 100vh;
   }
+
 
   h1,
   h2,

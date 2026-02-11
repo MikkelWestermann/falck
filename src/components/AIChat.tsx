@@ -1538,7 +1538,7 @@ export function AIChat({ activeApp }: AIChatProps) {
 
   if (initializing) {
     return (
-      <div className="rounded-2xl border-2 border-dashed border-border/70 bg-white/80 px-4 py-10 text-center text-sm text-muted-foreground shadow-[var(--shadow-xs)]">
+      <div className="rounded-2xl border-2 border-dashed border-border/70 bg-card/85 px-4 py-10 text-center text-sm text-muted-foreground shadow-[var(--shadow-xs)]">
         Initializing OpenCode...
       </div>
     );
@@ -1555,7 +1555,7 @@ export function AIChat({ activeApp }: AIChatProps) {
                 className="flex flex-1 min-h-[400px] flex-col gap-4 overflow-y-auto px-6 py-4 h-[calc(100vh-320px)]"
               >
                 {loadingSession ? (
-                  <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-white/70 px-6 py-12 text-center">
+                  <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-card/80 px-6 py-12 text-center">
                     <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-foreground/5">
                       <SparklesIcon className="size-5 animate-pulse text-muted-foreground" />
                     </div>
@@ -1567,7 +1567,7 @@ export function AIChat({ activeApp }: AIChatProps) {
                     </p>
                   </div>
                 ) : !currentSession ? (
-                  <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-white/70 px-6 py-12 text-center">
+                  <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-card/80 px-6 py-12 text-center">
                     <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-foreground/5">
                       <SparklesIcon className="size-5 text-muted-foreground" />
                     </div>
@@ -1591,7 +1591,7 @@ export function AIChat({ activeApp }: AIChatProps) {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="rounded-full border-border/60 bg-white/80 px-3 text-xs font-semibold shadow-[var(--shadow-xs)]"
+                        className="rounded-full border-border/60 bg-card/85 px-3 text-xs font-semibold shadow-[var(--shadow-xs)]"
                         onClick={() => setHistoryOpen(true)}
                       >
                         Browse history
@@ -1599,7 +1599,7 @@ export function AIChat({ activeApp }: AIChatProps) {
                     </div>
                   </div>
                 ) : visibleMessages.length === 0 ? (
-                  <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-white/70 px-6 py-12 text-center">
+                  <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-card/80 px-6 py-12 text-center">
                     <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-foreground/5">
                       <SparklesIcon className="size-5 text-muted-foreground" />
                     </div>
@@ -1749,7 +1749,7 @@ export function AIChat({ activeApp }: AIChatProps) {
                         }
                       />
                     </PromptInputBody>
-                    <PromptInputFooter className="border-t border-border/40 bg-white/60">
+                    <PromptInputFooter className="border-t border-border/40 bg-card/90">
                       <PromptInputTools className="text-xs text-muted-foreground">
                         <div className="flex flex-wrap items-center gap-2">
                           <span>
