@@ -14,6 +14,7 @@ type RequestMessage = {
   message?: string;
   provider?: string;
   apiKey?: string;
+  system?: string;
 };
 
 type ResponseMessage =
@@ -413,7 +414,7 @@ async function handleListSessions(directory?: string) {
 
 async function handlePrompt(
   sessionPath?: string,
-  { message, model, messageID }: RequestMessage = {},
+  { message, model, messageID, system }: RequestMessage = {},
   directory?: string,
 ) {
   if (!sessionPath) {
@@ -432,6 +433,7 @@ async function handlePrompt(
     directory,
     messageID,
     model: modelParts,
+    system,
     parts: [{ type: "text", text: message ?? "" }],
   });
   const data = unwrapData(response);
@@ -452,7 +454,7 @@ async function handlePrompt(
 
 async function handlePromptAsync(
   sessionPath?: string,
-  { message, model, messageID }: RequestMessage = {},
+  { message, model, messageID, system }: RequestMessage = {},
   directory?: string,
 ) {
   if (!sessionPath) {
@@ -472,6 +474,7 @@ async function handlePromptAsync(
     directory,
     messageID,
     model: modelParts,
+    system,
     parts: [{ type: "text", text: message ?? "" }],
   });
 

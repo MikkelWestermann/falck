@@ -69,9 +69,11 @@ import {
   Provider,
   opencodeService,
 } from "@/services/opencodeService";
+import type { FalckApplication } from "@/services/falckService";
 
 interface AIChatProps {
   repoPath: string;
+  activeApp?: FalckApplication | null;
 }
 
 type ChatMessage = Omit<Message, "id"> & {
@@ -107,6 +109,35 @@ const ACTIVE_TOOL_STATES: ToolState[] = [
   "approval-requested",
   "approval-responded",
 ];
+
+const normalizeAppRoot = (root: string) => {
+  let normalized = root.trim();
+  while (normalized.startsWith("./") || normalized.startsWith(".\\")) {
+    normalized = normalized.slice(2);
+  }
+  normalized = normalized.replace(/[\\/]+$/, "");
+  if (normalized === ".") {
+    return "";
+  }
+  return normalized;
+};
+
+const isRepoRoot = (root: string) => normalizeAppRoot(root) === "";
+
+const formatAppRoot = (root: string) => {
+  const normalized = normalizeAppRoot(root);
+  return normalized ? `./${normalized}` : "the repo root";
+};
+
+const buildAppFocusSystem = (app: FalckApplication) => {
+  const appName = app.name || app.id || "selected";
+  const rootLabel = formatAppRoot(app.root);
+  const rootHint =
+    rootLabel === "the repo root"
+      ? "the repo root"
+      : `${rootLabel} (relative to the repo root)`;
+  return `Focus on the "${appName}" app in ${rootHint}. Prefer edits inside that path. You can read shared code outside the app root when needed, but avoid modifying files outside it unless the user asks.`;
+};
 
 const normalizeToolStatus = (status?: string): ToolState => {
   switch (status) {
@@ -429,7 +460,7 @@ const findInsertIndex = (list: ChatMessage[], messageId: string) => {
   return low;
 };
 
-export function AIChat({ repoPath }: AIChatProps) {
+export function AIChat({ repoPath, activeApp }: AIChatProps) {
   const MODEL_STORAGE_KEY = "falck.opencode.model";
   const [sessions, setSessions] = useState<AISession[]>([]);
   const [currentSession, setCurrentSession] = useState<AISession | null>(null);
@@ -465,6 +496,12 @@ export function AIChat({ repoPath }: AIChatProps) {
   const roleByMessage = useRef<Map<string, "user" | "assistant">>(new Map());
   const pendingUserIds = useRef<Set<string>>(new Set());
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const appFocusSystem = useMemo(() => {
+    if (!activeApp || isRepoRoot(activeApp.root)) {
+      return undefined;
+    }
+    return buildAppFocusSystem(activeApp);
+  }, [activeApp]);
 
   const readStoredModel = () => {
     try {
@@ -1636,6 +1673,7 @@ export function AIChat({ repoPath }: AIChatProps) {
         selectedModel,
         messageId,
         repoPath,
+        appFocusSystem,
       );
     } catch (err) {
       setError(`Failed to get response: ${String(err)}`);

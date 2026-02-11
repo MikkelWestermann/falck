@@ -43,6 +43,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface FalckDashboardProps {
   repoPath: string;
+  onActiveAppChange?: (app: FalckApplication | null) => void;
 }
 
 type SetupStatus =
@@ -53,7 +54,10 @@ type SetupStatus =
   | "not_configured"
   | "error";
 
-export function FalckDashboard({ repoPath }: FalckDashboardProps) {
+export function FalckDashboard({
+  repoPath,
+  onActiveAppChange,
+}: FalckDashboardProps) {
   const [config, setConfig] = useState<FalckConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -139,6 +143,10 @@ export function FalckDashboard({ repoPath }: FalckDashboardProps) {
       null,
     [config, activeAppId],
   );
+
+  useEffect(() => {
+    onActiveAppChange?.(activeApp);
+  }, [activeApp, onActiveAppChange]);
 
   const checkPrereqs = async (appId: string) => {
     setPrereqLoading((prev) => ({ ...prev, [appId]: true }));

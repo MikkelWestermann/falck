@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { gitService, RepositoryInfo } from "@/services/gitService";
-import { falckService } from "@/services/falckService";
+import { falckService, type FalckApplication } from "@/services/falckService";
 import { useAppState } from "@/router/app-state";
 import { ArrowLeft, History, RefreshCcw } from "lucide-react";
 import { applyBranchPrefix, normalizeBranchPrefix } from "@/lib/branching";
@@ -41,6 +41,7 @@ function OverviewRoute() {
   const [defaultBranch, setDefaultBranch] = useState<string | null>(null);
   const [protectDefaultBranch, setProtectDefaultBranch] = useState(false);
   const [branchPrefix, setBranchPrefix] = useState<string | null>(null);
+  const [activeApp, setActiveApp] = useState<FalckApplication | null>(null);
   const [pendingProjectAction, setPendingProjectAction] = useState<{
     type: "switch" | "create";
     projectName: string;
@@ -63,6 +64,10 @@ function OverviewRoute() {
     }
     setPullError(null);
     void loadRepoInfo(repoPath);
+  }, [repoPath]);
+
+  useEffect(() => {
+    setActiveApp(null);
   }, [repoPath]);
 
   useEffect(() => {
@@ -418,13 +423,16 @@ function OverviewRoute() {
             className="space-y-6 animate-in fade-in slide-in-from-bottom-4"
             style={{ animationDuration: "700ms" }}
           >
-            <FalckDashboard repoPath={repoPath} />
+            <FalckDashboard
+              repoPath={repoPath}
+              onActiveAppChange={setActiveApp}
+            />
           </section>
           <section
             className="space-y-6 animate-in fade-in slide-in-from-bottom-4"
             style={{ animationDuration: "800ms" }}
           >
-            <AIChat repoPath={repoPath} />
+            <AIChat repoPath={repoPath} activeApp={activeApp} />
           </section>
         </div>
       </main>
