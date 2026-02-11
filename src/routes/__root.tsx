@@ -1,5 +1,6 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { OpenCodeManager } from "@/components/OpenCodeManager";
+import { AIChatProvider } from "@/contexts/AIChatContext";
 import { AppStateProvider, useAppState } from "@/router/app-state";
 
 export const Route = createRootRoute({
@@ -16,7 +17,7 @@ function RootLayout() {
 }
 
 function RootGate() {
-  const { sshReady } = useAppState();
+  const { sshReady, repoPath } = useAppState();
 
   if (!sshReady) {
     return (
@@ -26,11 +27,17 @@ function RootGate() {
     );
   }
 
-  return (
+  const content = (
     <>
       <OpenCodeManager />
       <Outlet />
     </>
+  );
+
+  return repoPath ? (
+    <AIChatProvider repoPath={repoPath}>{content}</AIChatProvider>
+  ) : (
+    content
   );
 }
 

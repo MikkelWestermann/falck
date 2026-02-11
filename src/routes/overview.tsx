@@ -5,6 +5,7 @@ import { CommitHistory } from "@/components/CommitHistory";
 import { SaveChangesDialog } from "@/components/SaveChangesDialog";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { AIChat } from "@/components/AIChat";
+import { ChatHeaderActions } from "@/components/ChatHeaderActions";
 import { FalckDashboard } from "@/components/falck/FalckDashboard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -314,7 +315,7 @@ function OverviewRoute() {
   return (
     <div className="relative min-h-screen text-foreground">
       <header className="relative z-10 backdrop-blur">
-        <div className="mx-auto w-full max-w-7xl px-6 pb-4">
+        <div className="mx-auto w-full max-w-7xl px-6 pb-2">
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div
@@ -388,15 +389,16 @@ function OverviewRoute() {
                 >
                   <RefreshCcw className="h-4 w-4" />
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowVersionHistoryDialog(true)}
+                >
+                  <History className="h-4 w-4" />
+                  Version history
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowVersionHistoryDialog(true)}
-              >
-                <History className="h-4 w-4" />
-                Version history
-              </Button>
+              <ChatHeaderActions />
               {/* <Button
                 variant="ghost"
                 size="sm"
@@ -417,10 +419,10 @@ function OverviewRoute() {
         )}
       </header>
 
-      <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-6 pb-12">
-        <div className="gap-6">
+      <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-6">
+        <div>
           <section
-            className="space-y-6 animate-in fade-in slide-in-from-bottom-4"
+            className="animate-in fade-in slide-in-from-bottom-4"
             style={{ animationDuration: "700ms" }}
           >
             <FalckDashboard
@@ -429,10 +431,10 @@ function OverviewRoute() {
             />
           </section>
           <section
-            className="space-y-6 animate-in fade-in slide-in-from-bottom-4"
+            className="animate-in fade-in slide-in-from-bottom-4"
             style={{ animationDuration: "800ms" }}
           >
-            <AIChat repoPath={repoPath} activeApp={activeApp} />
+            <AIChat activeApp={activeApp} />
           </section>
         </div>
       </main>
@@ -496,7 +498,7 @@ function OverviewRoute() {
           <DialogTitle>Version history</DialogTitle>
           <DialogDescription>Messed up? Go back in time</DialogDescription>
           <CommitHistory
-          key={`history-${refreshSeed}`}
+            key={`history-${refreshSeed}`}
             repoPath={repoPath}
             baseBranch={resolvedDefaultBranch ?? repoInfo.head_branch}
             currentBranch={repoInfo.head_branch}

@@ -8,7 +8,6 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ClockIcon,
-  HistoryIcon,
   PlusIcon,
   SparklesIcon,
   WrenchIcon,
@@ -63,23 +62,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import {
-  AISession,
-  Message,
-  Provider,
-  opencodeService,
-} from "@/services/opencodeService";
+import { opencodeService } from "@/services/opencodeService";
 import type { FalckApplication } from "@/services/falckService";
+import { useAIChat, type ChatMessage } from "@/contexts/AIChatContext";
 
 interface AIChatProps {
-  repoPath: string;
   activeApp?: FalckApplication | null;
 }
-
-type ChatMessage = Omit<Message, "id"> & {
-  id: string;
-  pending?: boolean;
-};
 
 type PartSnapshot = {
   id: string;
@@ -442,8 +431,7 @@ const readSseStream = async (options: {
   }
 };
 
-const compareMessageId = (a: string, b: string) =>
-  a < b ? -1 : a > b ? 1 : 0;
+const compareMessageId = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 const findInsertIndex = (list: ChatMessage[], messageId: string) => {
   let low = 0;
@@ -460,25 +448,31 @@ const findInsertIndex = (list: ChatMessage[], messageId: string) => {
   return low;
 };
 
-export function AIChat({ repoPath, activeApp }: AIChatProps) {
-  const MODEL_STORAGE_KEY = "falck.opencode.model";
-  const [sessions, setSessions] = useState<AISession[]>([]);
-  const [currentSession, setCurrentSession] = useState<AISession | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [selectedModel, setSelectedModel] = useState("gpt-4");
-  const [historyOpen, setHistoryOpen] = useState(false);
+export function AIChat({ activeApp }: AIChatProps) {
+  const {
+    repoPath,
+    currentSession,
+    messages,
+    setMessages,
+    providers,
+    selectedModel,
+    setSelectedModel,
+    setHistoryOpen,
+    creatingSession,
+    loadingSession,
+    createSession,
+    initializing,
+    error,
+    setError,
+  } = useAIChat();
+
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
   const [inputMessage, setInputMessage] = useState("");
-  const [creatingSession, setCreatingSession] = useState(false);
-  const [loadingSession, setLoadingSession] = useState(false);
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
     null,
   );
-  const [error, setError] = useState("");
-  const [initializing, setInitializing] = useState(true);
   const [toolActivity, setToolActivity] = useState<ToolActivity[]>([]);
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("connecting");
@@ -503,33 +497,11 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
     return buildAppFocusSystem(activeApp);
   }, [activeApp]);
 
-  const readStoredModel = () => {
-    try {
-      return window.localStorage.getItem(MODEL_STORAGE_KEY) || "";
-    } catch {
-      return "";
-    }
-  };
-
-  const persistModel = (model: string) => {
-    try {
-      window.localStorage.setItem(MODEL_STORAGE_KEY, model);
-    } catch {
-      // ignore storage errors
-    }
-  };
-
   const eventStreamUrl = useMemo(() => {
     const url = new URL("http://127.0.0.1:4096/event");
     url.searchParams.set("directory", repoPath);
     return url.toString();
   }, [repoPath]);
-
-  const sortedSessions = useMemo(() => {
-    return [...sessions].sort(
-      (a, b) => new Date(b.created).getTime() - new Date(a.created).getTime(),
-    );
-  }, [sessions]);
 
   const selectedProvider = useMemo(
     () => providers.find((provider) => provider.models.includes(selectedModel)),
@@ -807,10 +779,6 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
   const activityLabel = statusMeta.label;
 
   useEffect(() => {
-    void initializeOpenCode();
-  }, []);
-
-  useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) {
       return;
@@ -839,7 +807,7 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
       setMessages((prev) => {
         const idx = prev.findIndex((msg) => msg.id === messageId);
         const hasText = typeof updates.text === "string";
-        const nextText = hasText ? updates.text ?? "" : "";
+        const nextText = hasText ? (updates.text ?? "") : "";
         const hasVisibleText = hasText && nextText.length > 0;
         if (idx === -1) {
           if (options?.requireText && !hasVisibleText) {
@@ -1049,7 +1017,11 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
         const props = payload.properties as
           | { sessionID?: string; status?: SessionStatus }
           | undefined;
-        if (!props || props.sessionID !== currentSession?.path || !props.status) {
+        if (
+          !props ||
+          props.sessionID !== currentSession?.path ||
+          !props.status
+        ) {
           return;
         }
         setConnectionState("connected");
@@ -1062,9 +1034,7 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
       }
 
       if (payload.type === "session.idle") {
-        const props = payload.properties as
-          | { sessionID?: string }
-          | undefined;
+        const props = payload.properties as { sessionID?: string } | undefined;
         if (!props || props.sessionID !== currentSession?.path) {
           return;
         }
@@ -1182,7 +1152,8 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
             (resolvedRole === "assistant" &&
               isRenderableAssistantPart(normalized)))
         ) {
-          const partTimestamp = part.time?.end ?? part.time?.start ?? Date.now();
+          const partTimestamp =
+            part.time?.end ?? part.time?.start ?? Date.now();
           upsertMessage(
             part.messageID,
             {
@@ -1199,14 +1170,18 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
         ) {
           setStreaming(true);
           setStreamingMessageId(part.messageID);
-          setSessionStatus((prev) => (prev?.type === "busy" ? prev : { type: "busy" }));
+          setSessionStatus((prev) =>
+            prev?.type === "busy" ? prev : { type: "busy" },
+          );
           setAwaitingResponse(false);
         }
         if (
           isToolPart(normalized) &&
           ACTIVE_TOOL_STATES.includes(resolveToolState(normalized))
         ) {
-          setSessionStatus((prev) => (prev?.type === "busy" ? prev : { type: "busy" }));
+          setSessionStatus((prev) =>
+            prev?.type === "busy" ? prev : { type: "busy" },
+          );
           setAwaitingResponse(false);
         }
         refreshToolActivity();
@@ -1230,7 +1205,8 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
         const timestamp = info.time?.created
           ? new Date(info.time.created).toISOString()
           : new Date().toISOString();
-        const resolvedRole = info.role ?? roleByMessage.current.get(info.id) ?? undefined;
+        const resolvedRole =
+          info.role ?? roleByMessage.current.get(info.id) ?? undefined;
         if (resolvedRole) {
           roleByMessage.current.set(info.id, resolvedRole);
         }
@@ -1264,7 +1240,9 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
         if (resolvedRole === "assistant" && info.time?.completed) {
           setStreaming(false);
           setStreamingMessageId((prev) => (prev === info.id ? null : prev));
-          setLastAssistantCompletion(new Date(info.time.completed).toISOString());
+          setLastAssistantCompletion(
+            new Date(info.time.completed).toISOString(),
+          );
           setAwaitingResponse(false);
           refreshToolActivity();
         }
@@ -1274,7 +1252,11 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
         const props = payload.properties as
           | { sessionID?: string; messageID?: string }
           | undefined;
-        if (!props || props.sessionID !== currentSession?.path || !props.messageID) {
+        if (
+          !props ||
+          props.sessionID !== currentSession?.path ||
+          !props.messageID
+        ) {
           return;
         }
         setConnectionState("connected");
@@ -1282,7 +1264,9 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
         pendingUserIds.current.delete(props.messageID);
         roleByMessage.current.delete(props.messageID);
         partsByMessage.current.delete(props.messageID);
-        setStreamingMessageId((prev) => (prev === props.messageID ? null : prev));
+        setStreamingMessageId((prev) =>
+          prev === props.messageID ? null : prev,
+        );
         setMessages((prev) => prev.filter((msg) => msg.id !== props.messageID));
         refreshToolActivity();
         return;
@@ -1315,7 +1299,9 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
     }) => {
       const key = (() => {
         if (payload.type === "session.status") {
-          const props = payload.properties as { sessionID?: string } | undefined;
+          const props = payload.properties as
+            | { sessionID?: string }
+            | undefined;
           return props?.sessionID
             ? `session.status:${props.sessionID}`
             : undefined;
@@ -1345,12 +1331,10 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
     };
 
     let queue: Array<
-      | { type?: string; properties?: Record<string, unknown> }
-      | undefined
+      { type?: string; properties?: Record<string, unknown> } | undefined
     > = [];
     let buffer: Array<
-      | { type?: string; properties?: Record<string, unknown> }
-      | undefined
+      { type?: string; properties?: Record<string, unknown> } | undefined
     > = [];
     const coalesced = new Map<string, number>();
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1403,11 +1387,15 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
         }
         const payload = (data as { payload?: unknown }).payload;
         if (payload && typeof payload === "object") {
-          enqueueEvent(payload as { type?: string; properties?: Record<string, unknown> });
+          enqueueEvent(
+            payload as { type?: string; properties?: Record<string, unknown> },
+          );
         }
         return;
       }
-      enqueueEvent(data as { type?: string; properties?: Record<string, unknown> });
+      enqueueEvent(
+        data as { type?: string; properties?: Record<string, unknown> },
+      );
     };
 
     const abortController = new AbortController();
@@ -1440,8 +1428,7 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
           url: eventStreamUrl,
           signal: abortController.signal,
           onEvent: handleRawEvent,
-          onError: (err) =>
-            console.error("[OpenCode] SSE parse error", err),
+          onError: (err) => console.error("[OpenCode] SSE parse error", err),
         });
       } catch (err) {
         if (abortController.signal.aborted) {
@@ -1464,176 +1451,11 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
     };
   }, [currentSession?.path, eventStreamUrl, repoPath]);
 
-  const initializeOpenCode = async () => {
-    setInitializing(true);
-    try {
-      await opencodeService.health(repoPath);
-      const config = await opencodeService.getProviders(repoPath);
-      setProviders(config.providers);
-      const availableModels = config.providers.flatMap(
-        (provider) => provider.models,
-      );
-      const storedModel = readStoredModel();
-      const fallbackModel =
-        config.defaults?.openai ||
-        config.defaults?.opencode ||
-        availableModels[0] ||
-        "gpt-4";
-      const nextModel =
-        storedModel && availableModels.includes(storedModel)
-          ? storedModel
-          : fallbackModel;
-      setSelectedModel(nextModel);
-      persistModel(nextModel);
-      const sessionList = await opencodeService.listSessions(repoPath);
-      setSessions(sessionList);
-      let shouldClearError = true;
-
-      if (sessionList.length > 0) {
-        const latestSession = [...sessionList].sort((a, b) => {
-          const aTime = new Date(a.created).getTime();
-          const bTime = new Date(b.created).getTime();
-          return bTime - aTime;
-        })[0];
-
-        if (latestSession) {
-          const didSelect = await handleSelectSession(latestSession);
-          if (!didSelect) {
-            shouldClearError = false;
-          }
-        }
-      } else {
-        const name = `AI Session - ${new Date().toLocaleString()}`;
-        const session = await opencodeService.createSession(
-          name,
-          `Chat session for ${repoPath}`,
-          nextModel,
-          repoPath,
-        );
-        setSessions([session]);
-        setCurrentSession(session);
-        setMessages([]);
-        setInputMessage("");
-        setStreaming(false);
-        setStreamingMessageId(null);
-        partsByMessage.current.clear();
-        setToolActivity([]);
-        roleByMessage.current.clear();
-        pendingUserIds.current.clear();
-        setLastAssistantCompletion(null);
-        setSessionStatus(null);
-        setAwaitingResponse(false);
-      }
-
-      if (shouldClearError) {
-        setError("");
-      }
-    } catch (err) {
-      setError(`Failed to initialize OpenCode: ${String(err)}`);
-    } finally {
-      setInitializing(false);
-    }
-  };
-
-  const formatSessionTime = (value: string) => new Date(value).toLocaleString();
-
   const formatMessageTime = (value: string) =>
     new Date(value).toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
     });
-
-  const handleCreateSession = async (options?: { closeHistory?: boolean }) => {
-    const name = `AI Session - ${new Date().toLocaleString()}`;
-    if (options?.closeHistory) {
-      setHistoryOpen(false);
-    }
-    setCreatingSession(true);
-    try {
-      const session = await opencodeService.createSession(
-        name,
-        `Chat session for ${repoPath}`,
-        selectedModel,
-        repoPath,
-      );
-      setSessions((prev) => [...prev, session]);
-      setCurrentSession(session);
-      setMessages([]);
-      setInputMessage("");
-      setStreaming(false);
-      setStreamingMessageId(null);
-      partsByMessage.current.clear();
-      setToolActivity([]);
-      roleByMessage.current.clear();
-      pendingUserIds.current.clear();
-      setLastAssistantCompletion(null);
-      setSessionStatus(null);
-      setAwaitingResponse(false);
-      setError("");
-    } catch (err) {
-      setError(`Failed to create session: ${String(err)}`);
-    } finally {
-      setCreatingSession(false);
-    }
-  };
-
-  const handleSelectSession = async (
-    session: AISession,
-    options?: { closeHistory?: boolean },
-  ): Promise<boolean> => {
-    if (options?.closeHistory) {
-      setHistoryOpen(false);
-    }
-    setLoadingSession(true);
-    setStreaming(false);
-    partsByMessage.current.clear();
-    setMessages([]);
-    setInputMessage("");
-    setToolActivity([]);
-    roleByMessage.current.clear();
-    pendingUserIds.current.clear();
-    setLastAssistantCompletion(null);
-    setSessionStatus(null);
-    setAwaitingResponse(false);
-    setStreamingMessageId(null);
-    try {
-      const loadedSession = await opencodeService.getSession(
-        session.path,
-        repoPath,
-      );
-      setCurrentSession(loadedSession);
-      const sessionMessages = await opencodeService.listMessages(
-        session.path,
-        repoPath,
-      );
-      const sortedMessages = sessionMessages
-        .filter((msg): msg is Message & { id: string } => Boolean(msg.id))
-        .map((msg) => ({ ...msg, id: msg.id, pending: false }))
-        .sort((a, b) => compareMessageId(a.id, b.id));
-      setMessages(sortedMessages);
-      roleByMessage.current.clear();
-      sortedMessages.forEach((msg) => {
-        roleByMessage.current.set(msg.id, msg.role);
-      });
-      const lastAssistantMessage = [...sortedMessages]
-        .reverse()
-        .find((msg) => msg.role === "assistant");
-      setLastAssistantCompletion(
-        lastAssistantMessage ? lastAssistantMessage.timestamp : null,
-      );
-      if (loadedSession.model) {
-        setSelectedModel(loadedSession.model);
-        persistModel(loadedSession.model);
-      }
-      setError("");
-      return true;
-    } catch (err) {
-      setError(`Failed to load session: ${String(err)}`);
-      return false;
-    } finally {
-      setLoadingSession(false);
-    }
-  };
 
   const handleSendMessage = async (messageText?: string) => {
     const text = (messageText ?? inputMessage).trim();
@@ -1688,32 +1510,31 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
     }
   };
 
-  const handleDeleteSession = async (session: AISession) => {
-    if (!window.confirm(`Delete session "${session.name}"?`)) {
-      return;
-    }
+  useEffect(() => {
+    if (!currentSession) return;
+    partsByMessage.current.clear();
+    roleByMessage.current.clear();
+    pendingUserIds.current.clear();
+    setStreaming(false);
+    setStreamingMessageId(null);
+    setToolActivity([]);
+    setSessionStatus(null);
+    setAwaitingResponse(false);
+  }, [currentSession?.path]);
 
-    try {
-      await opencodeService.deleteSession(session.path, repoPath);
-      setSessions((prev) => prev.filter((s) => s.path !== session.path));
-      if (currentSession?.path === session.path) {
-        setCurrentSession(null);
-        setMessages([]);
-        setStreaming(false);
-        setStreamingMessageId(null);
-        partsByMessage.current.clear();
-        setToolActivity([]);
-        roleByMessage.current.clear();
-        pendingUserIds.current.clear();
-        setLastAssistantCompletion(null);
-        setSessionStatus(null);
-        setAwaitingResponse(false);
-      }
-      setError("");
-    } catch (err) {
-      setError(`Failed to delete session: ${String(err)}`);
-    }
-  };
+  useEffect(() => {
+    if (!currentSession) return;
+    roleByMessage.current.clear();
+    messages.forEach((msg) => {
+      roleByMessage.current.set(msg.id, msg.role);
+    });
+    const lastAssistantMessage = [...messages]
+      .reverse()
+      .find((msg) => msg.role === "assistant");
+    setLastAssistantCompletion(
+      lastAssistantMessage ? lastAssistantMessage.timestamp : null,
+    );
+  }, [currentSession?.path, messages]);
 
   if (initializing) {
     return (
@@ -1725,122 +1546,13 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
 
   return (
     <>
-      <div className="relative flex h-[min(72vh,720px)] min-h-[420px] flex-col mt-4">
-        <div className="flex flex-wrap items-start justify-end border-b border-border/60 px-6 py-2 backdrop-blur">
-          <div className="flex flex-wrap items-center gap-2">
-            <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <HistoryIcon className="size-4" />
-                  <Badge
-                    variant="outline"
-                    className="rounded-full px-2 py-0 text-[0.6rem]"
-                  >
-                    {sessions.length}
-                  </Badge>
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader className="border-b border-border/60 px-6 py-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <DialogTitle>Session history</DialogTitle>
-                      <DialogDescription>
-                        Pick up where you left off or start a fresh thread.
-                      </DialogDescription>
-                    </div>
-                    <Button
-                      onClick={() =>
-                        handleCreateSession({ closeHistory: true })
-                      }
-                      disabled={creatingSession}
-                      size="sm"
-                      className="gap-2"
-                    >
-                      <PlusIcon className="size-4" />
-                      {creatingSession ? "Creating..." : "New chat"}
-                    </Button>
-                  </div>
-                </DialogHeader>
-                <div className="max-h-[60vh] space-y-3 overflow-y-auto px-6 py-5">
-                  {sortedSessions.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-border/60 bg-white/70 px-4 py-8 text-center text-sm text-muted-foreground">
-                      No sessions yet. Start a new one to build your history.
-                    </div>
-                  ) : (
-                    sortedSessions.map((session) => (
-                      <div
-                        key={session.path}
-                        className={cn(
-                          "flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-white/80 px-4 py-3 shadow-[var(--shadow-xs)] transition hover:-translate-y-[1px] hover:shadow-[var(--shadow-sm)]",
-                          currentSession?.path === session.path
-                            ? "border-primary/40 bg-secondary/40"
-                            : "",
-                        )}
-                      >
-                        <button
-                          className="flex-1 text-left disabled:pointer-events-none disabled:opacity-60"
-                          onClick={() =>
-                            handleSelectSession(session, {
-                              closeHistory: true,
-                            })
-                          }
-                          disabled={loadingSession}
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-semibold text-foreground">
-                              {session.name}
-                            </span>
-                            {currentSession?.path === session.path && (
-                              <Badge
-                                variant="secondary"
-                                className="rounded-full px-2 py-0 text-[0.6rem]"
-                              >
-                                Active
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                            <ClockIcon className="size-3" />
-                            <span>{formatSessionTime(session.created)}</span>
-                            <span className="text-muted-foreground/60">•</span>
-                            <span className="font-mono text-[0.7rem]">
-                              {session.model}
-                            </span>
-                          </div>
-                        </button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteSession(session)}
-                          disabled={loadingSession}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
-            <Button
-              onClick={() => handleCreateSession()}
-              disabled={creatingSession}
-              size="sm"
-              className="gap-2"
-            >
-              <PlusIcon className="size-4" />
-              {creatingSession ? "Creating..." : "New chat"}
-            </Button>
-          </div>
-        </div>
-
+      <div className="relative flex flex-col">
         <div className="flex flex-1 flex-col min-h-0">
           <div className="flex-1 min-h-0 px-6 pb-6">
             <div>
               <div
                 ref={messagesContainerRef}
-                className="flex flex-1 min-h-[400px] flex-col gap-6 overflow-y-auto px-6 py-6 h-[calc(100vh-400px)]"
+                className="flex flex-1 min-h-[400px] flex-col gap-4 overflow-y-auto px-6 py-4 h-[calc(100vh-320px)]"
               >
                 {loadingSession ? (
                   <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-white/70 px-6 py-12 text-center">
@@ -1868,7 +1580,7 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
                     </p>
                     <div className="mt-6 flex flex-wrap justify-center gap-2">
                       <Button
-                        onClick={() => handleCreateSession()}
+                        onClick={() => createSession()}
                         disabled={creatingSession}
                         size="sm"
                         className="gap-2"
@@ -2096,7 +1808,6 @@ export function AIChat({ repoPath, activeApp }: AIChatProps) {
                                         value={`${provider.name} ${model}`}
                                         onSelect={() => {
                                           setSelectedModel(model);
-                                          persistModel(model);
                                           setModelSelectorOpen(false);
                                         }}
                                         className={cn(
