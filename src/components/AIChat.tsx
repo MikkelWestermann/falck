@@ -658,7 +658,8 @@ export function AIChat({ repoPath }: AIChatProps) {
       setMessages((prev) => {
         const idx = prev.findIndex((msg) => msg.id === messageId);
         const hasText = typeof updates.text === "string";
-        const hasVisibleText = hasText && updates.text.length > 0;
+        const nextText = hasText ? updates.text ?? "" : "";
+        const hasVisibleText = hasText && nextText.length > 0;
         if (idx === -1) {
           if (options?.requireText && !hasVisibleText) {
             return prev;
@@ -683,7 +684,7 @@ export function AIChat({ repoPath }: AIChatProps) {
           ...updates,
           id: messageId,
           role: updates.role ?? next[idx].role,
-          text: hasText ? (updates.text ?? "") : next[idx].text,
+          text: hasText ? nextText : next[idx].text,
           pending: updates.pending ?? next[idx].pending,
         };
         return next;

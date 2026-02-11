@@ -21,7 +21,7 @@ import {
 import { settingsService } from "@/services/settingsService";
 import { SSHKey } from "@/services/sshService";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 interface SettingsPageProps {
   sshKey: SSHKey;

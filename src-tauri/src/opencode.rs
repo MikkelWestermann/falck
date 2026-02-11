@@ -29,51 +29,45 @@ pub struct OpenCodeStatus {
 }
 
 #[tauri::command]
-pub fn check_opencode_installed() -> Result<OpenCodeStatus, String> {
-    let output = Command::new("opencode").arg("--version").output();
-
-    match output {
-        Ok(result) if result.status.success() => {
-            let stdout = String::from_utf8_lossy(&result.stdout);
-            let stderr = String::from_utf8_lossy(&result.stderr);
-            let combined = format!("{}\n{}", stdout, stderr);
-            let version = combined
-                .lines()
-                .map(str::trim)
-                .find(|line| !line.is_empty())
-                .map(str::to_string);
-            let path = get_opencode_path().ok();
-
-            Ok(OpenCodeStatus {
-                installed: true,
-                version,
-                path,
-            })
-        }
-        Ok(_) => Ok(OpenCodeStatus {
+pub fn check_opencode_installed(app: AppHandle) -> Result<OpenCodeStatus, String> {
+    let Some(path) = find_opencode_cli(&app) else {
+        return Ok(OpenCodeStatus {
             installed: false,
             version: None,
             path: None,
-        }),
-        Err(err) => {
-            if err.kind() == std::io::ErrorKind::NotFound {
-                Ok(OpenCodeStatus {
-                    installed: false,
-                    version: None,
-                    path: None,
-                })
-            } else {
-                Err(format!("Failed to check OpenCode: {}", err))
-            }
-        }
-    }
+        });
+    };
+
+    let output = Command::new(&path).arg("--version").output();
+    let version = output
+        .ok()
+        .filter(|result| result.status.success())
+        .and_then(|result| {
+            let stdout = String::from_utf8_lossy(&result.stdout);
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            let combined = format!("{}\n{}", stdout, stderr);
+            combined
+                .lines()
+                .map(str::trim)
+                .find(|line| !line.is_empty())
+                .map(str::to_string)
+        });
+
+    Ok(OpenCodeStatus {
+        installed: true,
+        version,
+        path: Some(path.to_string_lossy().to_string()),
+    })
 }
 
 #[tauri::command]
-pub async fn install_opencode() -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(install_opencode_impl)
-        .await
-        .map_err(|e| e.to_string())?
+pub async fn install_opencode(app: AppHandle) -> Result<String, String> {
+    if find_opencode_cli(&app).is_some() {
+        return Ok("OpenCode is bundled with Falck.".to_string());
+    }
+
+    Err("OpenCode CLI bundle not found. Reinstall Falck or run the sidecar build."
+        .to_string())
 }
 
 #[tauri::command]
@@ -145,48 +139,6 @@ fn build_request(cmd: String, args: Value) -> Result<String, String> {
     serde_json::to_string(&Value::Object(map)).map_err(|e| e.to_string())
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-fn install_opencode_impl() -> Result<String, String> {
-    let output = Command::new("bash")
-        .arg("-c")
-        .arg("curl -fsSL https://opencode.ai/install | bash")
-        .output()
-        .map_err(|e| format!("Failed to execute install script: {}", e))?;
-
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(format!("OpenCode installed successfully.\n{}", stdout))
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("Installation failed:\n{}", stderr))
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn install_opencode_impl() -> Result<String, String> {
-    Err("windows_manual_install".to_string())
-}
-
-fn get_opencode_path() -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    let output = Command::new("where")
-        .arg("opencode")
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    #[cfg(not(target_os = "windows"))]
-    let output = Command::new("which")
-        .arg("opencode")
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    } else {
-        Err("Could not find OpenCode path".to_string())
-    }
-}
-
 fn command_exists(command: &str) -> bool {
     #[cfg(target_os = "windows")]
     let output = Command::new("where").arg(command).output();
@@ -198,29 +150,36 @@ fn command_exists(command: &str) -> bool {
 }
 
 fn spawn_sidecar<R: Runtime>(app: &AppHandle<R>) -> Result<SidecarProcess, String> {
+    let cli_path = find_opencode_cli(app);
+
     if let Ok(path) = std::env::var("OPENCODE_SIDECAR_PATH") {
         let path = PathBuf::from(path);
         if path.exists() {
-            return spawn_process(path);
+            return spawn_process(path, cli_path.as_deref());
         }
     }
 
     if let Some(binary) = find_sidecar_binary(app) {
-        return spawn_process(binary);
+        return spawn_process(binary, cli_path.as_deref());
     }
 
     if let Some(script) = find_sidecar_script(app) {
-        return spawn_bun(script);
+        return spawn_bun(script, cli_path.as_deref());
     }
 
     Err(
-        "OpenCode sidecar not found. Build it in sidecar-opencode/ and run rename.js."
+        "OpenCode sidecar not found. Build it in sidecar-opencode/ and ensure it is in src-tauri/sidecars."
             .to_string(),
     )
 }
 
-fn spawn_process(path: PathBuf) -> Result<SidecarProcess, String> {
-    let mut child = Command::new(&path)
+fn spawn_process(path: PathBuf, cli_path: Option<&Path>) -> Result<SidecarProcess, String> {
+    let mut cmd = Command::new(&path);
+    if let Some(cli_path) = cli_path {
+        cmd.env("OPENCODE_CLI_PATH", cli_path);
+    }
+
+    let mut child = cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -237,8 +196,13 @@ fn spawn_process(path: PathBuf) -> Result<SidecarProcess, String> {
     })
 }
 
-fn spawn_bun(script: PathBuf) -> Result<SidecarProcess, String> {
-    let mut child = Command::new("bun")
+fn spawn_bun(script: PathBuf, cli_path: Option<&Path>) -> Result<SidecarProcess, String> {
+    let mut cmd = Command::new("bun");
+    if let Some(cli_path) = cli_path {
+        cmd.env("OPENCODE_CLI_PATH", cli_path);
+    }
+
+    let mut child = cmd
         .arg(script.as_os_str())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -257,24 +221,41 @@ fn spawn_bun(script: PathBuf) -> Result<SidecarProcess, String> {
 }
 
 fn find_sidecar_binary<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
+    if let Ok(current) = tauri::process::current_binary(&app.env()) {
+        if let Some(parent) = current.parent() {
+            if let Some(found) = find_named_in_dir(parent, "opencode-sidecar") {
+                return Some(found);
+            }
+            if let Some(found) = find_named_in_dir(&parent.join("sidecars"), "opencode-sidecar") {
+                return Some(found);
+            }
+        }
+    }
+
     if let Ok(resource_dir) = app.path().resource_dir() {
-        if let Some(found) = find_in_dir(&resource_dir) {
+        if let Some(found) = find_named_in_dir(&resource_dir, "opencode-sidecar") {
             return Some(found);
         }
-        if let Some(found) = find_in_dir(&resource_dir.join("binaries")) {
+        if let Some(found) = find_named_in_dir(&resource_dir.join("binaries"), "opencode-sidecar") {
+            return Some(found);
+        }
+        if let Some(found) = find_named_in_dir(&resource_dir.join("sidecars"), "opencode-sidecar") {
             return Some(found);
         }
     }
 
     let cwd = std::env::current_dir().ok();
     let candidates = [
+        cwd.as_ref().map(|dir| dir.join("sidecars")),
+        cwd.as_ref().map(|dir| dir.join("src-tauri").join("sidecars")),
+        cwd.as_ref().map(|dir| dir.join("..").join("src-tauri").join("sidecars")),
         cwd.as_ref().map(|dir| dir.join("binaries")),
         cwd.as_ref().map(|dir| dir.join("src-tauri").join("binaries")),
         cwd.as_ref().map(|dir| dir.join("..").join("src-tauri").join("binaries")),
     ];
 
     for candidate in candidates.into_iter().flatten() {
-        if let Some(found) = find_in_dir(&candidate) {
+        if let Some(found) = find_named_in_dir(&candidate, "opencode-sidecar") {
             return Some(found);
         }
     }
@@ -316,5 +297,70 @@ fn find_in_dir(dir: &Path) -> Option<PathBuf> {
             }
         }
     }
+    None
+}
+
+fn find_opencode_cli<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("OPENCODE_CLI_PATH") {
+        let path = PathBuf::from(path);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    if let Ok(current) = tauri::process::current_binary(&app.env()) {
+        if let Some(parent) = current.parent() {
+            if let Some(found) = find_named_in_dir(parent, "opencode-cli") {
+                return Some(found);
+            }
+        }
+    }
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        if let Some(found) = find_named_in_dir(&resource_dir, "opencode-cli") {
+            return Some(found);
+        }
+        if let Some(found) = find_named_in_dir(&resource_dir.join("sidecars"), "opencode-cli") {
+            return Some(found);
+        }
+    }
+
+    let cwd = std::env::current_dir().ok();
+    let candidates = [
+        cwd.as_ref().map(|dir| dir.join("sidecars")),
+        cwd.as_ref().map(|dir| dir.join("src-tauri").join("sidecars")),
+        cwd.as_ref().map(|dir| dir.join("..").join("src-tauri").join("sidecars")),
+    ];
+
+    for candidate in candidates.into_iter().flatten() {
+        if let Some(found) = find_named_in_dir(&candidate, "opencode-cli") {
+            return Some(found);
+        }
+    }
+
+    None
+}
+
+fn find_named_in_dir(dir: &Path, prefix: &str) -> Option<PathBuf> {
+    let direct = dir.join(prefix);
+    if direct.exists() {
+        return Some(direct);
+    }
+
+    let exe = dir.join(format!("{prefix}.exe"));
+    if exe.exists() {
+        return Some(exe);
+    }
+
+    let entries = std::fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if let Some(name) = path.file_name().and_then(OsStr::to_str) {
+            if name.starts_with(prefix) {
+                return Some(path);
+            }
+        }
+    }
+
     None
 }

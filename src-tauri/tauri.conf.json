@@ -28,6 +28,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["sidecars/opencode-cli", "sidecars/opencode-sidecar"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -11,7 +11,7 @@ import {
 } from "react";
 
 export interface TextShimmerProps {
-  children: string;
+  children?: string;
   as?: ElementType;
   className?: string;
   duration?: number;
@@ -25,13 +25,14 @@ const ShimmerComponent = ({
   duration = 2,
   spread = 2,
 }: TextShimmerProps) => {
+  const text = children ?? "...";
   const MotionComponent = motion.create(
     Component as keyof JSX.IntrinsicElements
   );
 
   const dynamicSpread = useMemo(
-    () => (children?.length ?? 0) * spread,
-    [children, spread]
+    () => (text.length ?? 0) * spread,
+    [text, spread]
   );
 
   return (
@@ -56,7 +57,7 @@ const ShimmerComponent = ({
         ease: "linear",
       }}
     >
-      {children}
+      {text}
     </MotionComponent>
   );
 };

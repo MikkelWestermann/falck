@@ -8,12 +8,14 @@ use std::env;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 lazy_static! {
     static ref SECRETS_STORE: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
 }
+
+static SHELL_ENV_CACHE: OnceLock<Option<HashMap<String, String>>> = OnceLock::new();
 
 // ============================================================================
 // Falck Config Types
@@ -265,6 +267,7 @@ pub fn check_prerequisites(
     repo_path: &Path,
     app: &Application,
     prereq: &Prerequisite,
+    env_map: &HashMap<String, String>,
 ) -> Result<PrerequisiteCheckResult> {
     let app_root = get_app_root(repo_path, app);
     let ctx = TemplateContext::new(repo_path, &app_root);
@@ -272,6 +275,7 @@ pub fn check_prerequisites(
 
     let output = build_shell_command(&command)
         .current_dir(&app_root)
+        .envs(env_map)
         .output()
         .context("Failed to run prerequisite command")?;
 
@@ -311,12 +315,16 @@ pub fn check_prerequisites(
 
 pub fn check_app_prerequisites(
     repo_path: &Path,
+    config: &FalckConfig,
     app: &Application,
 ) -> Result<Vec<PrerequisiteCheckResult>> {
     let mut results = Vec::new();
+    let app_root = get_app_root(repo_path, app);
+    let ctx = TemplateContext::new(repo_path, &app_root);
+    let env_map = build_env_map(config, app, &ctx)?;
     if let Some(prereqs) = &app.prerequisites {
         for prereq in prereqs {
-            results.push(check_prerequisites(repo_path, app, prereq)?);
+            results.push(check_prerequisites(repo_path, app, prereq, &env_map)?);
         }
     }
     Ok(results)
@@ -620,6 +628,17 @@ fn build_env_map(
     ctx: &TemplateContext,
 ) -> Result<HashMap<String, String>> {
     let mut env_map: HashMap<String, String> = env::vars().collect();
+    if !cfg!(debug_assertions) {
+        if let Some(shell_env) = load_shell_env() {
+            for (key, value) in shell_env {
+                if key == "PATH" {
+                    env_map.insert(key, value);
+                } else {
+                    env_map.entry(key).or_insert(value);
+                }
+            }
+        }
+    }
 
     if let Some(global_env) = &config.global_env {
         for (key, value) in global_env {
@@ -767,10 +786,102 @@ fn build_shell_command(command: &str) -> Command {
         cmd.arg("/C").arg(command);
         cmd
     } else {
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg(command);
+        // Use a login shell so GUI builds inherit user PATH and profile settings.
+        let shell = resolve_shell_path();
+        let mut cmd = Command::new(shell);
+        cmd.arg("-l").arg("-c").arg(command);
         cmd
     }
+}
+
+fn resolve_shell_path() -> String {
+    if let Ok(shell) = env::var("SHELL") {
+        if !shell.is_empty() && Path::new(&shell).exists() {
+            return shell;
+        }
+    }
+
+    let fallback = if cfg!(target_os = "macos") {
+        "/bin/zsh"
+    } else {
+        "/bin/bash"
+    };
+
+    if Path::new(fallback).exists() {
+        fallback.to_string()
+    } else {
+        "/bin/sh".to_string()
+    }
+}
+
+fn load_shell_env() -> Option<HashMap<String, String>> {
+    SHELL_ENV_CACHE
+        .get_or_init(capture_shell_env)
+        .clone()
+}
+
+#[cfg(target_os = "windows")]
+fn capture_shell_env() -> Option<HashMap<String, String>> {
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+fn capture_shell_env() -> Option<HashMap<String, String>> {
+    let shell = resolve_shell_path();
+    let marker_start = "__FALCK_ENV_BEGIN__";
+    let marker_end = "__FALCK_ENV_END__";
+    let command = format!(
+        "printf '{}\\0'; env -0; printf '{}\\0'",
+        marker_start, marker_end
+    );
+
+    let output = Command::new(shell)
+        .arg("-l")
+        .arg("-i")
+        .arg("-c")
+        .arg(command)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = output.stdout;
+    let start_marker = format!("{}\0", marker_start).into_bytes();
+    let end_marker = format!("{}\0", marker_end).into_bytes();
+    let start = find_subsequence(&stdout, &start_marker)?;
+    let env_start = start + start_marker.len();
+    let end = find_subsequence(&stdout[env_start..], &end_marker)
+        .map(|offset| env_start + offset)?;
+    let env_bytes = &stdout[env_start..end];
+    Some(parse_env_null(env_bytes))
+}
+
+fn parse_env_null(bytes: &[u8]) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for entry in bytes.split(|b| *b == 0) {
+        if entry.is_empty() {
+            continue;
+        }
+        if let Some(pos) = entry.iter().position(|b| *b == b'=') {
+            let key = String::from_utf8_lossy(&entry[..pos]).to_string();
+            let value = String::from_utf8_lossy(&entry[pos + 1..]).to_string();
+            map.insert(key, value);
+        }
+    }
+    map
+}
+
+fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 // ============================================================================
@@ -1208,7 +1319,7 @@ pub async fn check_falck_prerequisites(
         .find(|app| app.id == app_id)
         .ok_or_else(|| "Application not found".to_string())?;
 
-    check_app_prerequisites(path, app).map_err(|e| e.to_string())
+    check_app_prerequisites(path, &config, app).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

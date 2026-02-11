@@ -198,7 +198,8 @@ export function OpenCodeManager({
         <DialogHeader>
           <DialogTitle>OpenCode required</DialogTitle>
           <DialogDescription>
-            Falck uses OpenCode for AI sessions. Install it to continue.
+            Falck bundles OpenCode for AI sessions. If it's missing, rebuild the sidecar or
+            reinstall Falck.
           </DialogDescription>
         </DialogHeader>
 
@@ -340,9 +341,9 @@ export function OpenCodeInstallPanel({ className }: OpenCodeInstallPanelProps) {
             <div className="text-sm font-semibold">Status</div>
             <div className="text-xs text-muted-foreground">
               {status?.installed
-                ? "OpenCode detected"
+                ? "OpenCode bundled"
                 : status
-                  ? "OpenCode not found in PATH"
+                  ? "OpenCode sidecar missing"
                   : "Checking OpenCode..."}
             </div>
             {status?.version && (

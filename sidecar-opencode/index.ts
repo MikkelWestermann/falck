@@ -1,4 +1,5 @@
-import { createOpencode, createOpencodeClient } from "@opencode-ai/sdk/v2";
+import { createOpencodeClient } from "@opencode-ai/sdk/v2";
+import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import path from "node:path";
 
@@ -33,16 +34,86 @@ const defaultDirectory = cwd.endsWith(`${path.sep}src-tauri`)
 const opencodeDirectory = process.env.OPENCODE_DIRECTORY || defaultDirectory;
 let client = createOpencodeClient({ baseUrl, directory: opencodeDirectory });
 let serverStartedAt: number | null = null;
+const opencodeBinary = process.env.OPENCODE_CLI_PATH || "opencode";
+
+type ServerOptions = {
+  hostname?: string;
+  port?: number;
+  timeout?: number;
+};
+
+async function createOpencodeServer(options: ServerOptions = {}) {
+  const hostname = options.hostname ?? "127.0.0.1";
+  const port = options.port ?? 4096;
+  const timeout = options.timeout ?? 10000;
+
+  const args = ["serve", `--hostname=${hostname}`, `--port=${port}`];
+  const proc = spawn(opencodeBinary, args, { env: { ...process.env } });
+
+  const url = await new Promise<string>((resolve, reject) => {
+    const id = setTimeout(() => {
+      reject(
+        new Error(`Timeout waiting for server to start after ${timeout}ms`),
+      );
+    }, timeout);
+
+    let output = "";
+
+    proc.stdout?.on("data", (chunk) => {
+      output += chunk.toString();
+      const lines = output.split("\n");
+      for (const line of lines) {
+        if (!line.startsWith("opencode server listening")) {
+          continue;
+        }
+        const match = line.match(/on\s+(https?:\/\/[^\s]+)/);
+        if (!match) {
+          reject(new Error(`Failed to parse server url from output: ${line}`));
+          return;
+        }
+        clearTimeout(id);
+        resolve(match[1]!);
+        return;
+      }
+    });
+
+    proc.stderr?.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+
+    proc.on("exit", (code) => {
+      clearTimeout(id);
+      let message = `Server exited with code ${code}`;
+      if (output.trim()) {
+        message += `\nServer output: ${output}`;
+      }
+      reject(new Error(message));
+    });
+
+    proc.on("error", (error) => {
+      clearTimeout(id);
+      reject(error);
+    });
+  });
+
+  return {
+    url,
+    close() {
+      proc.kill();
+    },
+  };
+}
 
 try {
-  const started = await createOpencode({
+  console.error("[SIDECAR] Using opencode binary", opencodeBinary);
+  const started = await createOpencodeServer({
     hostname: "127.0.0.1",
     port: 4096,
     timeout: 10000,
   });
-  baseUrl = started.server.url;
+  baseUrl = started.url;
   client = createOpencodeClient({ baseUrl, directory: opencodeDirectory });
-  serverClose = started.server.close;
+  serverClose = started.close;
   serverStartedAt = Date.now();
   console.error("[SIDECAR] OpenCode server started at", baseUrl);
   console.error("[SIDECAR] Using OpenCode directory", opencodeDirectory);

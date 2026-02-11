@@ -12,7 +12,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CommitInfo, gitService } from "@/services/gitService";
-import { RefreshCw } from "lucide-react";
 
 interface CommitHistoryProps {
   repoPath: string;

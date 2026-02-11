@@ -16,7 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { gitService, RepositoryInfo } from "@/services/gitService";
 import { falckService } from "@/services/falckService";
 import { useAppState } from "@/router/app-state";
@@ -31,7 +30,6 @@ function OverviewRoute() {
   const navigate = Route.useNavigate();
   const { sshKey, repoPath, setRepoPath } = useAppState();
   const [repoInfo, setRepoInfo] = useState<RepositoryInfo | null>(null);
-  const [refreshSeed, setRefreshSeed] = useState(0);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [showDiscardConfirmDialog, setShowDiscardConfirmDialog] =
@@ -47,6 +45,7 @@ function OverviewRoute() {
     type: "switch" | "create";
     projectName: string;
   } | null>(null);
+  const [refreshSeed, setRefreshSeed] = useState<number>(0);
 
   const loadRepoInfo = async (path: string) => {
     try {
@@ -282,14 +281,6 @@ function OverviewRoute() {
     }
   };
 
-  const handleDragStart = () => {
-    getCurrentWindow()
-      .startDragging()
-      .catch(() => {
-        // no-op outside Tauri runtime
-      });
-  };
-
   if (!sshKey) {
     return <Navigate to="/ssh" />;
   }
@@ -497,6 +488,7 @@ function OverviewRoute() {
           <DialogTitle>Version history</DialogTitle>
           <DialogDescription>Messed up? Go back in time</DialogDescription>
           <CommitHistory
+          key={`history-${refreshSeed}`}
             repoPath={repoPath}
             baseBranch={resolvedDefaultBranch ?? repoInfo.head_branch}
             currentBranch={repoInfo.head_branch}
