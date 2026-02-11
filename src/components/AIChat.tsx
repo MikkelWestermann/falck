@@ -1,15 +1,17 @@
 import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import { unstable_batchedUpdates } from "react-dom";
 
-import type { ChatStatus } from "ai";
+import type { ChatStatus, ToolUIPart } from "ai";
 import {
   AlertTriangleIcon,
   CheckCircleIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   ClockIcon,
   HistoryIcon,
   PlusIcon,
   SparklesIcon,
+  WrenchIcon,
 } from "lucide-react";
 
 import {
@@ -17,6 +19,16 @@ import {
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "@/components/ai-elements/reasoning";
+import {
+  ToolInput,
+  ToolOutput,
+  getStatusBadge,
+} from "@/components/ai-elements/tool";
 import { Loader } from "@/components/ai-elements/loader";
 import {
   ModelSelector,
@@ -83,6 +95,105 @@ type PartSnapshot = {
   tool?: string;
   title?: string;
   role?: "user" | "assistant";
+  time?: { start?: number; end?: number };
+};
+
+type ToolState = ToolUIPart["state"];
+
+const TOOL_STATE_FALLBACK: ToolState = "input-streaming";
+const ACTIVE_TOOL_STATES: ToolState[] = [
+  "input-streaming",
+  "input-available",
+  "approval-requested",
+  "approval-responded",
+];
+
+const normalizeToolStatus = (status?: string): ToolState => {
+  switch (status) {
+    case "input-streaming":
+    case "input-available":
+    case "approval-requested":
+    case "approval-responded":
+    case "output-available":
+    case "output-error":
+    case "output-denied":
+      return status;
+    case "running":
+      return "input-available";
+    default:
+      return TOOL_STATE_FALLBACK;
+  }
+};
+
+const resolveToolState = (part: PartSnapshot): ToolState => {
+  const normalized = normalizeToolStatus(part.status);
+  if (
+    normalized === "output-available" ||
+    normalized === "output-error" ||
+    normalized === "output-denied"
+  ) {
+    return normalized;
+  }
+  if (part.errorText) {
+    return "output-error";
+  }
+  if (part.output !== undefined) {
+    return "output-available";
+  }
+  if (normalized === "input-streaming" && part.input !== undefined) {
+    return "input-available";
+  }
+  return normalized;
+};
+
+const isToolPart = (part: PartSnapshot) =>
+  part.type === "dynamic-tool" ||
+  part.type === "tool" ||
+  Boolean(part.tool) ||
+  Boolean(part.type && part.type.startsWith("tool-"));
+
+const isReasoningPart = (part: PartSnapshot) => part.type === "reasoning";
+
+const isRenderableAssistantPart = (part: PartSnapshot) =>
+  !part.synthetic &&
+  !part.ignored &&
+  (isToolPart(part) ||
+    (isReasoningPart(part) &&
+      typeof part.text === "string" &&
+      part.text.trim().length > 0));
+
+const getPartSortTime = (part: PartSnapshot) =>
+  part.time?.start ?? part.time?.end;
+
+const compareParts = (a: PartSnapshot, b: PartSnapshot) => {
+  const aTime = getPartSortTime(a);
+  const bTime = getPartSortTime(b);
+  if (aTime && bTime && aTime !== bTime) {
+    return aTime - bTime;
+  }
+  if (aTime && !bTime) {
+    return -1;
+  }
+  if (!aTime && bTime) {
+    return 1;
+  }
+  return a.id.localeCompare(b.id);
+};
+
+const toolLabel = (part: PartSnapshot) => {
+  if (part.type === "dynamic-tool") {
+    return part.title || part.toolName || "Tool";
+  }
+  if (part.type === "tool") {
+    return part.tool || part.title || part.toolName || "Tool";
+  }
+  if (part.tool) {
+    return part.tool;
+  }
+  if (part.type?.startsWith("tool-")) {
+    return part.type.replace("tool-", "") || "Tool";
+  }
+  return "Tool";
 };
 
 type ToolActivity = {
@@ -395,14 +506,47 @@ export function AIChat({ repoPath }: AIChatProps) {
       : undefined;
 
   const visibleMessages = useMemo(
-    () => messages.filter((msg) => msg.text.length > 0),
-    [messages],
+    () =>
+      messages.filter((msg) => {
+        if (msg.text.length > 0) {
+          return true;
+        }
+        const parts = partsByMessage.current.get(msg.id);
+        if (!parts) {
+          return false;
+        }
+        for (const part of parts.values()) {
+          if (isRenderableAssistantPart(part)) {
+            return true;
+          }
+        }
+        return false;
+      }),
+    [lastEventAt, messages, toolActivity],
   );
 
   const hasPendingUserMessage = useMemo(
     () => messages.some((msg) => msg.role === "user" && msg.pending),
     [messages],
   );
+
+  const getRenderableParts = (messageId: string) => {
+    const parts = partsByMessage.current.get(messageId);
+    if (!parts) {
+      return { toolParts: [], reasoningParts: [] };
+    }
+    const orderedParts = Array.from(parts.values())
+      .filter((part) => !part.synthetic && !part.ignored)
+      .sort(compareParts);
+    const toolParts = orderedParts.filter(isToolPart);
+    const reasoningParts = orderedParts.filter(
+      (part) =>
+        isReasoningPart(part) &&
+        typeof part.text === "string" &&
+        part.text.trim().length > 0,
+    );
+    return { toolParts, reasoningParts };
+  };
 
   const awaitingApproval = useMemo(
     () => toolActivity.some((tool) => tool.state === "approval-requested"),
@@ -730,6 +874,7 @@ export function AIChat({ repoPath }: AIChatProps) {
         tool?: string;
         title?: string;
         role?: "user" | "assistant";
+        time?: { start?: number; end?: number };
       },
       existing?: PartSnapshot,
     ): PartSnapshot => {
@@ -757,33 +902,12 @@ export function AIChat({ repoPath }: AIChatProps) {
         tool: part.tool ?? existing?.tool,
         title: part.title ?? existing?.title,
         role: part.role ?? existing?.role,
+        time: part.time ?? existing?.time,
         status,
         output,
         errorText,
         input,
       };
-    };
-
-    const isToolPart = (part: PartSnapshot) =>
-      part.type === "dynamic-tool" ||
-      part.type === "tool" ||
-      Boolean(part.tool) ||
-      Boolean(part.type && part.type.startsWith("tool-"));
-
-    const toolLabel = (part: PartSnapshot) => {
-      if (part.type === "dynamic-tool") {
-        return part.title || part.toolName || "Tool";
-      }
-      if (part.type === "tool") {
-        return part.tool || part.title || part.toolName || "Tool";
-      }
-      if (part.tool) {
-        return part.tool;
-      }
-      if (part.type?.startsWith("tool-")) {
-        return part.type.replace("tool-", "") || "Tool";
-      }
-      return "Tool";
     };
 
     const buildMessageText = (
@@ -819,22 +943,15 @@ export function AIChat({ repoPath }: AIChatProps) {
       const active: ToolActivity[] = [];
       partsByMessage.current.forEach((partMap) => {
         partMap.forEach((part) => {
-          if (!isToolPart(part) || !part.status) {
+          if (!isToolPart(part)) {
             return;
           }
-          if (
-            [
-              "input-streaming",
-              "input-available",
-              "running",
-              "approval-requested",
-              "approval-responded",
-            ].includes(part.status)
-          ) {
+          const resolvedState = resolveToolState(part);
+          if (ACTIVE_TOOL_STATES.includes(resolvedState)) {
             active.push({
               id: part.id,
               name: toolLabel(part),
-              state: part.status,
+              state: resolvedState,
             });
           }
         });
@@ -1022,7 +1139,12 @@ export function AIChat({ repoPath }: AIChatProps) {
           roleByMessage.current.set(part.messageID, resolvedRole);
         }
         const combined = buildMessageText(byPart, resolvedRole);
-        if (resolvedRole && combined.length > 0) {
+        if (
+          resolvedRole &&
+          (combined.length > 0 ||
+            (resolvedRole === "assistant" &&
+              isRenderableAssistantPart(normalized)))
+        ) {
           const partTimestamp = part.time?.end ?? part.time?.start ?? Date.now();
           upsertMessage(
             part.messageID,
@@ -1031,7 +1153,7 @@ export function AIChat({ repoPath }: AIChatProps) {
               text: combined,
               timestamp: new Date(partTimestamp).toISOString(),
             },
-            { requireText: true },
+            combined.length > 0 ? { requireText: true } : undefined,
           );
         }
         if (
@@ -1045,13 +1167,7 @@ export function AIChat({ repoPath }: AIChatProps) {
         }
         if (
           isToolPart(normalized) &&
-          normalized.status &&
-          [
-            "input-streaming",
-            "input-available",
-            "approval-requested",
-            "approval-responded",
-          ].includes(normalized.status)
+          ACTIVE_TOOL_STATES.includes(resolveToolState(normalized))
         ) {
           setSessionStatus((prev) => (prev?.type === "busy" ? prev : { type: "busy" }));
           setAwaitingResponse(false);
@@ -1746,35 +1862,113 @@ export function AIChat({ repoPath }: AIChatProps) {
                     </p>
                   </div>
                 ) : (
-                  visibleMessages.map((msg, idx) => (
-                    <AIMessage
-                      key={msg.id ?? `${msg.timestamp}-${idx}`}
-                      from={msg.role}
-                      className={cn(
-                        "max-w-[88%] gap-3",
-                        msg.role === "user"
-                          ? "lg:max-w-[70%]"
-                          : "lg:max-w-[80%]",
-                      )}
-                    >
-                      <MessageContent className="min-w-[200px]">
-                        <div className="flex items-center justify-between text-[0.6rem] uppercase tracking-[0.3em] opacity-70">
-                          <span>
-                            {msg.role === "user" ? "You" : "Falck AI"}
-                          </span>
-                          <span>{formatMessageTime(msg.timestamp)}</span>
-                        </div>
-                        <ThrottledMessageResponse
-                          text={msg.text}
-                          isStreaming={
-                            msg.role === "assistant" &&
-                            streaming &&
-                            streamingMessageId === msg.id
-                          }
-                        />
-                      </MessageContent>
-                    </AIMessage>
-                  ))
+                  visibleMessages.map((msg, idx) => {
+                    const { toolParts, reasoningParts } = getRenderableParts(
+                      msg.id,
+                    );
+                    const isAssistant = msg.role === "assistant";
+                    const isMessageStreaming =
+                      isAssistant && streaming && streamingMessageId === msg.id;
+
+                    return (
+                      <AIMessage
+                        key={msg.id ?? `${msg.timestamp}-${idx}`}
+                        from={msg.role}
+                        className={cn(
+                          "max-w-[88%] gap-3",
+                          msg.role === "user"
+                            ? "lg:max-w-[70%]"
+                            : "lg:max-w-[80%]",
+                        )}
+                      >
+                        {isAssistant &&
+                          reasoningParts.map((part) => (
+                            <Reasoning
+                              key={part.id}
+                              isStreaming={isMessageStreaming}
+                              className="w-full"
+                            >
+                              <ReasoningTrigger />
+                              <ReasoningContent>
+                                {part.text ?? ""}
+                              </ReasoningContent>
+                            </Reasoning>
+                          ))}
+                        {(msg.role === "user" || msg.text.length > 0) && (
+                          <MessageContent className="min-w-[200px]">
+                            <div className="flex items-center justify-between text-[0.6rem] uppercase tracking-[0.3em] opacity-70">
+                              <span>
+                                {msg.role === "user" ? "You" : "Falck AI"}
+                              </span>
+                              <span>{formatMessageTime(msg.timestamp)}</span>
+                            </div>
+                            {msg.text.length > 0 && (
+                              <ThrottledMessageResponse
+                                text={msg.text}
+                                isStreaming={isMessageStreaming}
+                              />
+                            )}
+                          </MessageContent>
+                        )}
+                        {isAssistant &&
+                          toolParts.map((part) => {
+                            const toolState = resolveToolState(part);
+                            const toolTitle = toolLabel(part);
+                            const toolDescription = part.description?.trim();
+                            const hasInput = part.input !== undefined;
+                            const hasOutput =
+                              part.output !== undefined || part.errorText;
+
+                            return (
+                              <Dialog key={part.id}>
+                                <DialogTrigger asChild>
+                                  <button
+                                    className="group flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground"
+                                    type="button"
+                                  >
+                                    <WrenchIcon className="size-4 shrink-0" />
+                                    <span className="min-w-0 truncate text-left">
+                                      {toolTitle}
+                                    </span>
+                                    {getStatusBadge(toolState)}
+                                    <ChevronRightIcon className="ml-auto size-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
+                                  </button>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-2xl">
+                                  <DialogHeader className="gap-2">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <DialogTitle className="text-base">
+                                        {toolTitle}
+                                      </DialogTitle>
+                                      {getStatusBadge(toolState)}
+                                    </div>
+                                    <DialogDescription>
+                                      {toolDescription ||
+                                        "Tool execution details."}
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-2">
+                                    {hasInput && (
+                                      <ToolInput input={part.input} />
+                                    )}
+                                    {hasOutput ? (
+                                      <ToolOutput
+                                        output={part.output}
+                                        errorText={part.errorText}
+                                      />
+                                    ) : (
+                                      <div className="rounded-md border border-dashed border-border/60 p-4 text-xs text-muted-foreground">
+                                        No output yet.
+                                      </div>
+                                    )}
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
+                            );
+                          })}
+                      </AIMessage>
+                    );
+                  })
                 )}
               </div>
 

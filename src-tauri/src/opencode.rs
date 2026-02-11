@@ -287,19 +287,6 @@ fn find_sidecar_script<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
     None
 }
 
-fn find_in_dir(dir: &Path) -> Option<PathBuf> {
-    let entries = std::fs::read_dir(dir).ok()?;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if let Some(name) = path.file_name().and_then(OsStr::to_str) {
-            if name.starts_with("opencode-sidecar-") {
-                return Some(path);
-            }
-        }
-    }
-    None
-}
-
 fn find_opencode_cli<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
     if let Ok(path) = std::env::var("OPENCODE_CLI_PATH") {
         let path = PathBuf::from(path);
