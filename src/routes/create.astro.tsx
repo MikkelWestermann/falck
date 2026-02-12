@@ -93,6 +93,10 @@ function CreateAstroRoute() {
       skipHouston: true,
       integrations: "",
       astroRef: "",
+      monorepoEnabled: false,
+      monorepoRoot: "",
+      monorepoParentDir: "",
+      monorepoInstallCommand: "",
     },
     validators: {
       onSubmit: createAstroProjectSchema,
@@ -102,7 +106,23 @@ function CreateAstroRoute() {
         setError("SSH key is required before creating projects.");
         return;
       }
-      if (!defaultRepoDir) {
+      const isMonorepo = Boolean(value.monorepoEnabled);
+      const monorepoRootValue = value.monorepoRoot?.trim() ?? "";
+      const monorepoParentDirValue =
+        value.monorepoParentDir?.trim() ?? "";
+      const monorepoInstallValue =
+        value.monorepoInstallCommand?.trim() ?? "";
+      if (isMonorepo) {
+        if (!monorepoRootValue) {
+          setError("Monorepo root is required.");
+          return;
+        }
+        if (!monorepoInstallValue) {
+          setError("Install command is required for monorepo projects.");
+          return;
+        }
+      }
+      if (!isMonorepo && !defaultRepoDir) {
         setError("Set a default project folder in settings first.");
         return;
       }
@@ -141,7 +161,7 @@ function CreateAstroRoute() {
         const integrations = value.integrations?.trim();
         const astroRef = value.astroRef?.trim();
 
-        if (!githubConnected) {
+        if (!isMonorepo && !githubConnected) {
           setError("Connect GitHub before creating a new project.");
           return;
         }
@@ -149,7 +169,7 @@ function CreateAstroRoute() {
         let repoFullName: string | null = null;
         let repoSshUrl: string | null = null;
 
-        if (value.repoMode === "existing") {
+        if (!isMonorepo && value.repoMode === "existing") {
           const selected = githubRepos.find(
             (repo) => repo.full_name === value.existingRepo,
           );
@@ -161,30 +181,44 @@ function CreateAstroRoute() {
           repoSshUrl = selected.ssh_url;
         }
 
-        const localPath = await join(defaultRepoDir, folderName);
+        const baseDir = isMonorepo ? monorepoRootValue : defaultRepoDir;
+        const repoBase =
+          isMonorepo && monorepoParentDirValue
+            ? await join(baseDir ?? "", monorepoParentDirValue)
+            : baseDir;
+        const localPath = await join(repoBase ?? "", folderName);
+        const repoMode =
+          !isMonorepo && value.repoMode === "existing" ? "existing" : "new";
         const result = await projectService.createAstroProject({
           projectName: value.projectName.trim(),
           localPath,
-          repoMode: value.repoMode === "existing" ? "existing" : "new",
-          repoName: value.repoMode === "new" ? repoName : null,
-          repoFullName,
-          repoSshUrl,
-          repoVisibility: value.visibility,
-          description: value.description?.trim() || null,
+          repoMode,
+          repoName: repoMode === "new" ? repoName : null,
+          repoFullName: repoMode === "existing" ? repoFullName : null,
+          repoSshUrl: repoMode === "existing" ? repoSshUrl : null,
+          repoVisibility: isMonorepo ? null : value.visibility,
+          description: isMonorepo ? null : value.description?.trim() || null,
           sshKeyPath: sshKey.private_key_path,
           promptMode: value.promptMode,
-          installDependencies: value.installDependencies,
-          initializeGit: value.initializeGit,
+          installDependencies: isMonorepo ? false : value.installDependencies,
+          initializeGit: isMonorepo ? false : value.initializeGit,
           skipHouston: value.skipHouston,
           integrations: integrations ? integrations : null,
           astroRef: astroRef ? astroRef : null,
+          monorepoEnabled: isMonorepo,
+          monorepoRoot: isMonorepo ? monorepoRootValue : null,
+          monorepoParentDir: isMonorepo ? monorepoParentDirValue : null,
+          monorepoInstallCommand: isMonorepo ? monorepoInstallValue : null,
           progressId,
         });
 
-        await gitService.saveRepo(
-          result.repoFullName || result.repoName,
-          result.path,
-        );
+        const repoLabel =
+          result.repoFullName ||
+          result.repoName ||
+          monorepoRootValue.split(/[\\/]/).filter(Boolean).pop() ||
+          value.projectName.trim() ||
+          folderName;
+        await gitService.saveRepo(repoLabel, result.path);
         setRepoPath(result.path);
         navigate({ to: "/overview" });
       } catch (err) {
@@ -201,6 +235,11 @@ function CreateAstroRoute() {
   const formValues = useStore(createForm.store, (state) => state.values);
   const projectSlug = normalizeSlug(formValues.projectName ?? "");
   const repoMode = formValues.repoMode ?? "new";
+  const monorepoEnabled = Boolean(formValues.monorepoEnabled);
+  const monorepoRoot = formValues.monorepoRoot?.trim() ?? "";
+  const monorepoParentDir = formValues.monorepoParentDir?.trim() ?? "";
+  const monorepoInstallCommand =
+    formValues.monorepoInstallCommand?.trim() ?? "";
 
   useEffect(() => {
     let active = true;
@@ -255,6 +294,7 @@ function CreateAstroRoute() {
 
   useEffect(() => {
     if (
+      monorepoEnabled ||
       formValues.repoMode !== "existing" ||
       !githubConnected ||
       githubRepos.length > 0 ||
@@ -277,7 +317,13 @@ function CreateAstroRoute() {
     };
 
     void loadRepos();
-  }, [formValues.repoMode, githubConnected, githubRepos.length, githubLoading]);
+  }, [
+    monorepoEnabled,
+    formValues.repoMode,
+    githubConnected,
+    githubRepos.length,
+    githubLoading,
+  ]);
 
   useEffect(() => {
     if (!repoNameAuto || repoMode !== "new") {
@@ -295,19 +341,55 @@ function CreateAstroRoute() {
     formValues.repoName,
   ]);
 
+  useEffect(() => {
+    if (!monorepoEnabled) {
+      return;
+    }
+    if (formValues.installDependencies) {
+      createForm.setFieldValue("installDependencies", false);
+    }
+    if (formValues.initializeGit) {
+      createForm.setFieldValue("initializeGit", false);
+    }
+    if (formValues.repoMode !== "new") {
+      createForm.setFieldValue("repoMode", "new");
+    }
+  }, [
+    monorepoEnabled,
+    formValues.installDependencies,
+    formValues.initializeGit,
+    formValues.repoMode,
+    createForm,
+  ]);
+
   const repoSlug = normalizeSlug(formValues.repoName ?? "") || projectSlug;
   const folderSlug =
     normalizeSlug(formValues.folderName ?? "") || projectSlug;
+  const monorepoBaseDir = useMemo(() => {
+    if (!monorepoRoot) {
+      return "";
+    }
+    const separator = monorepoRoot.includes("\\") ? "\\" : "/";
+    const base = monorepoRoot.replace(/[\\/]+$/, "");
+    const parent = monorepoParentDir
+      .replace(/^[\\/]+/, "")
+      .replace(/[\\/]+$/, "");
+    if (!parent) {
+      return base;
+    }
+    return `${base}${separator}${parent}`;
+  }, [monorepoRoot, monorepoParentDir]);
   const pathPreview = useMemo(() => {
-    if (!defaultRepoDir) {
+    const baseDir = monorepoEnabled ? monorepoBaseDir : defaultRepoDir;
+    if (!baseDir) {
       return "";
     }
     const folder = folderSlug || "project";
-    const separator = defaultRepoDir.includes("\\") ? "\\" : "/";
-    const base = defaultRepoDir.replace(/[\\/]+$/, "");
+    const separator = baseDir.includes("\\") ? "\\" : "/";
+    const base = baseDir.replace(/[\\/]+$/, "");
     const suffix = folder.replace(/^[\\/]+/, "");
     return suffix ? `${base}${separator}${suffix}` : base;
-  }, [defaultRepoDir, folderSlug]);
+  }, [defaultRepoDir, folderSlug, monorepoEnabled, monorepoBaseDir]);
   const repoOptions = useMemo(
     () =>
       githubRepos.map((repo) => ({
@@ -351,8 +433,9 @@ function CreateAstroRoute() {
               <Badge variant="secondary">Template</Badge>
             </div>
             <p className="text-sm text-muted-foreground">
-              Configure the project and Falck will scaffold, push, and open it
-              for you.
+              {monorepoEnabled
+                ? "Configure the project and Falck will scaffold it inside your monorepo."
+                : "Configure the project and Falck will scaffold, push, and open it for you."}
             </p>
           </div>
         </header>
@@ -368,7 +451,9 @@ function CreateAstroRoute() {
             <CardHeader className="space-y-2">
               <CardTitle className="text-xl">Basic settings</CardTitle>
               <CardDescription>
-                Choose a name and GitHub destination for the new project.
+                {monorepoEnabled
+                  ? "Choose a name and destination inside your monorepo."
+                  : "Choose a name and GitHub destination for the new project."}
               </CardDescription>
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <Badge variant={githubConnected ? "secondary" : "destructive"}>
@@ -378,6 +463,11 @@ function CreateAstroRoute() {
                 </Badge>
                 <Badge variant="outline">Template: {ASTRO_TEMPLATE}</Badge>
               </div>
+              {monorepoEnabled && (
+                <p className="text-xs text-muted-foreground">
+                  Monorepo mode skips GitHub and git setup.
+                </p>
+              )}
             </CardHeader>
             <CardContent className="space-y-5">
               <createForm.Field name="projectName">
@@ -391,69 +481,81 @@ function CreateAstroRoute() {
                 )}
               </createForm.Field>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <createForm.Field name="repoMode">
-                  {(field) => (
-                    <FormSelect
-                      field={field}
-                      label="GitHub repository"
-                      required
-                      options={[
-                        { label: "Create new repo", value: "new" },
-                        { label: "Use existing repo", value: "existing" },
-                      ]}
-                    />
-                  )}
-                </createForm.Field>
-                {repoMode === "new" ? (
-                  <createForm.Field name="repoName">
-                    {(field) => (
-                      <FormField
-                        field={field}
-                        label="Repository name"
-                        placeholder={projectSlug || "falck-marketing-site"}
-                        onValueChange={(value) => {
-                          const normalized = normalizeSlug(value);
-                          setRepoNameAuto(
-                            value.trim() === "" || normalized === projectSlug,
-                          );
-                        }}
-                        helpText={
-                          repoSlug
-                            ? `Defaults to ${repoSlug}`
-                            : "Defaults to project name"
-                        }
-                      />
-                    )}
-                  </createForm.Field>
-                ) : (
-                  <createForm.Field name="existingRepo">
+              {!monorepoEnabled ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <createForm.Field name="repoMode">
                     {(field) => (
                       <FormSelect
                         field={field}
-                        label="Select repository"
+                        label="GitHub repository"
                         required
-                        options={
-                          repoOptions.length > 0
-                            ? repoOptions
-                            : [{ label: "Loading repositories...", value: "" }]
-                        }
+                        options={[
+                          { label: "Create new repo", value: "new" },
+                          { label: "Use existing repo", value: "existing" },
+                        ]}
                       />
                     )}
                   </createForm.Field>
-                )}
-              </div>
+                  {repoMode === "new" ? (
+                    <createForm.Field name="repoName">
+                      {(field) => (
+                        <FormField
+                          field={field}
+                          label="Repository name"
+                          placeholder={projectSlug || "falck-marketing-site"}
+                          onValueChange={(value) => {
+                            const normalized = normalizeSlug(value);
+                            setRepoNameAuto(
+                              value.trim() === "" || normalized === projectSlug,
+                            );
+                          }}
+                          helpText={
+                            repoSlug
+                              ? `Defaults to ${repoSlug}`
+                              : "Defaults to project name"
+                          }
+                        />
+                      )}
+                    </createForm.Field>
+                  ) : (
+                    <createForm.Field name="existingRepo">
+                      {(field) => (
+                        <FormSelect
+                          field={field}
+                          label="Select repository"
+                          required
+                          options={
+                            repoOptions.length > 0
+                              ? repoOptions
+                              : [{ label: "Loading repositories...", value: "" }]
+                          }
+                        />
+                      )}
+                    </createForm.Field>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  GitHub settings are disabled while monorepo mode is enabled.
+                </div>
+              )}
 
               <div className="space-y-2 text-sm">
-                <div className="font-medium">Destination folder</div>
+                <div className="font-medium">
+                  {monorepoEnabled ? "Monorepo folder" : "Destination folder"}
+                </div>
                 <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs font-mono text-muted-foreground">
-                  {defaultRepoDirLoading
-                    ? "Loading..."
-                    : pathPreview ||
-                      "Set a default project folder in settings."}
+                  {monorepoEnabled
+                    ? pathPreview || "Set a monorepo root in advanced settings."
+                    : defaultRepoDirLoading
+                      ? "Loading..."
+                      : pathPreview ||
+                        "Set a default project folder in settings."}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Change the default folder in Settings if needed.
+                  {monorepoEnabled
+                    ? "Set the monorepo root in Advanced settings if needed."
+                    : "Change the default folder in Settings if needed."}
                 </p>
               </div>
             </CardContent>
@@ -479,7 +581,8 @@ function CreateAstroRoute() {
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <CardDescription className="mt-3">
-                    Tune repository details and Astro scaffolding options.
+                    Tune repository details, monorepo settings, and Astro
+                    scaffolding options.
                   </CardDescription>
                   <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <createForm.Field name="visibility">
@@ -488,6 +591,7 @@ function CreateAstroRoute() {
                           field={field}
                           label="Repository visibility"
                           required
+                          disabled={monorepoEnabled}
                           options={[
                             { label: "Private", value: "private" },
                             { label: "Public", value: "public" },
@@ -517,10 +621,80 @@ function CreateAstroRoute() {
                             label="Repository description"
                             placeholder="Marketing site for Falck"
                             helpText="Optional, shown on GitHub."
+                            disabled={monorepoEnabled}
                           />
                         )}
                       </createForm.Field>
                     </div>
+                  </div>
+                  <div className="mt-6 space-y-4 rounded-xl border border-border/60 bg-muted/30 p-4">
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold">Monorepo</p>
+                      <p className="text-xs text-muted-foreground">
+                        Add the Astro project to an existing repo and merge the
+                        Falck configuration.
+                      </p>
+                    </div>
+                    <createForm.Field name="monorepoEnabled">
+                      {(field) => {
+                        const id = `${field.name}-toggle`;
+                        return (
+                          <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+                            <div className="space-y-1">
+                              <Label htmlFor={id} className="text-sm font-medium">
+                                Monorepo mode
+                              </Label>
+                              <p className="text-xs text-muted-foreground">
+                                Skip GitHub and git setup for monorepos.
+                              </p>
+                            </div>
+                            <Switch
+                              id={id}
+                              checked={Boolean(field.state.value)}
+                              onCheckedChange={field.handleChange}
+                            />
+                          </div>
+                        );
+                      }}
+                    </createForm.Field>
+                    {monorepoEnabled && (
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <createForm.Field name="monorepoRoot">
+                          {(field) => (
+                            <FormField
+                              field={field}
+                              label="Monorepo root"
+                              placeholder="/Users/you/dev/monorepo"
+                              helpText="Absolute path to the existing repo."
+                              required
+                            />
+                          )}
+                        </createForm.Field>
+                        <createForm.Field name="monorepoParentDir">
+                          {(field) => (
+                            <FormField
+                              field={field}
+                              label="Parent directory"
+                              placeholder="web"
+                              helpText="Optional subfolder inside the monorepo root."
+                            />
+                          )}
+                        </createForm.Field>
+                        <div className="md:col-span-2">
+                          <createForm.Field name="monorepoInstallCommand">
+                            {(field) => (
+                              <FormField
+                                field={field}
+                                label="Install command"
+                                placeholder="pnpm install"
+                                helpText="Used by Falck to install dependencies from the monorepo root."
+                                required
+                              />
+                            )}
+                          </createForm.Field>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="mt-6 space-y-4 rounded-xl border border-border/60 bg-muted/30 p-4">
                     <div className="space-y-1">
@@ -584,6 +758,7 @@ function CreateAstroRoute() {
                                 id={id}
                                 checked={Boolean(field.state.value)}
                                 onCheckedChange={field.handleChange}
+                                disabled={monorepoEnabled}
                               />
                             </div>
                           );
@@ -606,6 +781,7 @@ function CreateAstroRoute() {
                                 id={id}
                                 checked={Boolean(field.state.value)}
                                 onCheckedChange={field.handleChange}
+                                disabled={monorepoEnabled}
                               />
                             </div>
                           );
@@ -640,12 +816,12 @@ function CreateAstroRoute() {
             </CardHeader>
           </Card>
 
-          {githubLoading && (
+          {!monorepoEnabled && githubLoading && (
             <Alert>
               <AlertDescription>Loading GitHub repositories...</AlertDescription>
             </Alert>
           )}
-          {githubError && (
+          {!monorepoEnabled && githubError && (
             <Alert variant="destructive">
               <AlertDescription>{githubError}</AlertDescription>
             </Alert>
@@ -658,16 +834,19 @@ function CreateAstroRoute() {
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-xs text-muted-foreground">
-              Creates the project, initializes Git, pushes to GitHub, and opens
-              the repo in Falck.
+              {monorepoEnabled
+                ? "Creates the project inside your monorepo, merges Falck config, and opens the repo in Falck."
+                : "Creates the project, initializes Git, pushes to GitHub, and opens the repo in Falck."}
             </div>
             <Button
               type="submit"
               disabled={
                 creating ||
-                defaultRepoDirLoading ||
-                !defaultRepoDir ||
-                !githubConnected
+                (monorepoEnabled
+                  ? !monorepoRoot || !monorepoInstallCommand
+                  : defaultRepoDirLoading ||
+                    !defaultRepoDir ||
+                    !githubConnected)
               }
               className="min-w-[180px] normal-case tracking-normal"
             >

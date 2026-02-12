@@ -4,6 +4,19 @@ import { branchNamePattern } from "@/lib/branching";
 
 const isSshUrl = (value: string) =>
   value.startsWith("git@") || value.startsWith("ssh://");
+const isRelativePath = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return true;
+  }
+  if (/^([a-zA-Z]:[\\/]|[\\/]|~)/.test(trimmed)) {
+    return false;
+  }
+  if (/(^|[\\/])\.\.([\\/]|$)/.test(trimmed)) {
+    return false;
+  }
+  return true;
+};
 
 export const cloneRepoSchema = z.object({
   name: z.string().min(1, "Repo name is required"),
@@ -53,8 +66,43 @@ export const createAstroProjectSchema = z
     skipHouston: z.boolean(),
     integrations: z.string().optional(),
     astroRef: z.string().optional(),
+    monorepoEnabled: z.boolean(),
+    monorepoRoot: z.string().optional(),
+    monorepoParentDir: z.string().optional(),
+    monorepoInstallCommand: z.string().optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.monorepoEnabled) {
+      if (!data.monorepoRoot || !data.monorepoRoot.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["monorepoRoot"],
+          message: "Monorepo root is required",
+        });
+      }
+      if (
+        data.monorepoParentDir &&
+        !isRelativePath(data.monorepoParentDir)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["monorepoParentDir"],
+          message: "Use a relative path (no leading / or .. segments)",
+        });
+      }
+      if (
+        !data.monorepoInstallCommand ||
+        !data.monorepoInstallCommand.trim()
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["monorepoInstallCommand"],
+          message: "Install command is required",
+        });
+      }
+      return;
+    }
+
     if (data.repoMode === "existing") {
       if (!data.existingRepo || !data.existingRepo.trim()) {
         ctx.addIssue({

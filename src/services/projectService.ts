@@ -16,15 +16,19 @@ export interface CreateAstroProjectInput {
   skipHouston: boolean;
   integrations?: string | null;
   astroRef?: string | null;
+  monorepoEnabled?: boolean;
+  monorepoRoot?: string | null;
+  monorepoParentDir?: string | null;
+  monorepoInstallCommand?: string | null;
   progressId?: string | null;
 }
 
 export interface CreateAstroProjectResult {
   path: string;
-  repoName: string;
-  repoFullName: string;
-  repoSshUrl: string;
-  branch: string;
+  repoName?: string | null;
+  repoFullName?: string | null;
+  repoSshUrl?: string | null;
+  branch?: string | null;
 }
 
 export const projectService = {

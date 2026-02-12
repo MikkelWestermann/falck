@@ -91,6 +91,7 @@ interface FormFieldProps {
   helpText?: string;
   required?: boolean;
   onValueChange?: (value: string) => void;
+  disabled?: boolean;
 }
 
 export const FormField: React.FC<FormFieldProps> = ({
@@ -101,6 +102,7 @@ export const FormField: React.FC<FormFieldProps> = ({
   helpText,
   required,
   onValueChange,
+  disabled,
 }) => {
   const errors = field.state.meta.errors ?? [];
   const isInvalid =
@@ -130,6 +132,7 @@ export const FormField: React.FC<FormFieldProps> = ({
         }}
         onBlur={field.handleBlur}
         aria-invalid={isInvalid}
+        disabled={disabled}
         className={cn(isInvalid && "border-destructive focus-visible:ring-destructive")}
       />
       {isInvalid && errors.length > 0 && (
@@ -150,6 +153,7 @@ export const FormTextarea: React.FC<FormFieldProps> = ({
   placeholder,
   helpText,
   required,
+  disabled,
 }) => {
   const errors = field.state.meta.errors ?? [];
   const isInvalid =
@@ -174,6 +178,7 @@ export const FormTextarea: React.FC<FormFieldProps> = ({
         onChange={(e) => field.handleChange(e.target.value)}
         onBlur={field.handleBlur}
         aria-invalid={isInvalid}
+        disabled={disabled}
         className={cn(isInvalid && "border-destructive focus-visible:ring-destructive")}
       />
       {isInvalid && errors.length > 0 && (
@@ -190,7 +195,7 @@ export const FormTextarea: React.FC<FormFieldProps> = ({
 
 export const FormSelect: React.FC<
   FormFieldProps & { options: { label: string; value: string }[] }
-> = ({ field, label, options, required }) => {
+> = ({ field, label, options, required, disabled }) => {
   const errors = field.state.meta.errors ?? [];
   const isInvalid =
     field.state.meta.isTouched && !field.state.meta.isValid;
@@ -206,9 +211,14 @@ export const FormSelect: React.FC<
           {label}
         </Label>
       )}
-      <Select value={field.state.value ?? ""} onValueChange={field.handleChange}>
+      <Select
+        value={field.state.value ?? ""}
+        onValueChange={field.handleChange}
+        disabled={disabled}
+      >
         <SelectTrigger
           aria-invalid={isInvalid}
+          disabled={disabled}
           className={cn(isInvalid && "border-destructive")}
         >
           <SelectValue placeholder="Select an option" />
