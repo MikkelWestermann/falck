@@ -1,6 +1,7 @@
 use git2::{
-    build::RepoBuilder, BranchType, Cred, CredentialType, FetchOptions, PushOptions,
-    RemoteCallbacks, Repository, ResetType, Signature, Sort, StatusOptions,
+    build::RepoBuilder, BranchType, Cred, CredentialType, FetchOptions, IndexAddOption,
+    PushOptions, RemoteCallbacks, Repository, RepositoryInitOptions, ResetType, Signature,
+    Sort, StatusOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -148,6 +149,13 @@ pub fn open_repository(path: &str) -> GitResult<Repository> {
     Ok(repo)
 }
 
+pub fn init_repository(path: &str) -> GitResult<()> {
+    let mut opts = RepositoryInitOptions::new();
+    opts.initial_head("main");
+    Repository::init_opts(path, &opts)?;
+    Ok(())
+}
+
 pub fn get_repository_info(path: &str) -> GitResult<RepositoryInfo> {
     let repo = open_repository(path)?;
 
@@ -209,6 +217,46 @@ pub fn get_repository_info(path: &str) -> GitResult<RepositoryInfo> {
         branches,
         status_files,
     })
+}
+
+pub fn has_commits(path: &str) -> GitResult<bool> {
+    let repo = open_repository(path)?;
+    let has_commit = repo
+        .head()
+        .ok()
+        .and_then(|head| head.peel_to_commit().ok())
+        .is_some();
+    Ok(has_commit)
+}
+
+pub fn current_branch(path: &str) -> GitResult<String> {
+    let repo = open_repository(path)?;
+    let head = repo.head()?;
+    Ok(head.shorthand().unwrap_or("main").to_string())
+}
+
+pub fn ensure_main_branch(path: &str) -> GitResult<String> {
+    let repo = open_repository(path)?;
+    let head = repo.head()?;
+    let current = head.shorthand().unwrap_or("main").to_string();
+    if current == "main" {
+        return Ok(current);
+    }
+
+    let main_exists = repo.find_branch("main", BranchType::Local).is_ok();
+    if current == "master" && !main_exists {
+        let mut branch = repo.find_branch("master", BranchType::Local)?;
+        branch.rename("main", true)?;
+    } else if !main_exists {
+        let commit = head.peel_to_commit()?;
+        repo.branch("main", &commit, false)?;
+    }
+
+    repo.set_head("refs/heads/main")?;
+    repo.checkout_head(Some(
+        git2::build::CheckoutBuilder::new().force(),
+    ))?;
+    Ok("main".to_string())
 }
 
 // ============================================================================
@@ -382,6 +430,14 @@ pub fn stage_file(path: &str, file_path: &str) -> GitResult<()> {
     Ok(())
 }
 
+pub fn stage_all(path: &str) -> GitResult<()> {
+    let repo = open_repository(path)?;
+    let mut index = repo.index()?;
+    index.add_all(["*"].iter(), IndexAddOption::DEFAULT, None)?;
+    index.write()?;
+    Ok(())
+}
+
 pub fn unstage_file(path: &str, file_path: &str) -> GitResult<()> {
     let repo = open_repository(path)?;
     let mut index = repo.index()?;
@@ -508,4 +564,14 @@ pub fn list_remotes(path: &str) -> GitResult<Vec<String>> {
     }
 
     Ok(remote_names)
+}
+
+pub fn add_or_update_remote(path: &str, name: &str, url: &str) -> GitResult<()> {
+    let repo = open_repository(path)?;
+    if repo.find_remote(name).is_ok() {
+        repo.remote_set_url(name, url)?;
+    } else {
+        repo.remote(name, url)?;
+    }
+    Ok(())
 }

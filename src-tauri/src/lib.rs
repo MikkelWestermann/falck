@@ -2,6 +2,7 @@ mod git;
 mod falck;
 mod github;
 mod opencode;
+mod project;
 mod ssh;
 mod storage;
 
@@ -206,6 +207,7 @@ pub fn run() {
             github::github_get_user,
             github::github_list_repos,
             github::github_add_ssh_key,
+            project::create_astro_project,
             falck::load_falck_config,
             falck::check_falck_prerequisites,
             falck::run_falck_prerequisite_install,

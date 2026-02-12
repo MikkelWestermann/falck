@@ -90,6 +90,7 @@ interface FormFieldProps {
   type?: "text" | "email" | "password" | "number";
   helpText?: string;
   required?: boolean;
+  onValueChange?: (value: string) => void;
 }
 
 export const FormField: React.FC<FormFieldProps> = ({
@@ -99,6 +100,7 @@ export const FormField: React.FC<FormFieldProps> = ({
   type = "text",
   helpText,
   required,
+  onValueChange,
 }) => {
   const errors = field.state.meta.errors ?? [];
   const isInvalid =
@@ -121,7 +123,11 @@ export const FormField: React.FC<FormFieldProps> = ({
         type={type}
         placeholder={placeholder}
         value={field.state.value ?? ""}
-        onChange={(e) => field.handleChange(e.target.value)}
+        onChange={(e) => {
+          const nextValue = e.target.value;
+          field.handleChange(nextValue);
+          onValueChange?.(nextValue);
+        }}
         onBlur={field.handleBlur}
         aria-invalid={isInvalid}
         className={cn(isInvalid && "border-destructive focus-visible:ring-destructive")}

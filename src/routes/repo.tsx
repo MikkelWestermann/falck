@@ -21,6 +21,7 @@ function RepoRoute() {
         navigate({ to: "/overview" });
       }}
       onOpenSettings={() => navigate({ to: "/settings" })}
+      onCreateProject={() => navigate({ to: "/create" })}
     />
   );
 }

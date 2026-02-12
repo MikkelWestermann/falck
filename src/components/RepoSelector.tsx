@@ -34,11 +34,19 @@ import {
 import { gitService, SavedRepo } from "@/services/gitService";
 import { settingsService } from "@/services/settingsService";
 import { ThemeButton } from "@/components/ThemeButton";
-import { ChevronDown, ChevronUp, Search, Settings, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Search,
+  Settings,
+  Trash2,
+} from "lucide-react";
 
 interface RepoSelectorProps {
   onRepoSelect: (path: string) => void;
   onOpenSettings?: () => void;
+  onCreateProject?: () => void;
 }
 
 const SAVED_PREVIEW_COUNT = 6;
@@ -47,6 +55,7 @@ const GITHUB_PREVIEW_COUNT = 6;
 export function RepoSelector({
   onRepoSelect,
   onOpenSettings,
+  onCreateProject,
 }: RepoSelectorProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -370,6 +379,16 @@ export function RepoSelector({
           </div>
           <div className="flex items-center gap-2">
             <ThemeButton />
+            {onCreateProject && (
+              <Button
+                size="sm"
+                onClick={onCreateProject}
+                className="normal-case tracking-normal"
+              >
+                <Plus className="h-4 w-4" />
+                Create new project
+              </Button>
+            )}
             {onOpenSettings && (
               <Button
                 variant="outline"

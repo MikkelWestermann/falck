@@ -205,3 +205,93 @@
     @apply bg-[hsl(var(--page-background))] text-foreground;
   }
 }
+
+@keyframes create-gradient-shift {
+  0% {
+    background-position: 0% 50%;
+    transform: scale(1);
+  }
+  50% {
+    background-position: 100% 50%;
+    transform: scale(1.05);
+  }
+  100% {
+    background-position: 0% 50%;
+    transform: scale(1);
+  }
+}
+
+@keyframes create-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes create-orb-float {
+  0%,
+  100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-8px) scale(1.04);
+  }
+}
+
+@keyframes create-core-pulse {
+  0%,
+  100% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+.create-loading-backdrop {
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(45, 212, 191, 0.45), transparent 55%),
+    radial-gradient(circle at 80% 25%, rgba(59, 130, 246, 0.4), transparent 50%),
+    radial-gradient(circle at 50% 80%, rgba(236, 72, 153, 0.35), transparent 55%),
+    linear-gradient(120deg, #0f172a 0%, #020617 60%, #0f172a 100%);
+  background-size: 200% 200%;
+  animation: create-gradient-shift 14s ease-in-out infinite;
+}
+
+.create-loading-glow {
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.25), transparent 60%);
+  mix-blend-mode: screen;
+  animation: create-glow-pulse 6s ease-in-out infinite;
+}
+
+.create-loading-orb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 120px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.25), transparent 55%);
+  box-shadow:
+    0 0 30px rgba(45, 212, 191, 0.35),
+    0 0 60px rgba(59, 130, 246, 0.25),
+    0 0 90px rgba(236, 72, 153, 0.2);
+  animation: create-orb-float 4s ease-in-out infinite;
+}
+
+.create-loading-core {
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 35%, #f8fafc 0%, #5eead4 40%, #60a5fa 70%, #f472b6 100%);
+  box-shadow:
+    0 0 20px rgba(255, 255, 255, 0.4),
+    0 0 40px rgba(94, 234, 212, 0.6);
+  animation: create-core-pulse 2.6s ease-in-out infinite;
+}

@@ -13,9 +13,12 @@ import { Route as SshRouteImport } from './routes/ssh'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RepoRouteImport } from './routes/repo'
 import { Route as OverviewRouteImport } from './routes/overview'
+import { Route as CreateRouteImport } from './routes/create'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as CreateIndexRouteImport } from './routes/create.index'
 import { Route as SettingsSshRouteImport } from './routes/settings.ssh'
+import { Route as CreateAstroRouteImport } from './routes/create.astro'
 
 const SshRoute = SshRouteImport.update({
   id: '/ssh',
@@ -37,6 +40,11 @@ const OverviewRoute = OverviewRouteImport.update({
   path: '/overview',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CreateRoute = CreateRouteImport.update({
+  id: '/create',
+  path: '/create',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -47,19 +55,32 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsRoute,
 } as any)
+const CreateIndexRoute = CreateIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => CreateRoute,
+} as any)
 const SettingsSshRoute = SettingsSshRouteImport.update({
   id: '/ssh',
   path: '/ssh',
   getParentRoute: () => SettingsRoute,
 } as any)
+const CreateAstroRoute = CreateAstroRouteImport.update({
+  id: '/astro',
+  path: '/astro',
+  getParentRoute: () => CreateRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/create': typeof CreateRouteWithChildren
   '/overview': typeof OverviewRoute
   '/repo': typeof RepoRoute
   '/settings': typeof SettingsRouteWithChildren
   '/ssh': typeof SshRoute
+  '/create/astro': typeof CreateAstroRoute
   '/settings/ssh': typeof SettingsSshRoute
+  '/create/': typeof CreateIndexRoute
   '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -67,44 +88,64 @@ export interface FileRoutesByTo {
   '/overview': typeof OverviewRoute
   '/repo': typeof RepoRoute
   '/ssh': typeof SshRoute
+  '/create/astro': typeof CreateAstroRoute
   '/settings/ssh': typeof SettingsSshRoute
+  '/create': typeof CreateIndexRoute
   '/settings': typeof SettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/create': typeof CreateRouteWithChildren
   '/overview': typeof OverviewRoute
   '/repo': typeof RepoRoute
   '/settings': typeof SettingsRouteWithChildren
   '/ssh': typeof SshRoute
+  '/create/astro': typeof CreateAstroRoute
   '/settings/ssh': typeof SettingsSshRoute
+  '/create/': typeof CreateIndexRoute
   '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/create'
     | '/overview'
     | '/repo'
     | '/settings'
     | '/ssh'
+    | '/create/astro'
     | '/settings/ssh'
+    | '/create/'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/overview' | '/repo' | '/ssh' | '/settings/ssh' | '/settings'
-  id:
-    | '__root__'
+  to:
     | '/'
     | '/overview'
     | '/repo'
+    | '/ssh'
+    | '/create/astro'
+    | '/settings/ssh'
+    | '/create'
+    | '/settings'
+  id:
+    | '__root__'
+    | '/'
+    | '/create'
+    | '/overview'
+    | '/repo'
     | '/settings'
     | '/ssh'
+    | '/create/astro'
     | '/settings/ssh'
+    | '/create/'
     | '/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CreateRoute: typeof CreateRouteWithChildren
   OverviewRoute: typeof OverviewRoute
   RepoRoute: typeof RepoRoute
   SettingsRoute: typeof SettingsRouteWithChildren
@@ -141,6 +182,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OverviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/create': {
+      id: '/create'
+      path: '/create'
+      fullPath: '/create'
+      preLoaderRoute: typeof CreateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -155,6 +203,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/create/': {
+      id: '/create/'
+      path: '/'
+      fullPath: '/create/'
+      preLoaderRoute: typeof CreateIndexRouteImport
+      parentRoute: typeof CreateRoute
+    }
     '/settings/ssh': {
       id: '/settings/ssh'
       path: '/ssh'
@@ -162,8 +217,28 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsSshRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/create/astro': {
+      id: '/create/astro'
+      path: '/astro'
+      fullPath: '/create/astro'
+      preLoaderRoute: typeof CreateAstroRouteImport
+      parentRoute: typeof CreateRoute
+    }
   }
 }
+
+interface CreateRouteChildren {
+  CreateAstroRoute: typeof CreateAstroRoute
+  CreateIndexRoute: typeof CreateIndexRoute
+}
+
+const CreateRouteChildren: CreateRouteChildren = {
+  CreateAstroRoute: CreateAstroRoute,
+  CreateIndexRoute: CreateIndexRoute,
+}
+
+const CreateRouteWithChildren =
+  CreateRoute._addFileChildren(CreateRouteChildren)
 
 interface SettingsRouteChildren {
   SettingsSshRoute: typeof SettingsSshRoute
@@ -181,6 +256,7 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CreateRoute: CreateRouteWithChildren,
   OverviewRoute: OverviewRoute,
   RepoRoute: RepoRoute,
   SettingsRoute: SettingsRouteWithChildren,

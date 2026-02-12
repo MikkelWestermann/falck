@@ -321,6 +321,42 @@ pub async fn github_list_repos(
     Ok(repos)
 }
 
+pub async fn github_create_repo(
+    app: AppHandle,
+    client: &Client,
+    name: String,
+    description: Option<String>,
+    private: bool,
+) -> Result<GithubRepo, String> {
+    if name.trim().is_empty() {
+        return Err("Repository name is required.".to_string());
+    }
+
+    let token = load_token(&app)?;
+    let response = client
+        .post(format!("{}/user/repos", API_BASE))
+        .headers(build_api_headers(&token))
+        .json(&json!({
+            "name": name.trim(),
+            "description": description,
+            "private": private,
+        }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if response.status() == StatusCode::UNAUTHORIZED {
+        return Err("GitHub token is invalid or expired.".to_string());
+    }
+
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("GitHub repo create failed: {}", body));
+    }
+
+    response.json::<GithubRepo>().await.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn github_add_ssh_key(
     app: AppHandle,
