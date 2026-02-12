@@ -10,12 +10,58 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
+use tauri::State;
 
 lazy_static! {
     static ref SECRETS_STORE: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
 }
 
 static SHELL_ENV_CACHE: OnceLock<Option<HashMap<String, String>>> = OnceLock::new();
+
+#[derive(Debug, Clone)]
+pub struct RunningFalckApp {
+    pub pid: u32,
+    pub repo_path: String,
+    pub app_id: String,
+}
+
+pub struct FalckProcessState(pub Mutex<HashMap<u32, RunningFalckApp>>);
+
+impl Default for FalckProcessState {
+    fn default() -> Self {
+        Self(Mutex::new(HashMap::new()))
+    }
+}
+
+fn register_running_app(state: &FalckProcessState, app: RunningFalckApp) {
+    let mut guard = match state.0.lock() {
+        Ok(guard) => guard,
+        Err(err) => err.into_inner(),
+    };
+    guard.insert(app.pid, app);
+}
+
+fn unregister_running_app(state: &FalckProcessState, pid: u32) -> Option<RunningFalckApp> {
+    let mut guard = match state.0.lock() {
+        Ok(guard) => guard,
+        Err(err) => err.into_inner(),
+    };
+    guard.remove(&pid)
+}
+
+pub fn stop_all_running_apps(state: &FalckProcessState) {
+    let running = {
+        let mut guard = match state.0.lock() {
+            Ok(guard) => guard,
+            Err(err) => err.into_inner(),
+        };
+        guard.drain().map(|(_, app)| app).collect::<Vec<_>>()
+    };
+
+    for app in running {
+        let _ = kill_app(app.pid);
+    }
+}
 
 // ============================================================================
 // Falck Config Types
@@ -1409,7 +1455,11 @@ pub async fn run_falck_setup(repo_path: String, app_id: String) -> Result<String
 }
 
 #[tauri::command]
-pub async fn launch_falck_app(repo_path: String, app_id: String) -> Result<u32, String> {
+pub async fn launch_falck_app(
+    state: State<'_, FalckProcessState>,
+    repo_path: String,
+    app_id: String,
+) -> Result<u32, String> {
     let path = Path::new(&repo_path);
     let config = load_config(path).map_err(|e| e.to_string())?;
     let app = config
@@ -1418,7 +1468,16 @@ pub async fn launch_falck_app(repo_path: String, app_id: String) -> Result<u32, 
         .find(|app| app.id == app_id)
         .ok_or_else(|| "Application not found".to_string())?;
 
-    launch_app(path, &config, app).map_err(|e| e.to_string())
+    let pid = launch_app(path, &config, app).map_err(|e| e.to_string())?;
+    register_running_app(
+        &state,
+        RunningFalckApp {
+            pid,
+            repo_path,
+            app_id,
+        },
+    );
+    Ok(pid)
 }
 
 #[tauri::command]
@@ -1435,7 +1494,11 @@ pub async fn run_falck_cleanup(repo_path: String, app_id: String) -> Result<Stri
 }
 
 #[tauri::command]
-pub async fn kill_falck_app(pid: u32) -> Result<(), String> {
+pub async fn kill_falck_app(
+    state: State<'_, FalckProcessState>,
+    pid: u32,
+) -> Result<(), String> {
+    let _ = unregister_running_app(&state, pid);
     kill_app(pid).map_err(|e| e.to_string())
 }
 

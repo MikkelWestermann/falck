@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -79,6 +79,7 @@ export function FalckDashboard({
   >({});
   const [launchError, setLaunchError] = useState<Record<string, string>>({});
   const [runningApps, setRunningApps] = useState<Record<string, number>>({});
+  const runningAppsRef = useRef<Record<string, number>>({});
   const [setupDialogOpen, setSetupDialogOpen] = useState(false);
   const [secretsSatisfied, setSecretsSatisfied] = useState<
     Record<string, boolean>
@@ -97,6 +98,27 @@ export function FalckDashboard({
 
   useEffect(() => {
     void loadConfig();
+  }, [repoPath]);
+
+  useEffect(() => {
+    runningAppsRef.current = runningApps;
+  }, [runningApps]);
+
+  useEffect(() => {
+    setRunningApps({});
+    setLaunchError({});
+  }, [repoPath]);
+
+  useEffect(() => {
+    return () => {
+      const pids = Object.values(runningAppsRef.current);
+      if (pids.length === 0) {
+        return;
+      }
+      pids.forEach((pid) => {
+        void falckService.killApp(pid);
+      });
+    };
   }, [repoPath]);
 
   const loadConfig = async () => {

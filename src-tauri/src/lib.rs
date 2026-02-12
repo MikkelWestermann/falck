@@ -20,6 +20,7 @@ use storage::{
     get_default_repo_dir, list_repos, remove_repo, save_repo, set_default_repo_dir, SavedRepo,
 };
 use reqwest::Client;
+use tauri::Manager;
 
 // ============================================================================
 // Tauri Commands
@@ -170,6 +171,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(Client::new())
         .manage(OpencodeState::default())
+        .manage(falck::FalckProcessState::default())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                let state = window.app_handle().state::<falck::FalckProcessState>();
+                falck::stop_all_running_apps(&state);
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             clone_repo,
             get_repo_info,
