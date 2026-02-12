@@ -62,7 +62,9 @@ if (envCli && fs.existsSync(envCli)) {
   cliReady = true
 }
 
-const repoRoot = path.resolve(process.cwd(), "..", "opencode")
+const appRoot = process.cwd()
+const monorepoRoot = path.resolve(appRoot, "..")
+const repoRoot = path.join(monorepoRoot, "opencode")
 const repoCliRoot = path.join(repoRoot, "packages", "opencode")
 const repoBinary = windowsify(
   path.join(repoCliRoot, "dist", sidecarConfig.ocBinary, "bin", "opencode"),
@@ -233,7 +235,7 @@ async function ensureOpencodeSidecar() {
     return
   }
 
-  const sidecarRoot = path.resolve(process.cwd(), "sidecar-opencode")
+  const sidecarRoot = path.join(appRoot, "sidecar-opencode")
   const pkgPath = path.join(sidecarRoot, "package.json")
   if (!fs.existsSync(pkgPath)) {
     throw new Error("sidecar-opencode package not found")

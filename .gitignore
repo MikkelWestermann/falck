@@ -7,10 +7,15 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Bun
+bun.lockb
+desktop/bun.lockb
+
 node_modules
 dist
 dist-ssr
 *.local
+**/.vite/
 
 # Editor directories and files
 .vscode/*
@@ -24,3 +29,12 @@ dist-ssr
 *.sw?
 
 .env
+
+# Tauri
+desktop/target
+desktop/src-tauri/target
+
+# Sidecar builds
+desktop/src-tauri/sidecars/
+desktop/src-tauri/binaries/
+desktop/sidecar-opencode/my-sidecar*
