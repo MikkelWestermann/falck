@@ -41,10 +41,10 @@ applications:
         url: "Opens a Falck desktop window on this machine"
         open_browser: false
 
-  - id: "frontend"
-    name: "Astro App"
+  - id: "website"
+    name: "Website"
     type: "web"
-    description: "Falck-themed Astro landing page"
+    description: "Falck website"
     root: "website"
 
     prerequisites:
@@ -64,13 +64,13 @@ applications:
     setup:
       steps:
         - name: "Install Dependencies"
-          command: "cd {{ repo_root }} && bun i"
+          command: "bun install"
           timeout: 300
           description: "Install Bun packages"
 
     launch:
       command: "bun run dev"
-      description: "Start the Astro development server"
+      description: "Start the website development server"
       timeout: 30
       access:
         type: "http"
