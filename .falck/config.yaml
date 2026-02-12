@@ -40,3 +40,40 @@ applications:
         type: "custom"
         url: "Opens a Falck desktop window on this machine"
         open_browser: false
+
+  - id: "frontend"
+    name: "Astro App"
+    type: "web"
+    description: "Falck-themed Astro landing page"
+    root: "website"
+
+    prerequisites:
+      - type: "runtime"
+        name: "Bun"
+        command: "bun --version"
+        version: "1.0.0"
+        install_url: "https://bun.sh"
+        install:
+          instructions:
+            - "Install Bun 1.x before running setup."
+          options:
+            - name: "Scripted installer"
+              command: "curl -fsSL https://bun.sh/install | bash"
+              only_if: "os != 'windows'"
+
+    setup:
+      steps:
+        - name: "Install Dependencies"
+          command: "cd {{ repo_root }} && bun i"
+          timeout: 300
+          description: "Install Bun packages"
+
+    launch:
+      command: "bun run dev"
+      description: "Start the Astro development server"
+      timeout: 30
+      access:
+        type: "http"
+        url: "http://localhost:4321"
+        port: 4321
+        open_browser: true

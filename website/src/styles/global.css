@@ -1,0 +1,24 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700&family=Space+Grotesk:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-primary: 1 150 108;
+    --color-primary-deep: 0 108 79;
+    --color-ink: 10 18 16;
+  }
+
+  body {
+    font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: 'Fraunces', 'Times New Roman', serif;
+  }
+}
