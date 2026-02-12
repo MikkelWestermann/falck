@@ -691,17 +691,26 @@ function CreateProgressScreen({
     <div className="relative min-h-screen overflow-hidden text-white">
       <div className="create-loading-backdrop absolute inset-0" />
       <div className="create-loading-glow absolute inset-0" />
+      <div className="create-loading-sparkles absolute inset-0" />
       <div className="relative z-10 flex min-h-screen items-center justify-center px-6 text-center">
         <div className="flex max-w-xl flex-col items-center gap-6">
           <div className="create-loading-orb">
             <div className="create-loading-core" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-2xl font-semibold tracking-tight">
+            <h2
+              key={message}
+              className="create-loading-message text-2xl font-semibold tracking-tight"
+            >
               {message}
             </h2>
             {detail && (
-              <p className="text-xs font-mono text-white/70">{detail}</p>
+              <p
+                key={detail}
+                className="create-loading-detail text-xs font-mono text-white/70"
+              >
+                {detail}
+              </p>
             )}
           </div>
           <p className="text-sm text-white/70">
