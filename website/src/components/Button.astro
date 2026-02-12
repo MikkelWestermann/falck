@@ -1,5 +1,13 @@
 ---
-const { variant = 'primary' } = Astro.props;
+const {
+  variant = 'primary',
+  href,
+  target,
+  rel,
+  type = 'button',
+  class: className = '',
+  ...rest
+} = Astro.props;
 const base =
   'px-6 py-3 rounded-full font-semibold tracking-wide transition-all duration-200 shadow-sm inline-flex items-center justify-center gap-2';
 const variants = {
@@ -8,8 +16,17 @@ const variants = {
   secondary:
     'bg-white/80 text-slate-900 border border-slate-200/80 hover:border-slate-300 hover:bg-white dark:bg-slate-900/70 dark:text-white dark:border-slate-700/80 dark:hover:border-slate-600',
 };
+const classes = `${base} ${variants[variant as keyof typeof variants]} ${className}`.trim();
 ---
 
-<button class={`${base} ${variants[variant as keyof typeof variants]}`}>
-  <slot />
-</button>
+{
+  href ? (
+    <a class={classes} href={href} target={target} rel={rel} {...rest}>
+      <slot />
+    </a>
+  ) : (
+    <button class={classes} type={type} {...rest}>
+      <slot />
+    </button>
+  )
+}

@@ -1,0 +1,439 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Button from '../components/Button.astro';
+---
+
+<Layout
+  title="Falck | Download"
+  description="Get the latest Falck desktop release for Windows, macOS, and Linux."
+>
+  <section class="relative overflow-hidden pt-24 pb-16">
+    <div class="absolute inset-0 -z-10">
+      <div class="absolute inset-0 backdrop-grid opacity-60"></div>
+      <div class="absolute -top-20 left-[12%] h-[320px] w-[320px] rounded-full bg-emerald-300/40 blur-[140px] glow-pulse"></div>
+      <div class="absolute bottom-[-25%] right-[5%] h-[440px] w-[440px] rounded-full bg-sky-300/40 blur-[160px] float-soft"></div>
+    </div>
+
+    <div class="container mx-auto px-6">
+      <div class="grid gap-12 lg:grid-cols-[1.1fr_0.9fr] items-center">
+        <div class="space-y-6 reveal">
+          <span class="inline-flex items-center gap-2 rounded-full bg-white/70 dark:bg-slate-900/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-600 dark:text-slate-300 border border-white/80 dark:border-slate-800/80">
+            Download
+          </span>
+          <h1 class="text-4xl sm:text-5xl font-semibold text-slate-950 dark:text-white">
+            Get the latest Falck desktop build in one click
+          </h1>
+          <p class="text-lg text-slate-600 dark:text-slate-300">
+            We detect your device, fetch the newest GitHub release, and point you to the best installer for your OS.
+          </p>
+          <div class="flex flex-col sm:flex-row gap-4">
+            <Button id="hero-download" href="#all-assets" class="pointer-events-none opacity-60" aria-disabled="true">
+              Preparing download
+            </Button>
+            <Button
+              id="hero-release-notes"
+              href="#all-assets"
+              variant="secondary"
+              class="pointer-events-none opacity-60"
+              aria-disabled="true"
+            >
+              Release notes
+            </Button>
+          </div>
+          <div class="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">
+            <span class="rounded-full border border-emerald-200/80 bg-emerald-100/70 px-3 py-1 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200">
+              Windows
+            </span>
+            <span class="rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-slate-600 dark:border-slate-700/70 dark:bg-slate-900/70 dark:text-slate-300">
+              macOS
+            </span>
+            <span class="rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-slate-600 dark:border-slate-700/70 dark:bg-slate-900/70 dark:text-slate-300">
+              Linux
+            </span>
+          </div>
+        </div>
+
+        <div class="surface p-6 reveal-delay-2">
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+            <span>Latest release</span>
+            <span id="release-version" class="text-emerald-600">v--</span>
+          </div>
+          <div class="mt-6 grid gap-4">
+            <div class="surface-muted p-4">
+              <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Status</p>
+              <p id="release-status" class="mt-2 text-sm font-semibold text-slate-900 dark:text-white">
+                Fetching release data
+              </p>
+              <p id="release-date" class="mt-1 text-xs text-slate-500">--</p>
+            </div>
+            <div class="surface-dark p-4">
+              <p class="text-xs uppercase tracking-[0.3em] text-emerald-200">Device detected</p>
+              <p id="detected-os" class="mt-2 text-sm font-semibold">Detecting</p>
+              <p id="detected-arch" class="mt-1 text-xs text-emerald-100/70">--</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-16 pb-24">
+    <div id="loader" class="surface p-8 text-center reveal">
+      <p id="loader-message" class="text-xs uppercase tracking-[0.3em] text-slate-400">
+        Detecting your device and fetching the latest release
+      </p>
+      <p class="mt-3 text-sm text-slate-600 dark:text-slate-300">
+        This page pulls public release assets from GitHub and matches them to your operating system.
+      </p>
+      <Button id="loader-link" href="#" target="_blank" rel="noreferrer" variant="secondary" class="mt-6 hidden">
+        View releases on GitHub
+      </Button>
+    </div>
+
+    <div id="content" class="hidden space-y-16">
+      <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-start">
+        <div class="surface p-8">
+          <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Recommended download</p>
+          <h2 id="recommended-title" class="mt-3 text-2xl font-semibold text-slate-900 dark:text-white">
+            Loading your installer
+          </h2>
+          <p id="recommended-subtitle" class="mt-2 text-slate-600 dark:text-slate-300">
+            We will match the right build to your device.
+          </p>
+          <div class="mt-6 flex flex-col sm:flex-row gap-4">
+            <Button
+              id="recommended-download"
+              href="#all-assets"
+              class="pointer-events-none opacity-60"
+              aria-disabled="true"
+            >
+              Download
+            </Button>
+            <Button id="recommended-release" href="#" target="_blank" rel="noreferrer" variant="secondary">
+              Release notes
+            </Button>
+          </div>
+          <p id="recommended-fallback" class="mt-4 text-xs text-slate-500 hidden">
+            No matching asset was found. Pick one from the full list below.
+          </p>
+        </div>
+
+        <div class="surface-muted p-6">
+          <p class="text-xs uppercase tracking-[0.3em] text-slate-400">What you get</p>
+          <h3 class="mt-3 text-lg font-semibold text-slate-900 dark:text-white">
+            Signed builds straight from GitHub Releases
+          </h3>
+          <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+            Falck ships installers for Windows, macOS, and Linux. If the recommended download does not match, choose the
+            right format in the list below.
+          </p>
+          <div class="mt-6 grid gap-3 text-sm text-slate-600 dark:text-slate-300">
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+              Windows installers: .msi or .exe
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+              macOS builds: .dmg or .zip
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+              Linux builds: .AppImage, .deb, .rpm, or .tar.gz
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="all-assets" class="space-y-6">
+        <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div class="space-y-2">
+            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">All assets</p>
+            <h2 class="text-2xl font-semibold text-slate-900 dark:text-white">
+              Download any installer or archive
+            </h2>
+          </div>
+          <div class="text-sm text-slate-500 dark:text-slate-400">
+            <span id="assets-version">Latest release</span>
+            <span class="mx-2 text-slate-400">|</span>
+            Updated <span id="assets-updated">--</span>
+          </div>
+        </div>
+
+        <div id="assets-grid" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"></div>
+        <div id="assets-empty" class="surface-muted p-6 text-sm text-slate-500 hidden">
+          No downloadable assets were found. Check GitHub releases for more options.
+        </div>
+        <div class="text-sm text-slate-500">
+          Looking for older versions?
+          <a id="all-releases" class="font-semibold text-emerald-600 hover:text-emerald-500 transition" href="#" target="_blank" rel="noreferrer">
+            Browse all releases ->
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script is:inline>
+    const REPO = 'MikkelWestermann/falck';
+    const API_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
+    const RELEASE_URL = `https://github.com/${REPO}/releases/latest`;
+    const ALL_RELEASES_URL = `https://github.com/${REPO}/releases`;
+    const CACHE_KEY = `falck-release-cache-${REPO}`;
+    const CACHE_TTL_MS = 60 * 60 * 1000;
+
+    const loader = document.getElementById('loader');
+    const loaderMessage = document.getElementById('loader-message');
+    const loaderLink = document.getElementById('loader-link');
+    const content = document.getElementById('content');
+    const heroDownload = document.getElementById('hero-download');
+    const heroReleaseNotes = document.getElementById('hero-release-notes');
+    const releaseVersion = document.getElementById('release-version');
+    const releaseStatus = document.getElementById('release-status');
+    const releaseDate = document.getElementById('release-date');
+    const detectedOs = document.getElementById('detected-os');
+    const detectedArch = document.getElementById('detected-arch');
+    const recommendedTitle = document.getElementById('recommended-title');
+    const recommendedSubtitle = document.getElementById('recommended-subtitle');
+    const recommendedDownload = document.getElementById('recommended-download');
+    const recommendedRelease = document.getElementById('recommended-release');
+    const recommendedFallback = document.getElementById('recommended-fallback');
+    const assetsGrid = document.getElementById('assets-grid');
+    const assetsEmpty = document.getElementById('assets-empty');
+    const assetsVersion = document.getElementById('assets-version');
+    const assetsUpdated = document.getElementById('assets-updated');
+    const allReleases = document.getElementById('all-releases');
+
+    const OS_FORMATS = {
+      windows: ['msi', 'exe', 'zip'],
+      macos: ['dmg', 'zip'],
+      linux: ['AppImage', 'deb', 'rpm', 'tar.gz'],
+    };
+
+    const ARCH_ALIASES = {
+      windows: ['x64', 'x86_64', 'x86', 'arm64'],
+      macos: ['aarch64', 'arm64', 'x86_64'],
+      linux: ['x86_64', 'amd64', 'aarch64', 'arm64'],
+    };
+
+    const DOWNLOADABLE_ASSET_PATTERN = /\.(msi|exe|zip|dmg|appimage|deb|rpm|tar\.gz)$/i;
+
+    const formatDate = (value) =>
+      value ? new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '--';
+
+    const formatSize = (bytes) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+
+    const enableButton = (element) => {
+      if (!element) return;
+      element.classList.remove('pointer-events-none', 'opacity-60');
+      element.removeAttribute('aria-disabled');
+    };
+
+    const setLoaderError = (message) => {
+      if (loaderMessage) loaderMessage.textContent = message;
+      if (loaderLink) {
+        loaderLink.href = RELEASE_URL;
+        loaderLink.classList.remove('hidden');
+      }
+    };
+
+    const detectOS = () => {
+      const ua = navigator.userAgent.toLowerCase();
+
+      if (ua.includes('windows')) {
+        const arch = /arm|aarch64/.test(ua) ? 'arm64' : /x64|win64|amd64/.test(ua) ? 'x64' : 'x86';
+        return { os: 'windows', label: 'Windows', arch };
+      }
+
+      if (ua.includes('mac os x') || ua.includes('macintosh')) {
+        const arch = /arm|aarch64/.test(ua) ? 'aarch64' : 'x86_64';
+        return { os: 'macos', label: 'macOS', arch };
+      }
+
+      if (ua.includes('linux')) {
+        const arch = /arm|aarch64/.test(ua) ? 'aarch64' : /x86_64|x64|amd64/.test(ua) ? 'x86_64' : 'x86';
+        return { os: 'linux', label: 'Linux', arch };
+      }
+
+      return { os: 'other', label: 'Other', arch: 'unknown' };
+    };
+
+    const getCachedRelease = () => {
+      try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (!raw) return null;
+        const cached = JSON.parse(raw);
+        if (!cached?.ts || !cached?.data) return null;
+        if (Date.now() - cached.ts > CACHE_TTL_MS) return null;
+        return cached.data;
+      } catch {
+        return null;
+      }
+    };
+
+    const setCachedRelease = (data) => {
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data }));
+      } catch {
+        return;
+      }
+    };
+
+    const fetchLatestRelease = async () => {
+      const cached = getCachedRelease();
+      if (cached) return cached;
+
+      try {
+        const response = await fetch(API_URL, {
+          headers: { Accept: 'application/vnd.github+json' },
+        });
+        if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
+        const data = await response.json();
+        setCachedRelease(data);
+        return data;
+      } catch (error) {
+        setLoaderError(`Unable to fetch the latest release. ${error.message}`);
+        if (releaseStatus) releaseStatus.textContent = 'Release data unavailable';
+        if (releaseDate) releaseDate.textContent = '--';
+        return null;
+      }
+    };
+
+    const buildPattern = (arch, ext) => {
+      const escapedExt = ext.replace(/\./g, '\\.');
+      return new RegExp(`_${arch}[^/]*\\.${escapedExt}$`, 'i');
+    };
+
+    const getAssetUrl = (release, os, arch) => {
+      if (!release?.assets?.length) return null;
+      const assets = release.assets;
+      const formats = OS_FORMATS[os] || [];
+      const aliases = ARCH_ALIASES[os] || [];
+      const archList = [];
+
+      if (arch && arch !== 'unknown') archList.push(arch);
+      aliases.forEach((alias) => {
+        if (!archList.includes(alias)) archList.push(alias);
+      });
+
+      const patterns = [];
+      archList.forEach((archItem) => {
+        formats.forEach((format) => {
+          patterns.push(buildPattern(archItem, format));
+        });
+      });
+
+      formats.forEach((format) => {
+        const escapedFormat = format.replace(/\./g, '\\.');
+        patterns.push(new RegExp(`\\.${escapedFormat}$`, 'i'));
+      });
+
+      const match = assets.find((asset) => patterns.some((pattern) => pattern.test(asset.name)));
+      return match ? match.browser_download_url : null;
+    };
+
+    const buildAssetCard = (asset) => {
+      const card = document.createElement('a');
+      card.href = asset.browser_download_url;
+      card.className =
+        'surface-muted p-5 text-sm text-slate-700 dark:text-slate-200 hover-rise transition flex flex-col gap-3';
+      card.setAttribute('download', '');
+
+      const name = document.createElement('p');
+      name.textContent = asset.name;
+      name.className = 'font-semibold text-slate-900 dark:text-white break-all';
+
+      const meta = document.createElement('div');
+      meta.className = 'flex items-center justify-between text-xs text-slate-500 dark:text-slate-400';
+
+      const left = document.createElement('span');
+      left.textContent = `${formatSize(asset.size)} | ${asset.download_count} downloads`;
+
+      const right = document.createElement('span');
+      right.textContent = formatDate(asset.updated_at);
+
+      meta.appendChild(left);
+      meta.appendChild(right);
+
+      card.appendChild(name);
+      card.appendChild(meta);
+      return card;
+    };
+
+    const init = async () => {
+      const detected = detectOS();
+      if (detectedOs) detectedOs.textContent = detected.label;
+      if (detectedArch) detectedArch.textContent = detected.arch;
+      if (allReleases) allReleases.href = ALL_RELEASES_URL;
+
+      if (REPO === 'OWNER/REPO') {
+        setLoaderError('Set your GitHub repo in src/pages/download.astro to enable downloads.');
+        if (releaseStatus) releaseStatus.textContent = 'Repo not configured';
+        return;
+      }
+
+      const release = await fetchLatestRelease();
+      if (!release) return;
+
+      if (content) content.classList.remove('hidden');
+      if (loader) loader.classList.add('hidden');
+
+      const rawVersion = release.tag_name || '';
+      const version = rawVersion ? rawVersion.replace(/^v/i, '') : 'latest';
+
+      if (releaseVersion) releaseVersion.textContent = rawVersion ? `v${version}` : 'Latest';
+      if (releaseStatus)
+        releaseStatus.textContent = release.prerelease ? 'Pre-release available' : 'Latest release ready';
+      if (releaseDate) releaseDate.textContent = `Published ${formatDate(release.published_at)}`;
+      if (assetsVersion) assetsVersion.textContent = rawVersion ? `Release ${rawVersion}` : 'Latest release';
+      if (assetsUpdated) assetsUpdated.textContent = formatDate(release.published_at);
+
+      if (heroReleaseNotes) {
+        heroReleaseNotes.href = release.html_url || RELEASE_URL;
+        enableButton(heroReleaseNotes);
+      }
+
+      if (recommendedRelease) recommendedRelease.href = release.html_url || RELEASE_URL;
+
+      const recommendedUrl = getAssetUrl(release, detected.os, detected.arch);
+      if (recommendedTitle)
+        recommendedTitle.textContent = `Recommended for ${detected.label} (${detected.arch})`;
+      if (recommendedSubtitle)
+        recommendedSubtitle.textContent = `Release ${rawVersion || 'latest'} with the best match for your device.`;
+
+      if (heroDownload) {
+        if (recommendedUrl) {
+          heroDownload.href = recommendedUrl;
+          heroDownload.textContent = `Download v${version}`;
+          heroDownload.setAttribute('download', '');
+        } else {
+          heroDownload.href = '#all-assets';
+          heroDownload.textContent = 'Browse all assets';
+        }
+        enableButton(heroDownload);
+      }
+
+      if (recommendedUrl) {
+        if (recommendedDownload) {
+          recommendedDownload.href = recommendedUrl;
+          recommendedDownload.setAttribute('download', '');
+          enableButton(recommendedDownload);
+        }
+      } else if (recommendedFallback) {
+        recommendedFallback.classList.remove('hidden');
+      }
+
+      const assets = (release.assets || []).filter((asset) => DOWNLOADABLE_ASSET_PATTERN.test(asset.name));
+      if (!assets.length) {
+        if (assetsEmpty) assetsEmpty.classList.remove('hidden');
+        return;
+      }
+
+      assets.forEach((asset) => {
+        if (!assetsGrid) return;
+        assetsGrid.appendChild(buildAssetCard(asset));
+      });
+    };
+
+    init();
+  </script>
+</Layout>
