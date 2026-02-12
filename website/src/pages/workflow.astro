@@ -1,0 +1,130 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Button from '../components/Button.astro';
+---
+
+<Layout
+  title="Falck | Workflow"
+  description="A workflow that lets non-technical teammates contribute while keeping git flows, reviews, and CI/CD intact."
+>
+  <section class="relative overflow-hidden pt-24 pb-16">
+    <div class="absolute inset-0 -z-10">
+      <div class="absolute inset-0 backdrop-grid opacity-60"></div>
+      <div class="absolute -top-20 left-[15%] h-[320px] w-[320px] rounded-full bg-emerald-300/40 blur-[140px] glow-pulse"></div>
+      <div class="absolute bottom-[-25%] right-[5%] h-[420px] w-[420px] rounded-full bg-sky-300/40 blur-[160px] float-soft"></div>
+    </div>
+
+    <div class="container mx-auto px-6">
+      <div class="max-w-3xl space-y-6 reveal">
+        <span class="inline-flex items-center gap-2 rounded-full bg-white/70 dark:bg-slate-900/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-600 dark:text-slate-300 border border-white/80 dark:border-slate-800/80">
+          Workflow
+        </span>
+        <h1 class="text-4xl sm:text-5xl font-semibold text-slate-950 dark:text-white">
+          A workflow that respects both the repo and the humans
+        </h1>
+        <p class="text-lg text-slate-600 dark:text-slate-300">
+          Falck keeps the technical guardrails in place while letting non-technical teammates make real contributions. You
+          get clean branches, normal PRs, and far fewer "what did you mean?" meetings.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4">
+          <Button>See it in action</Button>
+          <Button variant="secondary">Download Falck</Button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-16">
+    <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div class="surface p-6 hover-rise reveal">
+        <div class="h-10 w-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center font-semibold">01</div>
+        <h2 class="mt-4 text-lg font-semibold">Configure once</h2>
+        <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+          Define prerequisites, secrets, setup steps, and launch flows in a Falck config.
+        </p>
+      </div>
+      <div class="surface p-6 hover-rise reveal-delay-1">
+        <div class="h-10 w-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-semibold">02</div>
+        <h2 class="mt-4 text-lg font-semibold">Non-tech builds</h2>
+        <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+          Falck guides each step with AI and plain language, turning ideas into real changes.
+        </p>
+      </div>
+      <div class="surface p-6 hover-rise reveal-delay-2">
+        <div class="h-10 w-10 rounded-2xl bg-slate-800 text-white flex items-center justify-center font-semibold">03</div>
+        <h2 class="mt-4 text-lg font-semibold">Save + sync</h2>
+        <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+          Commits, branches, and pushes happen inside Falck with the same standards you expect.
+        </p>
+      </div>
+      <div class="surface p-6 hover-rise reveal-delay-3">
+        <div class="h-10 w-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-semibold">04</div>
+        <h2 class="mt-4 text-lg font-semibold">Review normally</h2>
+        <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+          Engineers can refine, merge, or start over with full context and clean history.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-16">
+    <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
+      <div class="space-y-4 reveal">
+        <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Why it works</p>
+        <h2 class="text-3xl sm:text-4xl font-semibold text-slate-950 dark:text-white">Real contribution, not just vibes</h2>
+        <p class="text-slate-600 dark:text-slate-300">
+          Falck lets non-technical teammates ship what they mean, then lets technical teams polish it. No translation layer,
+          no guesswork.
+        </p>
+        <div class="grid gap-3 text-sm text-slate-600 dark:text-slate-300">
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            Non-technical teammates get a visual, guided workflow
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            Technical teams keep git flow, CI/CD, and review hygiene
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            Everyone shares a single source of truth
+          </div>
+        </div>
+      </div>
+      <div class="surface p-6 hover-rise reveal-delay-1">
+        <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+          <span>Falck in action</span>
+          <span class="text-emerald-500">Live branch</span>
+        </div>
+        <div class="mt-6 grid gap-3">
+          <div class="surface-muted px-4 py-3 text-sm">
+            <p class="font-semibold">Save queue</p>
+            <p class="mt-1 text-xs text-slate-500">3 files staged, ready to review</p>
+          </div>
+          <div class="surface-muted px-4 py-3 text-sm">
+            <p class="font-semibold">Version history</p>
+            <p class="mt-1 text-xs text-slate-500">Restore any version in one click</p>
+          </div>
+          <div class="surface-dark px-4 py-3 text-sm">
+            <p class="font-semibold">PR ready</p>
+            <p class="mt-1 text-xs text-emerald-100/70">Checks green, reviewers assigned</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 pb-24">
+    <div class="surface p-10 md:p-12 text-center reveal">
+      <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Ready to try it?</p>
+      <h2 class="mt-4 text-3xl font-semibold text-slate-950 dark:text-white">Invite your first non-technical collaborator</h2>
+      <p class="mt-4 text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
+        Set up Falck once, and let everyone contribute ideas that can actually be merged.
+      </p>
+      <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+        <Button>Get early access</Button>
+        <Button variant="secondary">Talk to the team</Button>
+      </div>
+    </div>
+  </section>
+</Layout>

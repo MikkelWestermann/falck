@@ -1,6 +1,6 @@
 export const SITE = {
   title: 'Falck',
-  description: 'Falck is an AI IDE for non-technical builders who want to vibe code with confidence.',
+  description: 'Falck is the AI IDE that helps non-technical teammates contribute to real codebases with guardrails and clarity.',
   url: 'https://your-site.com',
   theme: 'system',
   lang: 'en',

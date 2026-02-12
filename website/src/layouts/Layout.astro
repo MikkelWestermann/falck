@@ -8,19 +8,48 @@ import ThemeToggle from '../components/ThemeToggle.astro';
 
 <html lang={SITE.lang} class="scroll-smooth">
   <head>
-    <SeoHead title={Astro.props.title} description={Astro.props.description} />
-    <script>
-      if (
-        localStorage.theme === 'dark' ||
-        (!localStorage.theme && window.matchMedia('(prefers-color-scheme: dark)').matches)
-      ) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
+    <script is:inline type="text/javascript">
+      (() => {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const stored = localStorage.theme;
+        const useDark = stored === 'dark' || (!stored && prefersDark);
+        const root = document.documentElement;
+        root.classList.toggle('dark', useDark);
+        root.classList.toggle('light', !useDark);
+        root.style.backgroundColor = useDark ? '#0b0f14' : '#f5f7fa';
+        root.style.colorScheme = useDark ? 'dark' : 'light';
+      })();
     </script>
+    <style>
+      html {
+        background-color: #f5f7fa;
+        color: #0f172a;
+        color-scheme: light;
+      }
+      @media (prefers-color-scheme: dark) {
+        html {
+          background-color: #0b0f14;
+          color: #e2e8f0;
+          color-scheme: dark;
+        }
+      }
+      html.dark {
+        background-color: #0b0f14;
+        color: #e2e8f0;
+        color-scheme: dark;
+      }
+      html.light {
+        background-color: #f5f7fa;
+        color: #0f172a;
+        color-scheme: light;
+      }
+      body {
+        background-color: inherit;
+      }
+    </style>
+    <SeoHead title={Astro.props.title} description={Astro.props.description} />
   </head>
-  <body class="bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
+  <body class="text-slate-950 dark:text-slate-100">
     <Nav />
     <main class="min-h-[80vh]">
       <slot />
