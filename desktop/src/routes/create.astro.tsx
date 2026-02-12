@@ -25,7 +25,10 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAppState } from "@/router/app-state";
-import { createAstroProjectSchema } from "@/schemas/forms";
+import {
+  createAstroProjectSchema,
+  type CreateAstroProjectInput as CreateAstroProjectFormValues,
+} from "@/schemas/forms";
 import {
   githubService,
   type GithubRepo,
@@ -78,26 +81,28 @@ function CreateAstroRoute() {
   );
   const [progressDetail, setProgressDetail] = useState<string | null>(null);
 
+  const defaultValues: CreateAstroProjectFormValues = {
+    projectName: "",
+    repoMode: "new",
+    repoName: "",
+    existingRepo: "",
+    visibility: "private",
+    description: "",
+    folderName: "",
+    promptMode: "yes",
+    installDependencies: true,
+    initializeGit: false,
+    skipHouston: true,
+    integrations: "",
+    astroRef: "",
+    monorepoEnabled: false,
+    monorepoRoot: "",
+    monorepoParentDir: "",
+    monorepoInstallCommand: "",
+  };
+
   const createForm = useForm({
-    defaultValues: {
-      projectName: "",
-      repoMode: "new",
-      repoName: "",
-      existingRepo: "",
-      visibility: "private",
-      description: "",
-      folderName: "",
-      promptMode: "yes",
-      installDependencies: true,
-      initializeGit: false,
-      skipHouston: true,
-      integrations: "",
-      astroRef: "",
-      monorepoEnabled: false,
-      monorepoRoot: "",
-      monorepoParentDir: "",
-      monorepoInstallCommand: "",
-    },
+    defaultValues,
     validators: {
       onSubmit: createAstroProjectSchema,
     },

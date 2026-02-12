@@ -7,10 +7,10 @@ mod ssh;
 mod storage;
 
 use git::{
-    checkout_branch, clone_repository, create_branch, create_commit, delete_branch,
-    discard_changes as discard_git_changes, get_commit_history, get_project_history,
-    get_repository_info, list_remotes, pull_from_remote, push_to_remote,
-    reset_to_commit as reset_git_to_commit, stage_file, unstage_file,
+    checkout_branch, clone_repository, create_branch, create_commit, current_branch,
+    delete_branch, discard_changes as discard_git_changes, get_commit_history,
+    get_project_history, get_repository_info, list_remotes, pull_from_remote,
+    push_to_remote, reset_to_commit as reset_git_to_commit, stage_file, unstage_file,
 };
 use opencode::{
     check_command_exists, check_opencode_installed, install_opencode, opencode_send,
@@ -93,6 +93,11 @@ fn create_new_branch(path: String, branch: String) -> Result<String, String> {
 
 #[tauri::command]
 fn delete_current_branch(path: String, branch: String) -> Result<String, String> {
+    if let Ok(current) = current_branch(&path) {
+        if current == branch {
+            return Err("Cannot delete the current branch.".to_string());
+        }
+    }
     delete_branch(&path, &branch).map_err(|e| e.to_string())?;
     Ok(format!("Branch '{}' deleted", branch))
 }

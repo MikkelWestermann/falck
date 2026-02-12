@@ -232,7 +232,7 @@ pub fn has_commits(path: &str) -> GitResult<bool> {
 pub fn current_branch(path: &str) -> GitResult<String> {
     let repo = open_repository(path)?;
     let head = repo.head()?;
-    Ok(head.shorthand().unwrap_or("main").to_string())
+    Ok(head.shorthand().unwrap_or("detached").to_string())
 }
 
 pub fn ensure_main_branch(path: &str) -> GitResult<String> {

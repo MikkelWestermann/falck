@@ -21,8 +21,6 @@ static SHELL_ENV_CACHE: OnceLock<Option<HashMap<String, String>>> = OnceLock::ne
 #[derive(Debug, Clone)]
 pub struct RunningFalckApp {
     pub pid: u32,
-    pub repo_path: String,
-    pub app_id: String,
 }
 
 pub struct FalckProcessState(pub Mutex<HashMap<u32, RunningFalckApp>>);
@@ -1473,8 +1471,6 @@ pub async fn launch_falck_app(
         &state,
         RunningFalckApp {
             pid,
-            repo_path,
-            app_id,
         },
     );
     Ok(pid)
