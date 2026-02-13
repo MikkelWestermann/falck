@@ -16,13 +16,10 @@ jobs:
         include:
           - platform: macos-latest
             args: --target aarch64-apple-darwin
-            opencodeSource: release
           - platform: macos-latest
             args: --target x86_64-apple-darwin
-            opencodeSource: release
           - platform: windows-latest
             args: ""
-            opencodeSource: repo
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -39,10 +36,8 @@ jobs:
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
       - name: clone opencode repo
-        if: matrix.opencodeSource == 'repo'
-        run: git clone --depth 1 --branch main https://github.com/anomalyco/opencode.git opencode
+        run: git clone --depth 1 --branch production https://github.com/anomalyco/opencode.git opencode
       - name: install opencode deps
-        if: matrix.opencodeSource == 'repo'
         run: bun install
         working-directory: opencode
       - name: install frontend deps
@@ -50,7 +45,7 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENCODE_SOURCE: ${{ matrix.opencodeSource }}
+          OPENCODE_SOURCE: repo
         with:
           projectPath: desktop
           tagName: v__VERSION__
