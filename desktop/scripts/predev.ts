@@ -47,15 +47,6 @@ function archiveExt(name: string) {
 }
 
 function isArchiveAsset(name: string) {
-  const lower = name.toLowerCase()
-  if (
-    lower.endsWith(".sig") ||
-    lower.endsWith(".sha256") ||
-    lower.endsWith(".sha512") ||
-    lower.endsWith(".blockmap")
-  ) {
-    return false
-  }
   return archiveExt(name) !== null
 }
 
@@ -76,7 +67,23 @@ function targetTerms(target: string) {
     : []
   const archTerms = isArm64 ? ["arm64", "aarch64"] : isX64 ? ["x64", "x86_64", "amd64"] : []
 
-  return { platformTerms, archTerms, isMac }
+  return { platformTerms, archTerms, isMac, isWindows }
+}
+
+function isDownloadAsset(name: string, target: string) {
+  const lower = name.toLowerCase()
+  if (
+    lower.endsWith(".sig") ||
+    lower.endsWith(".sha256") ||
+    lower.endsWith(".sha512") ||
+    lower.endsWith(".blockmap")
+  ) {
+    return false
+  }
+
+  if (isArchiveAsset(lower)) return true
+  if (targetTerms(target).isWindows && lower.endsWith(".exe")) return true
+  return false
 }
 
 function pickReleaseAsset(
@@ -90,7 +97,7 @@ function pickReleaseAsset(
 
   const baseFilter = (asset: ReleaseAsset) => {
     const lower = asset.name.toLowerCase()
-    if (!isArchiveAsset(lower)) return false
+    if (!isDownloadAsset(lower, target)) return false
     if (!lower.includes("opencode")) return false
     if (platformTerms.length && !platformTerms.some((term) => lower.includes(term))) return false
     if (archTerms.length && !archTerms.some((term) => lower.includes(term))) return false
@@ -98,10 +105,18 @@ function pickReleaseAsset(
   }
 
   let candidates = assets.filter(baseFilter)
+  if (!candidates.length && platformTerms.length) {
+    candidates = assets.filter((asset) => {
+      const lower = asset.name.toLowerCase()
+      if (!isDownloadAsset(lower, target)) return false
+      if (!lower.includes("opencode")) return false
+      return platformTerms.some((term) => lower.includes(term))
+    })
+  }
   if (!candidates.length && isMac) {
     candidates = assets.filter((asset) => {
       const lower = asset.name.toLowerCase()
-      if (!isArchiveAsset(lower)) return false
+      if (!isDownloadAsset(lower, target)) return false
       if (!lower.includes("opencode")) return false
       if (!platformTerms.some((term) => lower.includes(term))) return false
       return lower.includes("universal")
@@ -350,10 +365,13 @@ if (!cliReady) {
   const archiveUrl = resolvedAsset?.browser_download_url ?? fallbackUrl
   const archivePath = path.join(tempDir, archiveName)
   const resolvedExt = archiveExt(archiveName) ?? sidecarConfig.assetExt
+  const isDirectBinary = resolvedAsset ? isDownloadAsset(archiveName, target) && !archiveExt(archiveName) : false
 
   await $`curl -L --fail ${archiveUrl} -o ${archivePath}`
 
-  if (resolvedExt === "zip") {
+  if (isDirectBinary) {
+    // Direct binary download (e.g. Windows .exe) requires no extraction.
+  } else if (resolvedExt === "zip") {
     if (process.platform === "win32") {
       await $`powershell -Command "Expand-Archive -Force -Path '${archivePath}' -DestinationPath '${tempDir}'"`
     } else {
@@ -366,7 +384,7 @@ if (!cliReady) {
   }
 
   const binName = process.platform === "win32" ? "opencode.exe" : "opencode"
-  const downloadedBinary = path.join(tempDir, binName)
+  const downloadedBinary = isDirectBinary ? archivePath : path.join(tempDir, binName)
 
   if (!fs.existsSync(downloadedBinary)) {
     throw new Error(`Downloaded archive missing ${binName} from ${archiveUrl}`)
