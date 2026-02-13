@@ -36,7 +36,12 @@ function resolveTarget() {
 }
 
 type ReleaseAsset = { name: string; browser_download_url: string }
-type ReleaseInfo = { assets: ReleaseAsset[]; tag_name?: string }
+type ReleaseInfo = {
+  assets: ReleaseAsset[]
+  tag_name?: string
+  prerelease?: boolean
+  draft?: boolean
+}
 
 function archiveExt(name: string) {
   const lower = name.toLowerCase()
@@ -152,15 +157,7 @@ async function fetchRelease(version?: string) {
   const url = version
     ? `https://api.github.com/repos/opencode-ai/opencode/releases/tags/v${version}`
     : "https://api.github.com/repos/opencode-ai/opencode/releases/latest"
-  const token = Bun.env.GITHUB_TOKEN || Bun.env.GH_TOKEN
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
-    "User-Agent": "falck-predev",
-  }
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
-  }
-
+  const headers = githubHeaders()
   try {
     const res = await fetch(url, { headers })
     if (!res.ok) {
@@ -174,6 +171,53 @@ async function fetchRelease(version?: string) {
     console.warn("OpenCode release lookup failed; using fallback URL.", err)
     return null
   }
+}
+
+async function fetchReleaseList() {
+  const url = "https://api.github.com/repos/opencode-ai/opencode/releases?per_page=20"
+  const headers = githubHeaders()
+  try {
+    const res = await fetch(url, { headers })
+    if (!res.ok) {
+      console.warn(`OpenCode releases lookup failed (${res.status} ${res.statusText}); using fallback URL.`)
+      return null
+    }
+    const json = (await res.json()) as ReleaseInfo[]
+    if (!Array.isArray(json)) return null
+    return json
+  } catch (err) {
+    console.warn("OpenCode releases lookup failed; using fallback URL.", err)
+    return null
+  }
+}
+
+function githubHeaders() {
+  const token = Bun.env.GITHUB_TOKEN || Bun.env.GH_TOKEN
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "falck-predev",
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  return headers
+}
+
+function findAssetInReleases(
+  releases: ReleaseInfo[],
+  target: string,
+  preferredBase: string,
+  preferredExt: string,
+) {
+  for (const release of releases) {
+    if (release.draft) continue
+    const assets = Array.isArray(release.assets) ? release.assets : []
+    const asset = pickReleaseAsset(assets, target, preferredBase, preferredExt)
+    if (asset) {
+      return { release, asset }
+    }
+  }
+  return null
 }
 
 const target = resolveTarget()
@@ -352,10 +396,24 @@ if (!cliReady) {
 
   const fallbackArchiveName = `${sidecarConfig.ocBinary}.${sidecarConfig.assetExt}`
   const fallbackUrl = `${releaseBase}/${fallbackArchiveName}`
-  const release = await fetchRelease(version)
-  const resolvedAsset = release
+  let release = await fetchRelease(version)
+  const initialTag = release?.tag_name
+  let resolvedAsset = release
     ? pickReleaseAsset(release.assets, target, sidecarConfig.ocBinary, sidecarConfig.assetExt)
     : null
+  if (!resolvedAsset && !version) {
+    const releases = await fetchReleaseList()
+    const fallbackMatch = releases
+      ? findAssetInReleases(releases, target, sidecarConfig.ocBinary, sidecarConfig.assetExt)
+      : null
+    if (fallbackMatch) {
+      release = fallbackMatch.release
+      resolvedAsset = fallbackMatch.asset
+      if (release.tag_name && release.tag_name !== initialTag) {
+        console.log(`Using OpenCode asset from ${release.tag_name}: ${resolvedAsset.name}`)
+      }
+    }
+  }
   if (release && !resolvedAsset) {
     console.warn(
       `OpenCode release did not include a matching asset for ${target}; falling back to ${fallbackArchiveName}.`,
