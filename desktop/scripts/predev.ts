@@ -155,8 +155,8 @@ function pickReleaseAsset(
 
 async function fetchRelease(version?: string) {
   const url = version
-    ? `https://api.github.com/repos/opencode-ai/opencode/releases/tags/v${version}`
-    : "https://api.github.com/repos/opencode-ai/opencode/releases/latest"
+    ? `https://api.github.com/repos/anomalyco/opencode/releases/tags/v${version}`
+    : "https://api.github.com/repos/anomalyco/opencode/releases/latest"
   const headers = githubHeaders()
   try {
     const res = await fetch(url, { headers })
@@ -174,7 +174,7 @@ async function fetchRelease(version?: string) {
 }
 
 async function fetchReleaseList() {
-  const url = "https://api.github.com/repos/opencode-ai/opencode/releases?per_page=20"
+  const url = "https://api.github.com/repos/anomalyco/opencode/releases?per_page=20"
   const headers = githubHeaders()
   try {
     const res = await fetch(url, { headers })
@@ -391,8 +391,8 @@ if (!cliReady) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "falck-opencode-"))
   const version = Bun.env.OPENCODE_VERSION
   const releaseBase = version
-    ? `https://github.com/opencode-ai/opencode/releases/download/v${version}`
-    : "https://github.com/opencode-ai/opencode/releases/latest/download"
+    ? `https://github.com/anomalyco/opencode/releases/download/v${version}`
+    : "https://github.com/anomalyco/opencode/releases/latest/download"
 
   const fallbackArchiveName = `${sidecarConfig.ocBinary}.${sidecarConfig.assetExt}`
   const fallbackUrl = `${releaseBase}/${fallbackArchiveName}`
