@@ -1,7 +1,7 @@
 {
   "name": "@falck/desktop",
   "private": true,
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "scripts": {
     "predev": "bun ./scripts/predev.ts",
