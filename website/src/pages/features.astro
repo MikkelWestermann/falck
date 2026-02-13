@@ -1,6 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Button from '../components/Button.astro';
+import { resolvePath } from '../config/site';
 ---
 
 <Layout
@@ -27,7 +28,7 @@ import Button from '../components/Button.astro';
         </p>
         <div class="flex flex-col sm:flex-row gap-4">
           <Button>Request a demo</Button>
-          <Button href="/download" variant="secondary">Download Falck</Button>
+          <Button href={resolvePath('/download')} variant="secondary">Download Falck</Button>
         </div>
       </div>
     </div>
@@ -193,7 +194,7 @@ import Button from '../components/Button.astro';
       </p>
       <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
         <Button>Book a demo</Button>
-        <Button href="/download" variant="secondary">Download Falck</Button>
+        <Button href={resolvePath('/download')} variant="secondary">Download Falck</Button>
       </div>
     </div>
   </section>

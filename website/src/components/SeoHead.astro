@@ -1,12 +1,12 @@
 ---
-import { SITE } from '../config/site';
+import { SITE, resolvePath } from '../config/site';
 
 const { title = SITE.title, description = SITE.description, image = '/og-image.png' } = Astro.props;
 const fullUrl = new URL(Astro.url.pathname, SITE.url).href;
 ---
 
 <meta charset="utf-8" />
-<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="icon" type="image/svg+xml" href={resolvePath('/favicon.svg')} />
 <meta name="viewport" content="width=device-width" />
 <title>{title}</title>
 <meta name="description" content={description} />
