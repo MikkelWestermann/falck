@@ -6,8 +6,18 @@ import path from "node:path"
 import { copyBinaryToSidecarFolder, getCurrentSidecar, windowsify } from "./utils"
 
 function resolveTarget() {
-  if (Bun.env.TAURI_ENV_TARGET_TRIPLE) return Bun.env.TAURI_ENV_TARGET_TRIPLE
-  if (Bun.env.RUST_TARGET) return Bun.env.RUST_TARGET
+  const envKeys = [
+    "TAURI_ENV_TARGET_TRIPLE",
+    "TAURI_ENV_TARGET",
+    "TAURI_TARGET",
+    "CARGO_BUILD_TARGET",
+    "TARGET",
+    "RUST_TARGET",
+  ]
+  for (const key of envKeys) {
+    const value = Bun.env[key]
+    if (value) return value
+  }
 
   const platform = process.platform
   const arch = process.arch
@@ -23,6 +33,132 @@ function resolveTarget() {
   }
 
   throw new Error(`Unsupported platform/arch: ${platform}/${arch}`)
+}
+
+type ReleaseAsset = { name: string; browser_download_url: string }
+type ReleaseInfo = { assets: ReleaseAsset[]; tag_name?: string }
+
+function archiveExt(name: string) {
+  const lower = name.toLowerCase()
+  if (lower.endsWith(".zip")) return "zip"
+  if (lower.endsWith(".tar.gz")) return "tar.gz"
+  if (lower.endsWith(".tgz")) return "tar.gz"
+  return null
+}
+
+function isArchiveAsset(name: string) {
+  const lower = name.toLowerCase()
+  if (
+    lower.endsWith(".sig") ||
+    lower.endsWith(".sha256") ||
+    lower.endsWith(".sha512") ||
+    lower.endsWith(".blockmap")
+  ) {
+    return false
+  }
+  return archiveExt(name) !== null
+}
+
+function targetTerms(target: string) {
+  const lower = target.toLowerCase()
+  const isMac = lower.includes("apple-darwin")
+  const isWindows = lower.includes("windows")
+  const isLinux = lower.includes("linux")
+  const isArm64 = lower.includes("aarch64") || lower.includes("arm64")
+  const isX64 = lower.includes("x86_64") || lower.includes("amd64")
+
+  const platformTerms = isMac
+    ? ["darwin", "macos", "osx", "mac"]
+    : isWindows
+    ? ["windows", "win"]
+    : isLinux
+    ? ["linux"]
+    : []
+  const archTerms = isArm64 ? ["arm64", "aarch64"] : isX64 ? ["x64", "x86_64", "amd64"] : []
+
+  return { platformTerms, archTerms, isMac }
+}
+
+function pickReleaseAsset(
+  assets: ReleaseAsset[],
+  target: string,
+  preferredBase: string,
+  preferredExt: string,
+) {
+  const { platformTerms, archTerms, isMac } = targetTerms(target)
+  const lowerPreferred = preferredBase.toLowerCase()
+
+  const baseFilter = (asset: ReleaseAsset) => {
+    const lower = asset.name.toLowerCase()
+    if (!isArchiveAsset(lower)) return false
+    if (!lower.includes("opencode")) return false
+    if (platformTerms.length && !platformTerms.some((term) => lower.includes(term))) return false
+    if (archTerms.length && !archTerms.some((term) => lower.includes(term))) return false
+    return true
+  }
+
+  let candidates = assets.filter(baseFilter)
+  if (!candidates.length && isMac) {
+    candidates = assets.filter((asset) => {
+      const lower = asset.name.toLowerCase()
+      if (!isArchiveAsset(lower)) return false
+      if (!lower.includes("opencode")) return false
+      if (!platformTerms.some((term) => lower.includes(term))) return false
+      return lower.includes("universal")
+    })
+  }
+
+  if (!candidates.length) {
+    return null
+  }
+
+  const preferredExtScore = (name: string) => {
+    const ext = archiveExt(name)
+    if (!ext) return 0
+    if (ext === preferredExt) return 3
+    if (ext === "zip") return 2
+    return 1
+  }
+
+  const score = (asset: ReleaseAsset) => {
+    const lower = asset.name.toLowerCase()
+    let value = 0
+    if (lower.startsWith(`${lowerPreferred}.`)) value += 6
+    if (lower.includes(lowerPreferred)) value += 4
+    value += preferredExtScore(lower)
+    return value
+  }
+
+  candidates.sort((a, b) => score(b) - score(a))
+  return candidates[0]!
+}
+
+async function fetchRelease(version?: string) {
+  const url = version
+    ? `https://api.github.com/repos/opencode-ai/opencode/releases/tags/v${version}`
+    : "https://api.github.com/repos/opencode-ai/opencode/releases/latest"
+  const token = Bun.env.GITHUB_TOKEN || Bun.env.GH_TOKEN
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "falck-predev",
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  try {
+    const res = await fetch(url, { headers })
+    if (!res.ok) {
+      console.warn(`OpenCode release lookup failed (${res.status} ${res.statusText}); using fallback URL.`)
+      return null
+    }
+    const json = (await res.json()) as ReleaseInfo
+    if (!Array.isArray(json.assets)) return null
+    return json
+  } catch (err) {
+    console.warn("OpenCode release lookup failed; using fallback URL.", err)
+    return null
+  }
 }
 
 const target = resolveTarget()
@@ -198,20 +334,35 @@ if (!cliReady) {
   const releaseBase = version
     ? `https://github.com/opencode-ai/opencode/releases/download/v${version}`
     : "https://github.com/opencode-ai/opencode/releases/latest/download"
-  const archiveName = `${sidecarConfig.ocBinary}.${sidecarConfig.assetExt}`
-  const archiveUrl = `${releaseBase}/${archiveName}`
+
+  const fallbackArchiveName = `${sidecarConfig.ocBinary}.${sidecarConfig.assetExt}`
+  const fallbackUrl = `${releaseBase}/${fallbackArchiveName}`
+  const release = await fetchRelease(version)
+  const resolvedAsset = release
+    ? pickReleaseAsset(release.assets, target, sidecarConfig.ocBinary, sidecarConfig.assetExt)
+    : null
+  if (release && !resolvedAsset) {
+    console.warn(
+      `OpenCode release did not include a matching asset for ${target}; falling back to ${fallbackArchiveName}.`,
+    )
+  }
+  const archiveName = resolvedAsset?.name ?? fallbackArchiveName
+  const archiveUrl = resolvedAsset?.browser_download_url ?? fallbackUrl
   const archivePath = path.join(tempDir, archiveName)
+  const resolvedExt = archiveExt(archiveName) ?? sidecarConfig.assetExt
 
   await $`curl -L --fail ${archiveUrl} -o ${archivePath}`
 
-  if (sidecarConfig.assetExt === "zip") {
+  if (resolvedExt === "zip") {
     if (process.platform === "win32") {
       await $`powershell -Command "Expand-Archive -Force -Path '${archivePath}' -DestinationPath '${tempDir}'"`
     } else {
       await $`unzip -q ${archivePath} -d ${tempDir}`
     }
-  } else {
+  } else if (resolvedExt === "tar.gz") {
     await $`tar -xzf ${archivePath} -C ${tempDir}`
+  } else {
+    throw new Error(`Unknown archive extension for ${archiveName}`)
   }
 
   const binName = process.platform === "win32" ? "opencode.exe" : "opencode"
