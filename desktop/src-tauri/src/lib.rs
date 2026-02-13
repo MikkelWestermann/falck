@@ -1,5 +1,5 @@
-mod git;
 mod falck;
+mod git;
 mod github;
 mod opencode;
 mod project;
@@ -7,19 +7,18 @@ mod ssh;
 mod storage;
 
 use git::{
-    checkout_branch, clone_repository, create_branch, create_commit, current_branch,
-    delete_branch, discard_changes as discard_git_changes, get_commit_history,
-    get_project_history, get_repository_info, list_remotes, pull_from_remote,
-    push_to_remote, reset_to_commit as reset_git_to_commit, stage_file, unstage_file,
+    checkout_branch, clone_repository, create_branch, create_commit, current_branch, delete_branch,
+    discard_changes as discard_git_changes, get_commit_history, get_project_history,
+    get_repository_info, list_remotes, pull_from_remote, push_to_remote,
+    reset_to_commit as reset_git_to_commit, stage_file, unstage_file,
 };
 use opencode::{
-    check_command_exists, check_opencode_installed, install_opencode, opencode_send,
-    OpencodeState,
+    check_command_exists, check_opencode_installed, install_opencode, opencode_send, OpencodeState,
 };
+use reqwest::Client;
 use storage::{
     get_default_repo_dir, list_repos, remove_repo, save_repo, set_default_repo_dir, SavedRepo,
 };
-use reqwest::Client;
 use tauri::Manager;
 
 // ============================================================================
@@ -138,11 +137,7 @@ fn get_remotes(path: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-fn save_repo_entry(
-    app: tauri::AppHandle,
-    name: String,
-    path: String,
-) -> Result<(), String> {
+fn save_repo_entry(app: tauri::AppHandle, name: String, path: String) -> Result<(), String> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?
@@ -173,6 +168,7 @@ fn set_default_repo_directory(app: tauri::AppHandle, path: String) -> Result<(),
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_stronghold::Builder::new(|_pass| todo!()).build())
         .plugin(tauri_plugin_dialog::init())
         .manage(Client::new())
         .manage(OpencodeState::default())

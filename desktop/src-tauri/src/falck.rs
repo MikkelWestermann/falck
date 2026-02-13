@@ -250,11 +250,10 @@ pub fn load_config(repo_path: &Path) -> Result<FalckConfig> {
         bail!("No .falck/config.yaml found in repository");
     }
 
-    let content = std::fs::read_to_string(&config_path)
-        .context("Failed to read config.yaml")?;
+    let content = std::fs::read_to_string(&config_path).context("Failed to read config.yaml")?;
 
-    let config: FalckConfig = serde_yaml::from_str(&content)
-        .context("Failed to parse config.yaml")?;
+    let config: FalckConfig =
+        serde_yaml::from_str(&content).context("Failed to parse config.yaml")?;
 
     if config.version != "1.0" {
         bail!("Unsupported config version: {}", config.version);
@@ -333,11 +332,11 @@ pub fn check_prerequisites(
     };
 
     if let Some(required) = &prereq.version {
-        let required_version = Version::parse(required)
-            .context("Invalid semver version in prerequisite")?;
+        let required_version =
+            Version::parse(required).context("Invalid semver version in prerequisite")?;
         if let Some(ref current) = current_version {
-            let parsed_current = Version::parse(current)
-                .context("Failed to parse installed version")?;
+            let parsed_current =
+                Version::parse(current).context("Failed to parse installed version")?;
             if parsed_current < required_version {
                 installed = false;
             }
@@ -432,11 +431,7 @@ fn parse_version(output: &str) -> Option<String> {
 // Setup / Launch / Cleanup
 // ============================================================================
 
-pub fn run_setup(
-    repo_path: &Path,
-    config: &FalckConfig,
-    app: &Application,
-) -> Result<String> {
+pub fn run_setup(repo_path: &Path, config: &FalckConfig, app: &Application) -> Result<String> {
     if !check_app_secrets_satisfied(app) {
         bail!("Required secrets not configured for this application");
     }
@@ -457,13 +452,7 @@ pub fn run_setup(
                 let command = resolve_template(&step.command, &ctx)?;
                 let timeout = step.timeout.unwrap_or(300);
                 let silent = step.silent.unwrap_or(false);
-                let status = run_command(
-                    &command,
-                    &app_root,
-                    &env_map,
-                    Some(timeout),
-                    silent,
-                )?;
+                let status = run_command(&command, &app_root, &env_map, Some(timeout), silent)?;
 
                 if !status.success() {
                     if step.optional.unwrap_or(false) {
@@ -611,11 +600,7 @@ pub fn check_setup_status(
     }
 }
 
-pub fn launch_app(
-    repo_path: &Path,
-    config: &FalckConfig,
-    app: &Application,
-) -> Result<u32> {
+pub fn launch_app(repo_path: &Path, config: &FalckConfig, app: &Application) -> Result<u32> {
     if !check_app_secrets_satisfied(app) {
         bail!("Required secrets not configured for this application");
     }
@@ -635,11 +620,7 @@ pub fn launch_app(
     Ok(child.id())
 }
 
-pub fn run_cleanup(
-    repo_path: &Path,
-    config: &FalckConfig,
-    app: &Application,
-) -> Result<String> {
+pub fn run_cleanup(repo_path: &Path, config: &FalckConfig, app: &Application) -> Result<String> {
     let app_root = get_app_root(repo_path, app);
     let ctx = TemplateContext::new(repo_path, &app_root);
     let env_map = build_env_map(config, app, &ctx)?;
@@ -859,9 +840,7 @@ fn resolve_shell_path() -> String {
 }
 
 fn load_shell_env() -> Option<HashMap<String, String>> {
-    SHELL_ENV_CACHE
-        .get_or_init(capture_shell_env)
-        .clone()
+    SHELL_ENV_CACHE.get_or_init(capture_shell_env).clone()
 }
 
 #[cfg(target_os = "windows")]
@@ -898,8 +877,8 @@ fn capture_shell_env() -> Option<HashMap<String, String>> {
     let end_marker = format!("{}\0", marker_end).into_bytes();
     let start = find_subsequence(&stdout, &start_marker)?;
     let env_start = start + start_marker.len();
-    let end = find_subsequence(&stdout[env_start..], &end_marker)
-        .map(|offset| env_start + offset)?;
+    let end =
+        find_subsequence(&stdout[env_start..], &end_marker).map(|offset| env_start + offset)?;
     let env_bytes = &stdout[env_start..end];
     Some(parse_env_null(env_bytes))
 }
@@ -1207,7 +1186,11 @@ struct ConditionParser<'a> {
 
 impl<'a> ConditionParser<'a> {
     fn new(tokens: Vec<Token>, ctx: &'a TemplateContext) -> Self {
-        Self { tokens, pos: 0, ctx }
+        Self {
+            tokens,
+            pos: 0,
+            ctx,
+        }
     }
 
     fn parse_expression(&mut self) -> Result<bool> {
@@ -1408,10 +1391,7 @@ pub async fn set_app_secret(name: String, value: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn check_secrets_satisfied(
-    repo_path: String,
-    app_id: String,
-) -> Result<bool, String> {
+pub async fn check_secrets_satisfied(repo_path: String, app_id: String) -> Result<bool, String> {
     let path = Path::new(&repo_path);
     let config = load_config(path).map_err(|e| e.to_string())?;
     let app = config
@@ -1467,12 +1447,7 @@ pub async fn launch_falck_app(
         .ok_or_else(|| "Application not found".to_string())?;
 
     let pid = launch_app(path, &config, app).map_err(|e| e.to_string())?;
-    register_running_app(
-        &state,
-        RunningFalckApp {
-            pid,
-        },
-    );
+    register_running_app(&state, RunningFalckApp { pid });
     Ok(pid)
 }
 
@@ -1490,10 +1465,7 @@ pub async fn run_falck_cleanup(repo_path: String, app_id: String) -> Result<Stri
 }
 
 #[tauri::command]
-pub async fn kill_falck_app(
-    state: State<'_, FalckProcessState>,
-    pid: u32,
-) -> Result<(), String> {
+pub async fn kill_falck_app(state: State<'_, FalckProcessState>, pid: u32) -> Result<(), String> {
     let _ = unregister_running_app(&state, pid);
     kill_app(pid).map_err(|e| e.to_string())
 }

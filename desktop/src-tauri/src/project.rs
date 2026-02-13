@@ -216,7 +216,12 @@ pub async fn create_astro_project(
         } else {
             format!("Initial commit: {}", name)
         };
-        emit_progress(&app, &progress_id, "Creating initial commit", Some(message.clone()));
+        emit_progress(
+            &app,
+            &progress_id,
+            "Creating initial commit",
+            Some(message.clone()),
+        );
         git::create_commit(&input.local_path, &message, "", "").map_err(|e| e.to_string())?;
     }
 
@@ -240,12 +245,8 @@ pub async fn create_astro_project(
         "Pushing to GitHub",
         Some(format!("origin/{}", branch)),
     );
-    if let Err(err) = git::push_to_remote(
-        &input.local_path,
-        "origin",
-        &branch,
-        &input.ssh_key_path,
-    ) {
+    if let Err(err) = git::push_to_remote(&input.local_path, "origin", &branch, &input.ssh_key_path)
+    {
         let message = err.to_string();
         let lower = message.to_lowercase();
         if lower.contains("auth") || lower.contains("authentication") {
@@ -309,7 +310,10 @@ async fn resolve_repo_destination(
         .as_deref()
         .map(|value| value != "public")
         .unwrap_or(true);
-    let description = input.description.clone().filter(|text| !text.trim().is_empty());
+    let description = input
+        .description
+        .clone()
+        .filter(|text| !text.trim().is_empty());
 
     emit_progress(
         app,
@@ -487,18 +491,14 @@ fn build_bun_create_args(project_dir: &str, options: &AstroCreateOptions) -> Vec
     args
 }
 
-fn ensure_bun_installed(
-    app: &AppHandle,
-    progress_id: &Option<String>,
-) -> Result<PathBuf, String> {
+fn ensure_bun_installed(app: &AppHandle, progress_id: &Option<String>) -> Result<PathBuf, String> {
     if let Some(path) = resolve_bun_path(app) {
         return Ok(path);
     }
     emit_progress(app, progress_id, "Installing Bun", None);
     install_bun()?;
-    resolve_bun_path(app).ok_or_else(|| {
-        "Bun installed but was not found. Add ~/.bun/bin to your PATH.".to_string()
-    })
+    resolve_bun_path(app)
+        .ok_or_else(|| "Bun installed but was not found. Add ~/.bun/bin to your PATH.".to_string())
 }
 
 fn resolve_bun_path(app: &AppHandle) -> Option<PathBuf> {
@@ -590,7 +590,9 @@ fn command_exists(command: &str) -> bool {
     #[cfg(not(target_os = "windows"))]
     let output = Command::new("which").arg(command).output();
 
-    output.map(|result| result.status.success()).unwrap_or(false)
+    output
+        .map(|result| result.status.success())
+        .unwrap_or(false)
 }
 
 fn emit_progress(

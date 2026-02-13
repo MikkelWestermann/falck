@@ -38,10 +38,7 @@ fn normalize_key_name(input: &str) -> Result<String, String> {
         }
     }
 
-    let sanitized = sanitized
-        .trim_matches('-')
-        .trim_matches('_')
-        .to_string();
+    let sanitized = sanitized.trim_matches('-').trim_matches('_').to_string();
 
     let sanitized = sanitized
         .strip_prefix("id_")
@@ -91,7 +88,10 @@ fn read_ssh_key(private_key_path: &Path) -> Result<SSHKey, String> {
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("unknown");
-    let name = file_name.strip_prefix("id_").unwrap_or(file_name).to_string();
+    let name = file_name
+        .strip_prefix("id_")
+        .unwrap_or(file_name)
+        .to_string();
 
     let created_at = fs::metadata(private_key_path)
         .and_then(|meta| meta.modified())
@@ -209,7 +209,10 @@ pub fn add_key_to_agent(private_key_path: &Path, passphrase: Option<&str>) -> Re
 
     if cfg!(target_os = "windows") {
         let _ = Command::new("powershell")
-            .args(["-Command", "Start-Service ssh-agent -ErrorAction SilentlyContinue"])
+            .args([
+                "-Command",
+                "Start-Service ssh-agent -ErrorAction SilentlyContinue",
+            ])
             .output();
     }
 

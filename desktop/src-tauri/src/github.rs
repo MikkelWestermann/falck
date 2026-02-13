@@ -71,9 +71,8 @@ fn store_token(app: &AppHandle, token: &str) -> Result<(), String> {
 }
 
 fn load_token(app: &AppHandle) -> Result<String, String> {
-    storage::get_github_token(app)?.ok_or_else(|| {
-        "GitHub token not found. Connect GitHub first.".to_string()
-    })
+    storage::get_github_token(app)?
+        .ok_or_else(|| "GitHub token not found. Connect GitHub first.".to_string())
 }
 
 fn has_token(app: &AppHandle) -> Result<bool, String> {
@@ -151,7 +150,10 @@ pub async fn github_start_device_flow(
         return Err(format!("GitHub device flow failed: {}", body));
     }
 
-    response.json::<DeviceCodeResponse>().await.map_err(|e| e.to_string())
+    response
+        .json::<DeviceCodeResponse>()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -201,10 +203,7 @@ pub async fn github_poll_device_token(
                 .get("token_type")
                 .and_then(|v| v.as_str())
                 .unwrap_or("bearer");
-            let scope = payload
-                .get("scope")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let scope = payload.get("scope").and_then(|v| v.as_str()).unwrap_or("");
 
             store_token(&app, access_token)?;
             return Ok(TokenInfo {
@@ -268,7 +267,10 @@ pub async fn github_get_user(
         return Err(format!("GitHub user fetch failed: {}", body));
     }
 
-    response.json::<GithubUser>().await.map_err(|e| e.to_string())
+    response
+        .json::<GithubUser>()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -354,7 +356,10 @@ pub async fn github_create_repo(
         return Err(format!("GitHub repo create failed: {}", body));
     }
 
-    response.json::<GithubRepo>().await.map_err(|e| e.to_string())
+    response
+        .json::<GithubRepo>()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -385,7 +390,10 @@ pub async fn github_add_ssh_key(
     }
 
     if response.status() == StatusCode::UNPROCESSABLE_ENTITY {
-        let payload = response.json::<serde_json::Value>().await.unwrap_or_default();
+        let payload = response
+            .json::<serde_json::Value>()
+            .await
+            .unwrap_or_default();
         let message = payload
             .get("message")
             .and_then(|v| v.as_str())

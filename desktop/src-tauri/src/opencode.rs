@@ -66,8 +66,7 @@ pub async fn install_opencode(app: AppHandle) -> Result<String, String> {
         return Ok("OpenCode is bundled with Falck.".to_string());
     }
 
-    Err("OpenCode CLI bundle not found. Reinstall Falck or run the sidecar build."
-        .to_string())
+    Err("OpenCode CLI bundle not found. Reinstall Falck or run the sidecar build.".to_string())
 }
 
 #[tauri::command]
@@ -82,7 +81,10 @@ pub fn opencode_send(
     cmd: String,
     args: Value,
 ) -> Result<Value, String> {
-    let mut guard = state.0.lock().map_err(|_| "Sidecar lock poisoned".to_string())?;
+    let mut guard = state
+        .0
+        .lock()
+        .map_err(|_| "Sidecar lock poisoned".to_string())?;
     if guard.is_none() {
         *guard = Some(spawn_sidecar(&app)?);
     }
@@ -108,8 +110,7 @@ pub fn opencode_send(
         return Err("OpenCode sidecar exited unexpectedly".to_string());
     }
 
-    let response: Value =
-        serde_json::from_str(response_line.trim()).map_err(|e| e.to_string())?;
+    let response: Value = serde_json::from_str(response_line.trim()).map_err(|e| e.to_string())?;
 
     match response.get("type").and_then(Value::as_str) {
         Some("success") => Ok(response.get("data").cloned().unwrap_or(Value::Null)),
@@ -146,7 +147,9 @@ fn command_exists(command: &str) -> bool {
     #[cfg(not(target_os = "windows"))]
     let output = Command::new("which").arg(command).output();
 
-    output.map(|result| result.status.success()).unwrap_or(false)
+    output
+        .map(|result| result.status.success())
+        .unwrap_or(false)
 }
 
 fn spawn_sidecar<R: Runtime>(app: &AppHandle<R>) -> Result<SidecarProcess, String> {
@@ -247,11 +250,15 @@ fn find_sidecar_binary<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
     let cwd = std::env::current_dir().ok();
     let candidates = [
         cwd.as_ref().map(|dir| dir.join("sidecars")),
-        cwd.as_ref().map(|dir| dir.join("src-tauri").join("sidecars")),
-        cwd.as_ref().map(|dir| dir.join("..").join("src-tauri").join("sidecars")),
+        cwd.as_ref()
+            .map(|dir| dir.join("src-tauri").join("sidecars")),
+        cwd.as_ref()
+            .map(|dir| dir.join("..").join("src-tauri").join("sidecars")),
         cwd.as_ref().map(|dir| dir.join("binaries")),
-        cwd.as_ref().map(|dir| dir.join("src-tauri").join("binaries")),
-        cwd.as_ref().map(|dir| dir.join("..").join("src-tauri").join("binaries")),
+        cwd.as_ref()
+            .map(|dir| dir.join("src-tauri").join("binaries")),
+        cwd.as_ref()
+            .map(|dir| dir.join("..").join("src-tauri").join("binaries")),
     ];
 
     for candidate in candidates.into_iter().flatten() {
@@ -266,7 +273,8 @@ fn find_sidecar_binary<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
 fn find_sidecar_script<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
     let cwd = std::env::current_dir().ok();
     let candidates = [
-        cwd.as_ref().map(|dir| dir.join("sidecar-opencode").join("index.ts")),
+        cwd.as_ref()
+            .map(|dir| dir.join("sidecar-opencode").join("index.ts")),
         cwd.as_ref()
             .map(|dir| dir.join("..").join("sidecar-opencode").join("index.ts")),
     ];
@@ -315,8 +323,10 @@ fn find_opencode_cli<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
     let cwd = std::env::current_dir().ok();
     let candidates = [
         cwd.as_ref().map(|dir| dir.join("sidecars")),
-        cwd.as_ref().map(|dir| dir.join("src-tauri").join("sidecars")),
-        cwd.as_ref().map(|dir| dir.join("..").join("src-tauri").join("sidecars")),
+        cwd.as_ref()
+            .map(|dir| dir.join("src-tauri").join("sidecars")),
+        cwd.as_ref()
+            .map(|dir| dir.join("..").join("src-tauri").join("sidecars")),
     ];
 
     for candidate in candidates.into_iter().flatten() {

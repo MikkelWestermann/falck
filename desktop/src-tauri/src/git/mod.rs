@@ -1,7 +1,7 @@
 use git2::{
     build::RepoBuilder, BranchType, Cred, CredentialType, FetchOptions, IndexAddOption,
-    PushOptions, RemoteCallbacks, Repository, RepositoryInitOptions, ResetType, Signature,
-    Sort, StatusOptions,
+    PushOptions, RemoteCallbacks, Repository, RepositoryInitOptions, ResetType, Signature, Sort,
+    StatusOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -79,10 +79,7 @@ fn resolve_reference_commit<'a>(
         }
     }
 
-    Err(GitError::Git(format!(
-        "Branch '{}' not found",
-        reference
-    )))
+    Err(GitError::Git(format!("Branch '{}' not found", reference)))
 }
 
 // ============================================================================
@@ -107,12 +104,7 @@ fn configure_ssh_callbacks(callbacks: &mut RemoteCallbacks, ssh_key_path: &str) 
                 }
             };
 
-            if let Ok(cred) = Cred::ssh_key(
-                username,
-                public_key,
-                Path::new(&ssh_key_path),
-                None,
-            ) {
+            if let Ok(cred) = Cred::ssh_key(username, public_key, Path::new(&ssh_key_path), None) {
                 return Ok(cred);
             }
 
@@ -123,7 +115,9 @@ fn configure_ssh_callbacks(callbacks: &mut RemoteCallbacks, ssh_key_path: &str) 
             return Cred::username(username);
         }
 
-        Err(git2::Error::from_str("No supported SSH credentials available"))
+        Err(git2::Error::from_str(
+            "No supported SSH credentials available",
+        ))
     });
 }
 
@@ -253,9 +247,7 @@ pub fn ensure_main_branch(path: &str) -> GitResult<String> {
     }
 
     repo.set_head("refs/heads/main")?;
-    repo.checkout_head(Some(
-        git2::build::CheckoutBuilder::new().force(),
-    ))?;
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))?;
     Ok("main".to_string())
 }
 
@@ -366,13 +358,21 @@ fn get_git_user_config(path: &str) -> (String, String) {
         .ok()
         .and_then(|repo| repo.config().ok())
         .and_then(|cfg| cfg.get_string("user.name").ok())
-        .or_else(|| git2::Config::open_default().ok().and_then(|c| c.get_string("user.name").ok()))
+        .or_else(|| {
+            git2::Config::open_default()
+                .ok()
+                .and_then(|c| c.get_string("user.name").ok())
+        })
         .unwrap_or_else(|| "User".to_string());
     let email = open_repository(path)
         .ok()
         .and_then(|repo| repo.config().ok())
         .and_then(|cfg| cfg.get_string("user.email").ok())
-        .or_else(|| git2::Config::open_default().ok().and_then(|c| c.get_string("user.email").ok()))
+        .or_else(|| {
+            git2::Config::open_default()
+                .ok()
+                .and_then(|c| c.get_string("user.email").ok())
+        })
         .unwrap_or_else(|| "user@local".to_string());
     (name, email)
 }
@@ -409,14 +409,7 @@ pub fn create_commit(
             &[&parent],
         )?
     } else {
-        repo.commit(
-            Some("HEAD"),
-            &signature,
-            &signature,
-            message,
-            &tree,
-            &[],
-        )?
+        repo.commit(Some("HEAD"), &signature, &signature, message, &tree, &[])?
     };
 
     Ok(oid.to_string())
@@ -469,9 +462,7 @@ pub fn checkout_branch(path: &str, branch_name: &str) -> GitResult<()> {
     let repo = open_repository(path)?;
     let refname = format!("refs/heads/{}", branch_name);
     repo.set_head(&refname)?;
-    repo.checkout_head(Some(
-        git2::build::CheckoutBuilder::new().force(),
-    ))?;
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))?;
     Ok(())
 }
 
@@ -543,15 +534,11 @@ pub fn pull_from_remote(
             }
         }
         repo.set_head(&refname)?;
-        repo.checkout_head(Some(
-            git2::build::CheckoutBuilder::new().force(),
-        ))?;
+        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))?;
         return Ok(());
     }
 
-    Err(GitError::Git(
-        "Merge required, not implemented".to_string(),
-    ))
+    Err(GitError::Git("Merge required, not implemented".to_string()))
 }
 
 pub fn list_remotes(path: &str) -> GitResult<Vec<String>> {
