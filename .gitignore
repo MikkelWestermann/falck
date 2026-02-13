@@ -30,6 +30,9 @@ dist-ssr
 
 .env
 
+# Falck uploads
+.falck/uploads/
+
 # Tauri
 desktop/target
 desktop/src-tauri/target

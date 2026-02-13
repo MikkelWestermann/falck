@@ -37,6 +37,20 @@ export interface OpenCodeInstallResult {
   requiresManualInstall?: boolean;
 }
 
+export type OpenCodePromptPart =
+  | {
+      type: "text";
+      text: string;
+      synthetic?: boolean;
+      ignored?: boolean;
+    }
+  | {
+      type: "file";
+      mime: string;
+      filename?: string;
+      url: string;
+    };
+
 interface RetryOptions {
   maxRetries: number;
   delayMs: number;
@@ -137,6 +151,7 @@ export const opencodeService = {
     messageId?: string,
     directory?: string,
     system?: string,
+    parts?: OpenCodePromptPart[],
   ): Promise<{
     messageId?: string;
     sessionId?: string;
@@ -148,7 +163,7 @@ export const opencodeService = {
     return withRetry(() =>
       sendCommand(
         "prompt",
-        { sessionPath, message, model, messageID: messageId, system },
+        { sessionPath, message, model, messageID: messageId, system, parts },
         directory,
       ),
     ) as Promise<{
@@ -168,11 +183,12 @@ export const opencodeService = {
     messageId?: string,
     directory?: string,
     system?: string,
+    parts?: OpenCodePromptPart[],
   ): Promise<{ queued: boolean; sessionId?: string }> {
     return withRetry(() =>
       sendCommand(
         "promptAsync",
-        { sessionPath, message, model, messageID: messageId, system },
+        { sessionPath, message, model, messageID: messageId, system, parts },
         directory,
       ),
     ) as Promise<{ queued: boolean; sessionId?: string }>;

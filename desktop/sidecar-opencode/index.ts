@@ -12,6 +12,20 @@ type RequestMessage = {
   description?: string;
   model?: string;
   message?: string;
+  parts?: Array<
+    | {
+        type: "text";
+        text: string;
+        synthetic?: boolean;
+        ignored?: boolean;
+      }
+    | {
+        type: "file";
+        mime: string;
+        filename?: string;
+        url: string;
+      }
+  >;
   provider?: string;
   apiKey?: string;
   system?: string;
@@ -414,13 +428,17 @@ async function handleListSessions(directory?: string) {
 
 async function handlePrompt(
   sessionPath?: string,
-  { message, model, messageID, system }: RequestMessage = {},
+  { message, model, messageID, system, parts }: RequestMessage = {},
   directory?: string,
 ) {
   if (!sessionPath) {
     sendError("sessionPath is required", "INVALID_ARGUMENT");
     return;
   }
+  const normalizedParts =
+    Array.isArray(parts) && parts.length > 0
+      ? parts
+      : [{ type: "text" as const, text: message ?? "" }];
   const modelParts =
     typeof model === "string" && model.includes("/")
       ? {
@@ -434,7 +452,7 @@ async function handlePrompt(
     messageID,
     model: modelParts,
     system,
-    parts: [{ type: "text", text: message ?? "" }],
+    parts: normalizedParts,
   });
   const data = unwrapData(response);
 
@@ -454,13 +472,17 @@ async function handlePrompt(
 
 async function handlePromptAsync(
   sessionPath?: string,
-  { message, model, messageID, system }: RequestMessage = {},
+  { message, model, messageID, system, parts }: RequestMessage = {},
   directory?: string,
 ) {
   if (!sessionPath) {
     sendError("sessionPath is required", "INVALID_ARGUMENT");
     return;
   }
+  const normalizedParts =
+    Array.isArray(parts) && parts.length > 0
+      ? parts
+      : [{ type: "text" as const, text: message ?? "" }];
   const modelParts =
     typeof model === "string" && model.includes("/")
       ? {
@@ -475,7 +497,7 @@ async function handlePromptAsync(
     messageID,
     model: modelParts,
     system,
-    parts: [{ type: "text", text: message ?? "" }],
+    parts: normalizedParts,
   });
 
   sendMessage({

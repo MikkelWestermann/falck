@@ -5,6 +5,7 @@ mod opencode;
 mod project;
 mod ssh;
 mod storage;
+mod uploads;
 
 use git::{
     checkout_branch, clone_repository, create_branch, create_commit, current_branch,
@@ -19,6 +20,7 @@ use opencode::{
 use storage::{
     get_default_repo_dir, list_repos, remove_repo, save_repo, set_default_repo_dir, SavedRepo,
 };
+use uploads::save_temp_upload;
 use reqwest::Client;
 use tauri::Manager;
 
@@ -204,6 +206,7 @@ pub fn run() {
             remove_repo_entry,
             get_default_repo_directory,
             set_default_repo_directory,
+            save_temp_upload,
             opencode_send,
             check_opencode_installed,
             install_opencode,

@@ -1,7 +1,7 @@
 import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import { unstable_batchedUpdates } from "react-dom";
 
-import type { ChatStatus, ToolUIPart } from "ai";
+import type { ChatStatus, FileUIPart, ToolUIPart } from "ai";
 import {
   AlertTriangleIcon,
   CheckCircleIcon,
@@ -13,6 +13,13 @@ import {
   WrenchIcon,
 } from "lucide-react";
 
+import {
+  Attachment,
+  AttachmentInfo,
+  AttachmentPreview,
+  AttachmentRemove,
+  Attachments,
+} from "@/components/ai-elements/attachments";
 import {
   Message as AIMessage,
   MessageContent,
@@ -44,11 +51,16 @@ import {
 } from "@/components/ai-elements/model-selector";
 import {
   PromptInput,
+  PromptInputActionAddAttachments,
+  PromptInputActionMenu,
+  PromptInputActionMenuContent,
+  PromptInputActionMenuTrigger,
   PromptInputBody,
   PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -62,7 +74,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { opencodeService } from "@/services/opencodeService";
+import {
+  opencodeService,
+  type OpenCodePromptPart,
+} from "@/services/opencodeService";
+import { saveTempUpload } from "@/services/uploadService";
 import type { FalckApplication } from "@/services/falckService";
 import { useAIChat, type ChatMessage } from "@/contexts/AIChatContext";
 
@@ -318,6 +334,154 @@ const getRandomBytes = (length: number) => {
   }
 
   return bytes;
+};
+
+type UploadedAttachment = {
+  path: string;
+  relativePath: string;
+  filename: string;
+  mime: string;
+  fileUrl: string;
+};
+
+const normalizePath = (value: string) => value.replace(/\\/g, "/");
+
+const toFileUrl = (filePath: string) => {
+  const normalized = normalizePath(filePath);
+  if (normalized.startsWith("file://")) {
+    return normalized;
+  }
+  if (normalized.startsWith("/")) {
+    return `file://${encodeURI(normalized)}`;
+  }
+  return `file:///${encodeURI(normalized)}`;
+};
+
+const parseDataUrl = (url: string) => {
+  if (!url.startsWith("data:")) {
+    return null;
+  }
+  const [meta, data] = url.split(",", 2);
+  if (!data) {
+    return null;
+  }
+  const match = meta.match(/^data:([^;]+)(;base64)?$/);
+  if (!match) {
+    return null;
+  }
+  const mime = match[1] || "application/octet-stream";
+  const isBase64 = match[2] === ";base64";
+  if (!isBase64) {
+    return null;
+  }
+  return { mime, data };
+};
+
+const buildUploadSystemNote = (uploads: UploadedAttachment[]) => {
+  if (uploads.length === 0) {
+    return "";
+  }
+  const lines = uploads.map((upload) => {
+    const label = `${upload.filename} (${upload.mime})`;
+    return `- ${label} at ${normalizePath(upload.relativePath)}`;
+  });
+  return [
+    "User uploads are stored in the repo temp directory:",
+    ...lines,
+    "You can read them directly or copy/move them into the codebase as needed.",
+  ].join("\n");
+};
+
+const uploadAttachments = async (
+  files: FileUIPart[],
+  repoPath: string,
+  messageId: string,
+): Promise<{ fileParts: OpenCodePromptPart[]; systemNote: string }> => {
+  if (files.length === 0) {
+    return { fileParts: [], systemNote: "" };
+  }
+
+  const uploads: UploadedAttachment[] = [];
+  for (const file of files) {
+    const url = file.url;
+    if (!url) {
+      throw new Error("Attachment missing URL data.");
+    }
+    const parsed = parseDataUrl(url);
+    if (!parsed) {
+      throw new Error(`Unsupported attachment format for ${file.filename ?? "file"}.`);
+    }
+    const mime = file.mediaType || parsed.mime || "application/octet-stream";
+    const upload = await saveTempUpload({
+      repoPath,
+      messageId,
+      filename: file.filename ?? "upload",
+      mime,
+      dataBase64: parsed.data,
+    });
+    uploads.push({
+      path: upload.path,
+      relativePath: upload.relativePath,
+      filename: upload.filename,
+      mime: upload.mime,
+      fileUrl: toFileUrl(upload.path),
+    });
+  }
+
+  return {
+    fileParts: uploads.map((upload) => ({
+      type: "file",
+      mime: upload.mime,
+      filename: upload.filename,
+      url: upload.fileUrl,
+    })),
+    systemNote: buildUploadSystemNote(uploads),
+  };
+};
+
+const PromptInputAttachmentsPreview = () => {
+  const attachments = usePromptInputAttachments();
+  if (attachments.files.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="px-3 pt-3">
+      <Attachments variant="inline" className="flex-wrap gap-2">
+        {attachments.files.map((file) => (
+          <Attachment
+            key={file.id}
+            data={file}
+            onRemove={() => attachments.remove(file.id)}
+          >
+            <AttachmentPreview />
+            <AttachmentInfo />
+            <AttachmentRemove />
+          </Attachment>
+        ))}
+      </Attachments>
+    </div>
+  );
+};
+
+const PromptInputSubmitWithAttachments = ({
+  disabled,
+  inputValue,
+  status,
+}: {
+  disabled: boolean;
+  inputValue: string;
+  status?: ChatStatus;
+}) => {
+  const attachments = usePromptInputAttachments();
+  const hasText = inputValue.trim().length > 0;
+  const hasFiles = attachments.files.length > 0;
+  return (
+    <PromptInputSubmit
+      status={status}
+      disabled={disabled || (!hasText && !hasFiles)}
+    />
+  );
 };
 
 const TEXT_RENDER_THROTTLE_MS = 100;
@@ -1457,9 +1621,18 @@ export function AIChat({ activeApp }: AIChatProps) {
       minute: "2-digit",
     });
 
-  const handleSendMessage = async (messageText?: string) => {
-    const text = (messageText ?? inputMessage).trim();
-    if (!text || !currentSession) {
+  const handleSendMessage = async (
+    messageText?: string,
+    attachments: FileUIPart[] = [],
+  ) => {
+    if (!currentSession) {
+      return;
+    }
+
+    const trimmed = (messageText ?? inputMessage).trim();
+    const hasAttachments = attachments.length > 0;
+    const text = trimmed || (hasAttachments ? "Uploaded files." : "");
+    if (!text && !hasAttachments) {
       return;
     }
 
@@ -1489,13 +1662,27 @@ export function AIChat({ activeApp }: AIChatProps) {
     setError("");
 
     try {
+      const { fileParts, systemNote } = await uploadAttachments(
+        attachments,
+        repoPath,
+        messageId,
+      );
+      const systemPrompt = [appFocusSystem, systemNote]
+        .filter(Boolean)
+        .join("\n\n");
+      const parts: OpenCodePromptPart[] = [
+        { type: "text", text },
+        ...fileParts,
+      ];
+
       await opencodeService.sendPromptAsync(
         currentSession.path,
         text,
         selectedModel,
         messageId,
         repoPath,
-        appFocusSystem,
+        systemPrompt || undefined,
+        parts,
       );
     } catch (err) {
       setError(`Failed to get response: ${String(err)}`);
@@ -1727,10 +1914,12 @@ export function AIChat({ activeApp }: AIChatProps) {
                   <PromptInput
                     onSubmit={(message, event) => {
                       event.preventDefault();
-                      void handleSendMessage(message.text);
+                      return handleSendMessage(message.text, message.files);
                     }}
+                    multiple
                   >
                     <PromptInputBody>
+                      <PromptInputAttachmentsPreview />
                       <PromptInputTextarea
                         rows={3}
                         value={inputMessage}
@@ -1772,6 +1961,17 @@ export function AIChat({ activeApp }: AIChatProps) {
                         </div>
                       </PromptInputTools>
                       <PromptInputTools>
+                        <PromptInputActionMenu>
+                          <PromptInputActionMenuTrigger
+                            aria-label="Add attachments"
+                            disabled={
+                              !currentSession || sending || loadingSession
+                            }
+                          />
+                          <PromptInputActionMenuContent>
+                            <PromptInputActionAddAttachments />
+                          </PromptInputActionMenuContent>
+                        </PromptInputActionMenu>
                         <ModelSelector
                           open={modelSelectorOpen}
                           onOpenChange={setModelSelectorOpen}
@@ -1841,14 +2041,12 @@ export function AIChat({ activeApp }: AIChatProps) {
                               ))}
                             </ModelSelectorList>
                           </ModelSelectorContent>
-                        </ModelSelector>
-                        <PromptInputSubmit
+                          </ModelSelector>
+                        <PromptInputSubmitWithAttachments
                           status={chatStatus}
+                          inputValue={inputMessage}
                           disabled={
-                            !currentSession ||
-                            !inputMessage.trim() ||
-                            sending ||
-                            loadingSession
+                            !currentSession || sending || loadingSession
                           }
                         />
                       </PromptInputTools>
