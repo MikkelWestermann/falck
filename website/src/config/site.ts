@@ -10,5 +10,8 @@ export const SITE = {
 
 /** Resolves a path with the base URL for subpath deployment (e.g. /falck on GitHub Pages) */
 export function resolvePath(path: string): string {
-  return BASE + (path.startsWith('/') ? path : '/' + path);
+  const normalizedBase = BASE === '/' ? '' : BASE.replace(/\/$/, '');
+  const normalizedPath = path.startsWith('/') ? path : '/' + path;
+
+  return normalizedBase + normalizedPath;
 }
