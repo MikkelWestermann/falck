@@ -36,6 +36,24 @@ const opencodeDirectory = process.env.OPENCODE_DIRECTORY || defaultDirectory;
 let client = createOpencodeClient({ baseUrl, directory: opencodeDirectory });
 let serverStartedAt: number | null = null;
 const opencodeBinary = process.env.OPENCODE_CLI_PATH || "opencode";
+const azureEnv = {
+  AZURE_RESOURCE_NAME: Boolean(process.env.AZURE_RESOURCE_NAME),
+  AZURE_COGNITIVE_SERVICES_RESOURCE_NAME: Boolean(
+    process.env.AZURE_COGNITIVE_SERVICES_RESOURCE_NAME,
+  ),
+};
+
+function resolvePort(value?: number) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  const envPort = process.env.OPENCODE_PORT;
+  if (!envPort) {
+    return 0;
+  }
+  const parsed = Number.parseInt(envPort, 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 type ServerOptions = {
   hostname?: string;
@@ -45,8 +63,11 @@ type ServerOptions = {
 
 async function createOpencodeServer(options: ServerOptions = {}) {
   const hostname = options.hostname ?? "127.0.0.1";
-  const port = options.port ?? 4096;
+  const port = resolvePort(options.port);
   const timeout = options.timeout ?? 10000;
+
+  console.error("[SIDECAR] OpenCode env", azureEnv);
+  console.error("[SIDECAR] Starting OpenCode server", { hostname, port });
 
   const args = ["serve", `--hostname=${hostname}`, `--port=${port}`];
   const proc = spawn(opencodeBinary, args, { env: { ...process.env } });
@@ -109,7 +130,6 @@ try {
   console.error("[SIDECAR] Using opencode binary", opencodeBinary);
   const started = await createOpencodeServer({
     hostname: "127.0.0.1",
-    port: 4096,
     timeout: 10000,
   });
   baseUrl = started.url;
@@ -262,6 +282,9 @@ async function handleCommand(request: RequestMessage) {
       case "health":
         await handleHealth();
         break;
+      case "serverInfo":
+        handleServerInfo();
+        break;
       case "config":
         await handleConfig(directory);
         break;
@@ -310,6 +333,17 @@ async function handleHealth() {
     data: {
       healthy: health.healthy,
       version: health.version,
+    },
+  });
+}
+
+function handleServerInfo() {
+  sendMessage({
+    type: "success",
+    cmd: "serverInfo",
+    data: {
+      baseUrl,
+      startedAt: serverStartedAt,
     },
   });
 }

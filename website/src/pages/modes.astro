@@ -2,7 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 import Button from '../components/Button.astro';
 import { resolvePath } from '../config/site';
-import logo from '../assets/logo.png';
+import whichWay from '../assets/which-way.jpg';
 ---
 
 <Layout
@@ -36,26 +36,14 @@ import logo from '../assets/logo.png';
         </div>
         <div class="relative reveal-delay-2">
           <div class="absolute -top-6 right-4 h-20 w-20 rounded-2xl border border-emerald-200/60 dark:border-emerald-400/30 bg-white/70 dark:bg-slate-900/70 backdrop-blur float-slower"></div>
-          <div class="surface p-6">
-            <div class="flex items-center gap-3">
-              <div class="h-12 w-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center">
-                <img src={logo.src} alt="Falck logo" class="h-8 w-auto" />
-              </div>
-              <div>
-                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Falck</p>
-                <p class="text-lg font-semibold text-slate-900 dark:text-white">Modes overview</p>
-              </div>
-            </div>
-            <div class="mt-6 grid gap-3 text-sm text-slate-600 dark:text-slate-300">
-              <div class="flex items-center justify-between rounded-2xl border border-emerald-100/70 dark:border-emerald-400/30 bg-emerald-50/70 dark:bg-emerald-400/10 px-4 py-3">
-                <span class="font-semibold">Greenfield studio</span>
-                <span class="text-xs uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-200">Local</span>
-              </div>
-              <div class="flex items-center justify-between rounded-2xl border border-slate-200/70 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/70 px-4 py-3">
-                <span class="font-semibold">Team-ready workspace</span>
-                <span class="text-xs uppercase tracking-[0.2em] text-slate-500">Existing apps</span>
-              </div>
-            </div>
+          <div class="surface w-full max-w-md mx-auto overflow-hidden p-0">
+            <img
+              src={whichWay.src}
+              alt="Which way illustration"
+              class="h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
+            />
           </div>
         </div>
       </div>

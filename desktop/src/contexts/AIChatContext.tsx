@@ -27,6 +27,7 @@ type AIChatContextValue = {
   providers: Provider[];
   selectedModel: string;
   setSelectedModel: (model: string) => void;
+  serverUrl: string;
   historyOpen: boolean;
   setHistoryOpen: (open: boolean) => void;
   creatingSession: boolean;
@@ -79,6 +80,7 @@ export function AIChatProvider({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [selectedModel, setSelectedModel] = useState("gpt-4");
+  const [serverUrl, setServerUrl] = useState("http://127.0.0.1:4096");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [creatingSession, setCreatingSession] = useState(false);
   const [loadingSession, setLoadingSession] = useState(false);
@@ -192,6 +194,10 @@ export function AIChatProvider({
       setInitializing(true);
       try {
         await opencodeService.health(repoPath);
+        const info = await opencodeService.getServerInfo();
+        if (active && info?.baseUrl) {
+          setServerUrl(info.baseUrl);
+        }
         const config = await opencodeService.getProviders(repoPath);
         if (!active) return;
         setProviders(config.providers);
@@ -262,6 +268,7 @@ export function AIChatProvider({
       setMessages,
       providers,
       selectedModel,
+      serverUrl,
       setSelectedModel: (model) => {
         setSelectedModel(model);
         persistModel(model);
@@ -286,6 +293,7 @@ export function AIChatProvider({
       messages,
       providers,
       selectedModel,
+      serverUrl,
       historyOpen,
       creatingSession,
       loadingSession,

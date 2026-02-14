@@ -839,7 +839,7 @@ fn resolve_shell_path() -> String {
     }
 }
 
-fn load_shell_env() -> Option<HashMap<String, String>> {
+pub(crate) fn load_shell_env() -> Option<HashMap<String, String>> {
     SHELL_ENV_CACHE.get_or_init(capture_shell_env).clone()
 }
 

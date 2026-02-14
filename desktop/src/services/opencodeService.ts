@@ -31,6 +31,11 @@ export interface OpenCodeStatus {
   path?: string;
 }
 
+export interface OpenCodeServerInfo {
+  baseUrl: string;
+  startedAt: number | null;
+}
+
 export interface OpenCodeInstallResult {
   success: boolean;
   message: string;
@@ -85,6 +90,10 @@ export const opencodeService = {
       healthy: boolean;
       version: string;
     }>;
+  },
+
+  async getServerInfo(): Promise<OpenCodeServerInfo> {
+    return withRetry(() => sendCommand("serverInfo", {}, undefined)) as Promise<OpenCodeServerInfo>;
   },
 
   async getConfig(directory?: string): Promise<OpenCodeConfig> {

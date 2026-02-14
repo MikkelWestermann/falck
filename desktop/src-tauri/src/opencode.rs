@@ -1,11 +1,14 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::env;
 use std::ffi::OsStr;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, Runtime, State};
+
+use crate::falck::load_shell_env;
 
 pub struct OpencodeState(pub Mutex<Option<SidecarProcess>>);
 
@@ -124,7 +127,7 @@ pub fn opencode_send(
 }
 
 fn build_request(cmd: String, args: Value) -> Result<String, String> {
-    let mut map = Map::new();
+  let mut map = Map::new();
     map.insert("cmd".to_string(), Value::String(cmd));
 
     match args {
@@ -137,7 +140,24 @@ fn build_request(cmd: String, args: Value) -> Result<String, String> {
         _ => return Err("args must be an object".to_string()),
     }
 
-    serde_json::to_string(&Value::Object(map)).map_err(|e| e.to_string())
+  serde_json::to_string(&Value::Object(map)).map_err(|e| e.to_string())
+}
+
+fn apply_shell_env(cmd: &mut Command) {
+    let Some(shell_env) = load_shell_env() else {
+        return;
+    };
+
+    for (key, value) in shell_env {
+        if key == "PATH" {
+            cmd.env(&key, value);
+            continue;
+        }
+
+        if env::var_os(&key).is_none() {
+            cmd.env(&key, value);
+        }
+    }
 }
 
 fn command_exists(command: &str) -> bool {
@@ -178,6 +198,7 @@ fn spawn_sidecar<R: Runtime>(app: &AppHandle<R>) -> Result<SidecarProcess, Strin
 
 fn spawn_process(path: PathBuf, cli_path: Option<&Path>) -> Result<SidecarProcess, String> {
     let mut cmd = Command::new(&path);
+    apply_shell_env(&mut cmd);
     if let Some(cli_path) = cli_path {
         cmd.env("OPENCODE_CLI_PATH", cli_path);
     }
@@ -201,6 +222,7 @@ fn spawn_process(path: PathBuf, cli_path: Option<&Path>) -> Result<SidecarProces
 
 fn spawn_bun(script: PathBuf, cli_path: Option<&Path>) -> Result<SidecarProcess, String> {
     let mut cmd = Command::new("bun");
+    apply_shell_env(&mut cmd);
     if let Some(cli_path) = cli_path {
         cmd.env("OPENCODE_CLI_PATH", cli_path);
     }

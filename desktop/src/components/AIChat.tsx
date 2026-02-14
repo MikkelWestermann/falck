@@ -457,6 +457,7 @@ export function AIChat({ activeApp }: AIChatProps) {
     providers,
     selectedModel,
     setSelectedModel,
+    serverUrl,
     setHistoryOpen,
     creatingSession,
     loadingSession,
@@ -498,10 +499,11 @@ export function AIChat({ activeApp }: AIChatProps) {
   }, [activeApp]);
 
   const eventStreamUrl = useMemo(() => {
-    const url = new URL("http://127.0.0.1:4096/event");
+    const base = serverUrl || "http://127.0.0.1:4096";
+    const url = new URL("/event", base);
     url.searchParams.set("directory", repoPath);
     return url.toString();
-  }, [repoPath]);
+  }, [repoPath, serverUrl]);
 
   const selectedProvider = useMemo(
     () => providers.find((provider) => provider.models.includes(selectedModel)),
@@ -1062,7 +1064,7 @@ export function AIChat({ activeApp }: AIChatProps) {
         setAwaitingResponse(false);
         const detail =
           props.message ??
-          (props.error ? String(props.error) : "Unknown error");
+          (props.error ? JSON.stringify(props.error) : "Unknown error");
         setError(`OpenCode error: ${detail}`);
         return;
       }
