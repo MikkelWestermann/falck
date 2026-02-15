@@ -10,7 +10,7 @@ import opencodeLogo from '../assets/opencode.svg';
   title="Falck | AI IDE for non-technical teams"
   description="Falck is the AI IDE that lets non-technical teammates contribute to real codebases with guardrails, git flows, and a friendly workflow."
 >
-  <section id="hero" class="relative overflow-hidden pt-24 pb-28">
+  <section id="hero" class="relative overflow-hidden pt-28 pb-32">
     <div class="absolute inset-0 -z-10">
       <div class="absolute inset-0 backdrop-grid opacity-60"></div>
       <div class="absolute -top-24 left-[5%] h-[420px] w-[420px] rounded-full bg-emerald-300/40 blur-[140px] glow-pulse"></div>
@@ -19,11 +19,11 @@ import opencodeLogo from '../assets/opencode.svg';
 
     <div class="container mx-auto px-6">
       <div class="grid gap-16 lg:grid-cols-[1.15fr_0.85fr] items-center">
-        <div class="space-y-8 reveal">
-          <span class="inline-flex items-center gap-2 rounded-full bg-white/70 dark:bg-slate-900/70 px-4 py-2 text-xs uppercase tracking-[0.28em] text-slate-600 dark:text-slate-300 border border-white/80 dark:border-slate-800/80">
+        <div class="space-y-10 reveal">
+          <span class="inline-flex items-center gap-2 rounded-full bg-white/70 dark:bg-slate-900/70 px-4 py-2 text-xs uppercase tracking-[0.24em] text-slate-600 dark:text-slate-300 border border-white/80 dark:border-slate-800/80">
             Open source. Bring your own LLM.
           </span>
-          <h1 class="text-4xl sm:text-5xl lg:text-6xl font-semibold leading-tight text-slate-950 dark:text-white">
+          <h1 class="text-4xl sm:text-5xl lg:text-6xl font-semibold leading-[1.1] text-slate-950 dark:text-white">
             The AI IDE that lets non-technical teammates ship real code
             <span class="bg-gradient-to-r from-emerald-500 via-teal-400 to-sky-400 bg-clip-text text-transparent">
               without the sharp edges.
@@ -35,7 +35,7 @@ import opencodeLogo from '../assets/opencode.svg';
           </p>
           <div class="flex flex-col sm:flex-row gap-4">
             <Button href={resolvePath('/download')}>Download the desktop app</Button>
-            <Button variant="secondary">See a live demo</Button>
+            <Button variant="secondary" href={resolvePath('/download')}>See the download options</Button>
           </div>
           <div class="flex flex-wrap items-center gap-6 text-sm text-slate-500 dark:text-slate-400">
             <div class="flex items-center gap-2">
@@ -54,12 +54,12 @@ import opencodeLogo from '../assets/opencode.svg';
         </div>
 
         <div class="relative reveal-delay-2">
-          <div class="absolute -top-8 left-8 h-24 w-24 rounded-2xl border border-emerald-200/60 dark:border-emerald-400/30 bg-white/70 dark:bg-slate-900/70 backdrop-blur float-slower"></div>
-          <div class="absolute -bottom-10 right-0 h-32 w-32 rounded-full border border-slate-200/70 dark:border-slate-700/70 bg-white/70 dark:bg-slate-900/70 backdrop-blur float-soft"></div>
-          <div class="relative surface p-6">
-            <div class="flex items-center justify-between">
+          <div class="absolute -top-8 left-8 h-24 w-24 rounded-2xl bg-white/70 dark:bg-slate-900/70 backdrop-blur float-slower"></div>
+          <div class="absolute -bottom-10 right-0 h-32 w-32 rounded-full bg-white/70 dark:bg-slate-900/70 backdrop-blur float-soft"></div>
+          <div class="relative surface p-7 sm:p-8">
+            <div class="flex flex-col gap-4">
               <div class="flex items-center gap-3">
-                <div class="h-12 w-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center">
+                <div class="h-12 w-12 rounded-2xl flex items-center justify-center">
                   <img src={logo.src} alt="Falck logo" class="h-8 w-auto" />
                 </div>
                 <div>
@@ -67,11 +67,11 @@ import opencodeLogo from '../assets/opencode.svg';
                   <p class="text-lg font-semibold text-slate-900 dark:text-white">Project: moonshot</p>
                 </div>
               </div>
-              <span class="rounded-full border border-emerald-200/80 bg-emerald-100/80 px-3 py-1 text-xs font-mono text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-400/15 dark:text-emerald-200">
+              <span class="inline-flex rounded-full border border-emerald-200/80 bg-emerald-100/80 px-3 py-1 text-xs font-mono text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-400/15 dark:text-emerald-200 max-w-full break-all">
                 branch: projects/launch-idea
               </span>
             </div>
-            <div class="mt-6 grid gap-4">
+            <div class="mt-7 grid gap-5">
               <div class="surface-muted p-4">
                 <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
                   <span>Prerequisites</span>
@@ -125,7 +125,7 @@ import opencodeLogo from '../assets/opencode.svg';
     </div>
   </section>
 
-  <section id="explore" class="container mx-auto px-6 py-24">
+  <section id="explore" class="container mx-auto px-6 py-28">
     <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
       <div class="space-y-4 reveal">
         <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Explore Falck</p>
@@ -139,40 +139,40 @@ import opencodeLogo from '../assets/opencode.svg';
       </p>
     </div>
     <div class="mt-12 grid gap-6 md:grid-cols-3">
-      <a href={resolvePath('/modes')} class="surface p-6 hover-rise reveal">
+      <a href={resolvePath('/modes')} class="surface p-6 reveal">
         <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Modes</p>
         <h3 class="mt-3 text-xl font-semibold text-slate-950 dark:text-white">Greenfield or team mode</h3>
         <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
           Learn how Falck handles brand new ideas and existing production apps.
         </p>
-        <span class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600 hover:text-emerald-500 transition">
+        <span class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600">
           Explore modes ->
         </span>
       </a>
-      <a href={resolvePath('/workflow')} class="surface p-6 hover-rise reveal-delay-1">
+      <a href={resolvePath('/workflow')} class="surface p-6 reveal-delay-1">
         <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Workflow</p>
         <h3 class="mt-3 text-xl font-semibold text-slate-950 dark:text-white">A calm, safe git flow</h3>
         <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
           See how non-technical teammates contribute without derailing reviews or CI.
         </p>
-        <span class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600 hover:text-emerald-500 transition">
+        <span class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600">
           See the workflow ->
         </span>
       </a>
-      <a href={resolvePath('/features')} class="surface p-6 hover-rise reveal-delay-2">
+      <a href={resolvePath('/features')} class="surface p-6 reveal-delay-2">
         <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Feature pages</p>
         <h3 class="mt-3 text-xl font-semibold text-slate-950 dark:text-white">Setup, projects, sync</h3>
         <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
           Tour the pages that make Falck feel like a true desktop app.
         </p>
-        <span class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600 hover:text-emerald-500 transition">
+        <span class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600">
           Browse feature pages ->
         </span>
       </a>
     </div>
   </section>
 
-  <section id="open-source" class="container mx-auto px-6 py-24">
+  <section id="open-source" class="container mx-auto px-6 py-28">
     <div class="surface p-10 md:p-14 shadow-[0_40px_90px_-70px_rgba(15,23,42,0.45)] reveal">
       <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
         <div class="space-y-4">
@@ -199,18 +199,17 @@ import opencodeLogo from '../assets/opencode.svg';
             </div>
           </div>
           <div class="mt-6 flex flex-col sm:flex-row gap-4">
-            <Button>Star on GitHub</Button>
-            <Button variant="secondary">View docs</Button>
+            <Button href="https://github.com/MikkelWestermann/falck" target="_blank" rel="noreferrer">Star on GitHub</Button>
           </div>
         </div>
-        <div class="rounded-[28px] border border-slate-200/70 dark:border-slate-700/70 bg-white/70 dark:bg-slate-950/60 p-6">
-          <div class="flex items-center justify-between">
+        <div class="rounded-[28px] bg-white/70 dark:bg-slate-950/60 p-6">
+          <div class="flex items-center justify-between gap-4">
             <div>
               <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Built on</p>
               <p class="mt-2 text-lg font-semibold text-slate-900 dark:text-white">OpenCode</p>
             </div>
-            <div class="h-14 w-14 rounded-2xl border border-slate-200/70 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/70 flex items-center justify-center">
-              <img src={opencodeLogo.src} alt="OpenCode logo" class="h-8 w-auto" />
+            <div class="h-16 w-28 rounded-2xl bg-slate-950 flex items-center justify-center">
+              <img src={opencodeLogo.src} alt="OpenCode logo" class="h-12 w-auto" />
             </div>
           </div>
           <p class="mt-4 text-sm text-slate-600 dark:text-slate-300">
@@ -219,7 +218,7 @@ import opencodeLogo from '../assets/opencode.svg';
           </p>
           <a
             href="https://opencode.ai/"
-            class="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600 hover:text-emerald-500 transition"
+            class="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600"
           >
             Visit opencode.ai
             <span aria-hidden="true">-&gt;</span>
@@ -229,19 +228,17 @@ import opencodeLogo from '../assets/opencode.svg';
     </div>
   </section>
 
-  <section id="cta" class="container mx-auto px-6 pb-24">
+  <section id="cta" class="container mx-auto px-6 pb-28">
     <div class="surface p-10 md:p-14 text-center shadow-[0_30px_70px_-55px_rgba(16,185,129,0.45)] reveal">
       <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Launch</p>
       <h2 class="mt-4 text-3xl sm:text-4xl font-semibold text-slate-950 dark:text-white">
-        Let your non-technical teammates ship the next big idea
+        Start with the Falck desktop app
       </h2>
       <p class="mt-4 text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
-        Falck makes collaboration feel like a superpower: non-technical teammates can build, technical teams can review,
-        and everyone gets a clearer picture of the final product.
+        Download the desktop app and bring your collaborators into a workflow that feels clean, calm, and ready to ship.
       </p>
       <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-        <Button>Get early access</Button>
-        <Button variant="secondary">Talk to the team</Button>
+        <Button href={resolvePath('/download')}>Go to downloads</Button>
       </div>
     </div>
   </section>

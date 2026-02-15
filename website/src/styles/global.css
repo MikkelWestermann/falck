@@ -83,31 +83,31 @@
 }
 
 .float-soft {
-  animation: none;
+  animation: float-soft 12s ease-in-out infinite;
 }
 
 .float-slower {
-  animation: none;
+  animation: float-soft 18s ease-in-out infinite;
 }
 
 .reveal {
-  animation: none;
+  animation: fade-up 0.85s ease both;
 }
 
 .reveal-delay-1 {
-  animation: none;
+  animation: fade-up 0.85s ease 0.12s both;
 }
 
 .reveal-delay-2 {
-  animation: none;
+  animation: fade-up 0.85s ease 0.24s both;
 }
 
 .reveal-delay-3 {
-  animation: none;
+  animation: fade-up 0.85s ease 0.36s both;
 }
 
 .glow-pulse {
-  animation: none;
+  animation: glow-pulse 7s ease-in-out infinite;
 }
 
 .backdrop-grid {
@@ -160,14 +160,6 @@
   background: rgba(2, 6, 23, 0.9);
 }
 
-.hover-rise {
-  transition: transform 0.35s ease, box-shadow 0.35s ease;
-}
-
-.hover-rise:hover {
-  transform: translate3d(0, -4px, 0);
-  box-shadow: 0 35px 90px -55px rgba(15, 23, 42, 0.5);
-}
 
 @media (prefers-reduced-motion: reduce) {
   .float-soft,

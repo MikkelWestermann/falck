@@ -8,7 +8,7 @@ import { resolvePath } from '../config/site';
   title="Falck | Workflow"
   description="A workflow that lets non-technical teammates contribute while keeping git flows, reviews, and CI/CD intact."
 >
-  <section class="relative overflow-hidden pt-24 pb-16">
+  <section class="relative overflow-hidden pt-24 pb-20">
     <div class="absolute inset-0 -z-10">
       <div class="absolute inset-0 backdrop-grid opacity-60"></div>
       <div class="absolute -top-20 left-[15%] h-[320px] w-[320px] rounded-full bg-emerald-300/40 blur-[140px] glow-pulse"></div>
@@ -28,37 +28,37 @@ import { resolvePath } from '../config/site';
           get clean branches, normal PRs, and far fewer "what did you mean?" meetings.
         </p>
         <div class="flex flex-col sm:flex-row gap-4">
-          <Button>See it in action</Button>
-          <Button href={resolvePath('/download')} variant="secondary">Download Falck</Button>
+          <Button href={resolvePath('/download')}>Download Falck</Button>
+          <Button href={resolvePath('/download')} variant="secondary">See download options</Button>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="container mx-auto px-6 py-16">
+  <section class="container mx-auto px-6 py-20">
     <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-      <div class="surface p-6 hover-rise reveal">
+      <div class="surface p-6 reveal">
         <div class="h-10 w-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center font-semibold">01</div>
         <h2 class="mt-4 text-lg font-semibold">Configure once</h2>
         <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
           Define prerequisites, secrets, setup steps, and launch flows in a Falck config.
         </p>
       </div>
-      <div class="surface p-6 hover-rise reveal-delay-1">
+      <div class="surface p-6 reveal-delay-1">
         <div class="h-10 w-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-semibold">02</div>
         <h2 class="mt-4 text-lg font-semibold">Non-tech builds</h2>
         <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
           Falck guides each step with AI and plain language, turning ideas into real changes.
         </p>
       </div>
-      <div class="surface p-6 hover-rise reveal-delay-2">
+      <div class="surface p-6 reveal-delay-2">
         <div class="h-10 w-10 rounded-2xl bg-slate-800 text-white flex items-center justify-center font-semibold">03</div>
         <h2 class="mt-4 text-lg font-semibold">Save + sync</h2>
         <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
           Commits, branches, and pushes happen inside Falck with the same standards you expect.
         </p>
       </div>
-      <div class="surface p-6 hover-rise reveal-delay-3">
+      <div class="surface p-6 reveal-delay-3">
         <div class="h-10 w-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-semibold">04</div>
         <h2 class="mt-4 text-lg font-semibold">Review normally</h2>
         <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
@@ -68,7 +68,7 @@ import { resolvePath } from '../config/site';
     </div>
   </section>
 
-  <section class="container mx-auto px-6 py-16">
+  <section class="container mx-auto px-6 py-20">
     <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
       <div class="space-y-4 reveal">
         <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Why it works</p>
@@ -92,7 +92,7 @@ import { resolvePath } from '../config/site';
           </div>
         </div>
       </div>
-      <div class="surface p-6 hover-rise reveal-delay-1">
+      <div class="surface p-6 reveal-delay-1">
         <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
           <span>Falck in action</span>
           <span class="text-emerald-500">Live branch</span>
@@ -115,7 +115,7 @@ import { resolvePath } from '../config/site';
     </div>
   </section>
 
-  <section class="container mx-auto px-6 pb-24">
+  <section class="container mx-auto px-6 pb-28">
     <div class="surface p-10 md:p-12 text-center reveal">
       <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Ready to try it?</p>
       <h2 class="mt-4 text-3xl font-semibold text-slate-950 dark:text-white">Invite your first non-technical collaborator</h2>
@@ -123,8 +123,7 @@ import { resolvePath } from '../config/site';
         Set up Falck once, and let everyone contribute ideas that can actually be merged.
       </p>
       <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-        <Button>Get early access</Button>
-        <Button variant="secondary">Talk to the team</Button>
+        <Button href={resolvePath('/download')}>Go to downloads</Button>
       </div>
     </div>
   </section>

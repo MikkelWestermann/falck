@@ -12,9 +12,9 @@ const base =
   'px-6 py-3 rounded-full font-semibold tracking-wide transition-all duration-200 shadow-sm inline-flex items-center justify-center gap-2';
 const variants = {
   primary:
-    'bg-[rgb(var(--color-primary))] text-white hover:-translate-y-0.5 hover:shadow-[0_20px_50px_-20px_rgba(16,185,129,0.6)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgb(var(--color-primary))]',
+    'bg-[rgb(var(--color-primary))] text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgb(var(--color-primary))]',
   secondary:
-    'bg-white/80 text-slate-900 border border-slate-200/80 hover:border-slate-300 hover:bg-white dark:bg-slate-900/70 dark:text-white dark:border-slate-700/80 dark:hover:border-slate-600',
+    'bg-white/80 text-slate-900 border border-slate-200/80 dark:bg-slate-900/70 dark:text-white dark:border-slate-700/80',
 };
 const classes = `${base} ${variants[variant as keyof typeof variants]} ${className}`.trim();
 ---

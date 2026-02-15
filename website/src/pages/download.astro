@@ -7,7 +7,7 @@ import Button from '../components/Button.astro';
   title="Falck | Download"
   description="Get the latest Falck desktop release for Windows, macOS, and Linux."
 >
-  <section class="relative overflow-hidden pt-24 pb-16">
+  <section class="relative overflow-hidden pt-24 pb-20">
     <div class="absolute inset-0 -z-10">
       <div class="absolute inset-0 backdrop-grid opacity-60"></div>
       <div class="absolute -top-20 left-[12%] h-[320px] w-[320px] rounded-full bg-emerald-300/40 blur-[140px] glow-pulse"></div>
@@ -77,7 +77,7 @@ import Button from '../components/Button.astro';
     </div>
   </section>
 
-  <section class="container mx-auto px-6 py-16 pb-24">
+  <section class="container mx-auto px-6 py-20 pb-28">
     <div id="loader" class="surface p-8 text-center reveal">
       <p id="loader-message" class="text-xs uppercase tracking-[0.3em] text-slate-400">
         Detecting your device and fetching the latest release
@@ -165,7 +165,7 @@ import Button from '../components/Button.astro';
         </div>
         <div class="text-sm text-slate-500">
           Looking for older versions?
-          <a id="all-releases" class="font-semibold text-emerald-600 hover:text-emerald-500 transition" href="#" target="_blank" rel="noreferrer">
+          <a id="all-releases" class="font-semibold text-emerald-600" href="#" target="_blank" rel="noreferrer">
             Browse all releases ->
           </a>
         </div>
@@ -335,7 +335,7 @@ import Button from '../components/Button.astro';
       const card = document.createElement('a');
       card.href = asset.browser_download_url;
       card.className =
-        'surface-muted p-5 text-sm text-slate-700 dark:text-slate-200 hover-rise transition flex flex-col gap-3';
+        'surface-muted p-5 text-sm text-slate-700 dark:text-slate-200 transition flex flex-col gap-3';
       card.setAttribute('download', '');
 
       const name = document.createElement('p');

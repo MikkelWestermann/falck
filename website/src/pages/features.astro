@@ -8,7 +8,7 @@ import { resolvePath } from '../config/site';
   title="Falck | Feature Pages"
   description="Setup concierge, project branches, save queue, and sync tools that make Falck feel like home for non-technical builders."
 >
-  <section class="relative overflow-hidden pt-24 pb-16">
+  <section class="relative overflow-hidden pt-24 pb-20">
     <div class="absolute inset-0 -z-10">
       <div class="absolute inset-0 backdrop-grid opacity-60"></div>
       <div class="absolute -top-20 left-[10%] h-[320px] w-[320px] rounded-full bg-emerald-300/40 blur-[140px] glow-pulse"></div>
@@ -27,14 +27,14 @@ import { resolvePath } from '../config/site';
           their standards, and everyone ships faster.
         </p>
         <div class="flex flex-col sm:flex-row gap-4">
-          <Button>Request a demo</Button>
-          <Button href={resolvePath('/download')} variant="secondary">Download Falck</Button>
+          <Button href={resolvePath('/download')}>Download Falck</Button>
+          <Button href={resolvePath('/download')} variant="secondary">See download options</Button>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="container mx-auto px-6 py-16">
+  <section class="container mx-auto px-6 py-20">
     <div class="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] items-center">
       <div class="space-y-4 reveal">
         <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Setup concierge</p>
@@ -57,7 +57,7 @@ import { resolvePath } from '../config/site';
           </div>
         </div>
       </div>
-      <div class="surface p-6 hover-rise reveal-delay-1">
+      <div class="surface p-6 reveal-delay-1">
         <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
           <span>Setup status</span>
           <span class="text-emerald-500">Ready</span>
@@ -86,9 +86,9 @@ import { resolvePath } from '../config/site';
     </div>
   </section>
 
-  <section class="container mx-auto px-6 py-16">
+  <section class="container mx-auto px-6 py-20">
     <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
-      <div class="order-2 lg:order-1 surface p-6 hover-rise reveal">
+      <div class="order-2 lg:order-1 surface p-6 reveal">
         <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
           <span>Project tools</span>
           <span class="text-slate-500">Active: launch-idea</span>
@@ -136,7 +136,7 @@ import { resolvePath } from '../config/site';
     </div>
   </section>
 
-  <section class="container mx-auto px-6 py-16">
+  <section class="container mx-auto px-6 py-20">
     <div class="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] items-center">
       <div class="space-y-4 reveal">
         <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Sync + review</p>
@@ -159,7 +159,7 @@ import { resolvePath } from '../config/site';
           </div>
         </div>
       </div>
-      <div class="surface p-6 hover-rise reveal-delay-1">
+      <div class="surface p-6 reveal-delay-1">
         <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
           <span>Sync</span>
           <span class="text-emerald-500">origin/main</span>
@@ -185,7 +185,7 @@ import { resolvePath } from '../config/site';
     </div>
   </section>
 
-  <section class="container mx-auto px-6 pb-24">
+  <section class="container mx-auto px-6 pb-28">
     <div class="surface p-10 md:p-12 text-center reveal">
       <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Want the tour?</p>
       <h2 class="mt-4 text-3xl font-semibold text-slate-950 dark:text-white">See the feature pages in action</h2>
@@ -193,8 +193,7 @@ import { resolvePath } from '../config/site';
         Falck looks and feels like a modern desktop app, with everything you need to ship in one place.
       </p>
       <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-        <Button>Book a demo</Button>
-        <Button href={resolvePath('/download')} variant="secondary">Download Falck</Button>
+        <Button href={resolvePath('/download')}>Go to downloads</Button>
       </div>
     </div>
   </section>

@@ -9,7 +9,7 @@ import whichWay from '../assets/which-way.jpg';
   title="Falck | Modes"
   description="Two ways to use Falck: a local greenfield studio or a team-ready workflow for existing applications."
 >
-  <section class="relative overflow-hidden pt-24 pb-16">
+  <section class="relative overflow-hidden pt-24 pb-20">
     <div class="absolute inset-0 -z-10">
       <div class="absolute inset-0 backdrop-grid opacity-60"></div>
       <div class="absolute -top-24 left-[10%] h-[360px] w-[360px] rounded-full bg-emerald-300/40 blur-[140px] glow-pulse"></div>
@@ -31,11 +31,10 @@ import whichWay from '../assets/which-way.jpg';
           </p>
           <div class="flex flex-col sm:flex-row gap-4">
             <Button href={resolvePath('/download')}>Download Falck</Button>
-            <Button variant="secondary">See a walkthrough</Button>
+            <Button href={resolvePath('/download')} variant="secondary">See download options</Button>
           </div>
         </div>
         <div class="relative reveal-delay-2">
-          <div class="absolute -top-6 right-4 h-20 w-20 rounded-2xl border border-emerald-200/60 dark:border-emerald-400/30 bg-white/70 dark:bg-slate-900/70 backdrop-blur float-slower"></div>
           <div class="surface w-full max-w-md mx-auto overflow-hidden p-0">
             <img
               src={whichWay.src}
@@ -50,15 +49,15 @@ import whichWay from '../assets/which-way.jpg';
     </div>
   </section>
 
-  <section class="container mx-auto px-6 py-16">
+  <section class="container mx-auto px-6 py-20">
     <div class="grid gap-8 lg:grid-cols-2">
-      <div class="surface p-8 hover-rise reveal">
+      <div class="surface p-8 reveal">
         <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Mode 01</p>
         <h2 class="mt-4 text-2xl font-semibold">Local studio for greenfield ideas</h2>
-        <p class="mt-3 text-slate-600 dark:text-slate-300">
-          A local, open source alternative to Lovable. Bring your own model, describe the idea, and Falck builds the full
-          project with structure, setup, and previews.
-        </p>
+          <p class="mt-3 text-slate-600 dark:text-slate-300">
+            A local, open source alternative to Lovable. Bring your own model, describe the idea, and Falck builds the full
+            project with structure, setup, and previews.
+          </p>
         <div class="mt-6 grid gap-3 text-sm text-slate-600 dark:text-slate-300">
           <div class="flex items-center gap-2">
             <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
@@ -78,7 +77,7 @@ import whichWay from '../assets/which-way.jpg';
         </div>
       </div>
 
-      <div class="surface p-8 hover-rise reveal-delay-1">
+      <div class="surface p-8 reveal-delay-1">
         <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Mode 02</p>
         <h2 class="mt-4 text-2xl font-semibold">Team mode for real applications</h2>
         <p class="mt-3 text-slate-600 dark:text-slate-300">
@@ -106,7 +105,7 @@ import whichWay from '../assets/which-way.jpg';
     </div>
   </section>
 
-  <section class="container mx-auto px-6 pb-24">
+  <section class="container mx-auto px-6 pb-28">
     <div class="surface p-10 md:p-12 text-center reveal">
       <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Not sure?</p>
       <h2 class="mt-4 text-3xl font-semibold text-slate-950 dark:text-white">Start local, scale into team mode</h2>
@@ -116,7 +115,6 @@ import whichWay from '../assets/which-way.jpg';
       </p>
       <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
         <Button href={resolvePath('/download')}>Download Falck</Button>
-        <Button variant="secondary">Talk to us</Button>
       </div>
     </div>
   </section>
