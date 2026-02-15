@@ -20,7 +20,50 @@ export interface Provider {
   models: string[];
 }
 
+export interface OpenCodeProviderListItem {
+  id: string;
+  name: string;
+  env: string[];
+  source?: "env" | "config" | "custom" | "api";
+  modelCount: number;
+}
+
+export interface OpenCodeProviderList {
+  all: OpenCodeProviderListItem[];
+  default: Record<string, string>;
+  connected: string[];
+}
+
+export type ProviderAuthMethod = {
+  type: "oauth" | "api";
+  label: string;
+};
+
+export type ProviderAuthResponse = Record<string, ProviderAuthMethod[]>;
+
+export type ProviderAuthAuthorization = {
+  url: string;
+  method: "auto" | "code";
+  instructions: string;
+};
+
+export interface OpenCodeProviderConfig {
+  npm?: string;
+  name?: string;
+  env?: string[];
+  options?: Record<string, unknown>;
+  models?: Record<string, { name?: string; [key: string]: unknown }>;
+}
+
+export interface OpenCodeConfigData {
+  provider?: Record<string, OpenCodeProviderConfig>;
+  disabled_providers?: string[];
+  enabled_providers?: string[];
+  [key: string]: unknown;
+}
+
 export interface OpenCodeConfig {
+  config: OpenCodeConfigData;
   providers: Provider[];
   defaults: Record<string, string>;
 }
@@ -108,6 +151,35 @@ export const opencodeService = {
       providers: Provider[];
       defaults: Record<string, string>;
     }>;
+  },
+
+  async listProviderCatalog(directory?: string): Promise<OpenCodeProviderList> {
+    return withRetry(() => sendCommand("providerList", {}, directory)) as Promise<OpenCodeProviderList>;
+  },
+
+  async getProviderAuth(directory?: string): Promise<ProviderAuthResponse> {
+    return withRetry(() => sendCommand("providerAuth", {}, directory)) as Promise<ProviderAuthResponse>;
+  },
+
+  async authorizeProviderOAuth(
+    providerID: string,
+    method: number,
+    directory?: string,
+  ): Promise<ProviderAuthAuthorization> {
+    return withRetry(() =>
+      sendCommand("providerOauthAuthorize", { providerID, method }, directory),
+    ) as Promise<ProviderAuthAuthorization>;
+  },
+
+  async callbackProviderOAuth(
+    providerID: string,
+    method: number,
+    code?: string,
+    directory?: string,
+  ): Promise<{ success: boolean }> {
+    return withRetry(() =>
+      sendCommand("providerOauthCallback", { providerID, method, code }, directory),
+    ) as Promise<{ success: boolean }>;
   },
 
   async createSession(
@@ -209,6 +281,22 @@ export const opencodeService = {
     )) as { success: boolean };
 
     return result.success;
+  },
+
+  async removeAuth(providerID: string): Promise<boolean> {
+    const result = (await withRetry(() =>
+      sendCommand("removeAuth", { providerID }),
+    )) as { success: boolean };
+
+    return result.success;
+  },
+
+  async updateConfig(config: OpenCodeConfigData): Promise<unknown> {
+    return withRetry(() => sendCommand("updateConfig", { config }, undefined));
+  },
+
+  async dispose(): Promise<unknown> {
+    return withRetry(() => sendCommand("dispose", {}, undefined));
   },
 
   async checkInstalled(): Promise<OpenCodeStatus> {

@@ -13,7 +13,11 @@ type RequestMessage = {
   model?: string;
   message?: string;
   provider?: string;
+  providerID?: string;
   apiKey?: string;
+  method?: number;
+  code?: string;
+  config?: unknown;
   system?: string;
 };
 
@@ -315,6 +319,27 @@ async function handleCommand(request: RequestMessage) {
       case "getProviders":
         await handleGetProviders(directory);
         break;
+      case "providerList":
+        await handleProviderList(directory);
+        break;
+      case "providerAuth":
+        await handleProviderAuth(directory);
+        break;
+      case "providerOauthAuthorize":
+        await handleProviderOauthAuthorize(args, directory);
+        break;
+      case "providerOauthCallback":
+        await handleProviderOauthCallback(args, directory);
+        break;
+      case "removeAuth":
+        await handleRemoveAuth(args);
+        break;
+      case "updateConfig":
+        await handleUpdateConfig(args);
+        break;
+      case "dispose":
+        await handleDispose();
+        break;
       default:
         sendError(`Unknown command: ${cmd}`, "UNKNOWN_CMD");
     }
@@ -378,6 +403,117 @@ async function handleGetProviders(directory?: string) {
       providers: uiProviders.providers,
       defaults: uiProviders.defaults,
     },
+  });
+}
+
+async function handleProviderList(directory?: string) {
+  const providers = unwrapData(await client.provider.list({ directory }));
+  const summary = {
+    all: (providers?.all ?? []).map((provider: any) => ({
+      id: provider.id,
+      name: provider.name ?? provider.id,
+      env: provider.env ?? [],
+      source: provider.source,
+      modelCount: Object.keys(provider.models ?? {}).length,
+    })),
+    default: providers?.default ?? {},
+    connected: providers?.connected ?? [],
+  };
+  sendMessage({
+    type: "success",
+    cmd: "providerList",
+    data: summary,
+  });
+}
+
+async function handleProviderAuth(directory?: string) {
+  const methods = unwrapData(await client.provider.auth({ directory }));
+  sendMessage({
+    type: "success",
+    cmd: "providerAuth",
+    data: methods ?? {},
+  });
+}
+
+async function handleProviderOauthAuthorize(
+  { providerID, method }: RequestMessage,
+  directory?: string,
+) {
+  if (!providerID || typeof method !== "number") {
+    sendError("providerID and method are required", "INVALID_ARGUMENT");
+    return;
+  }
+  const authorization = unwrapData(
+    await client.provider.oauth.authorize({
+      providerID,
+      method,
+      directory,
+    }),
+  );
+  sendMessage({
+    type: "success",
+    cmd: "providerOauthAuthorize",
+    data: authorization,
+  });
+}
+
+async function handleProviderOauthCallback(
+  { providerID, method, code }: RequestMessage,
+  directory?: string,
+) {
+  if (!providerID || typeof method !== "number") {
+    sendError("providerID and method are required", "INVALID_ARGUMENT");
+    return;
+  }
+  const success = unwrapData(
+    await client.provider.oauth.callback({
+      providerID,
+      method,
+      code,
+      directory,
+    }),
+  );
+  sendMessage({
+    type: "success",
+    cmd: "providerOauthCallback",
+    data: { success },
+  });
+}
+
+async function handleRemoveAuth({ providerID }: RequestMessage) {
+  if (!providerID) {
+    sendError("providerID is required", "INVALID_ARGUMENT");
+    return;
+  }
+  const success = unwrapData(await client.auth.remove({ providerID }));
+  sendMessage({
+    type: "success",
+    cmd: "removeAuth",
+    data: { success },
+  });
+}
+
+async function handleUpdateConfig({ config }: RequestMessage) {
+  if (!config || typeof config !== "object") {
+    sendError("config is required", "INVALID_ARGUMENT");
+    return;
+  }
+  const updated = unwrapData(
+    await client.global.config.update({ config }),
+  );
+  sendMessage({
+    type: "success",
+    cmd: "updateConfig",
+    data: updated,
+  });
+}
+
+async function handleDispose() {
+  const result = unwrapData(await client.global.dispose());
+  sendMessage({
+    type: "success",
+    cmd: "dispose",
+    data: result,
   });
 }
 
