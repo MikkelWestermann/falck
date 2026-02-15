@@ -309,6 +309,8 @@ export const MessageResponse = memo(
     <Streamdown
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        "[&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-5 [&_ol]:pl-5 [&_ul]:list-disc [&_ol]:list-decimal",
+        "[&_li]:text-muted-foreground [&_li+li]:mt-1 [&_li>ul]:mt-1 [&_li>ol]:mt-1",
         className
       )}
       plugins={{ code, mermaid, math, cjk }}
