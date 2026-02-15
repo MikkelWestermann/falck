@@ -60,6 +60,48 @@ pub struct GithubRepo {
     pub owner: GithubOwner,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubCreatePullRequestInput {
+    pub repo_full_name: String,
+    pub title: String,
+    pub head: String,
+    pub base: String,
+    pub body: Option<String>,
+    pub draft: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GithubPullRequest {
+    pub id: u64,
+    pub number: u64,
+    pub html_url: String,
+    pub url: String,
+    pub state: String,
+    pub title: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubReviewRequestResult {
+    pub requested: Vec<String>,
+    pub skipped: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubRepoLookupInput {
+    pub repo_full_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubRequestReviewersInput {
+    pub repo_full_name: String,
+    pub pull_number: u64,
+    pub reviewers: Vec<String>,
+}
+
 fn github_client_id() -> Result<String, String> {
     std::env::var("GITHUB_CLIENT_ID")
         .or_else(|_| std::env::var("FALCK_GITHUB_CLIENT_ID"))
@@ -321,6 +363,283 @@ pub async fn github_list_repos(
     }
 
     Ok(repos)
+}
+
+#[tauri::command]
+pub async fn github_list_repo_collaborators(
+    app: AppHandle,
+    client: State<'_, Client>,
+    input: GithubRepoLookupInput,
+) -> Result<Vec<GithubUser>, String> {
+    let repo_full_name = input.repo_full_name.trim();
+    if repo_full_name.is_empty() {
+        return Err("GitHub repository is required.".to_string());
+    }
+
+    let parts: Vec<&str> = repo_full_name
+        .split('/')
+        .filter(|part| !part.trim().is_empty())
+        .collect();
+    if parts.len() != 2 {
+        return Err("GitHub repository must be in the form owner/repo.".to_string());
+    }
+    let owner = parts[0];
+    let repo = parts[1];
+
+    let token = load_token(&app)?;
+    let mut url = format!(
+        "{}/repos/{}/{}/collaborators?per_page=100",
+        API_BASE, owner, repo
+    );
+    let mut users = Vec::new();
+
+    loop {
+        let response = client
+            .get(&url)
+            .headers(build_api_headers(&token))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if response.status() == StatusCode::UNAUTHORIZED {
+            return Err("GitHub token is invalid or expired.".to_string());
+        }
+
+        if !response.status().is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!("GitHub collaborators fetch failed: {}", body));
+        }
+
+        let headers = response.headers().clone();
+        let mut page = response
+            .json::<Vec<GithubUser>>()
+            .await
+            .map_err(|e| e.to_string())?;
+        users.append(&mut page);
+
+        let next = headers
+            .get(header::LINK)
+            .and_then(|value| value.to_str().ok())
+            .and_then(parse_next_link);
+        if let Some(next_url) = next {
+            url = next_url;
+        } else {
+            break;
+        }
+    }
+
+    Ok(users)
+}
+
+#[tauri::command]
+pub async fn github_request_reviewers(
+    app: AppHandle,
+    client: State<'_, Client>,
+    input: GithubRequestReviewersInput,
+) -> Result<GithubReviewRequestResult, String> {
+    let mut reviewers: Vec<String> = input
+        .reviewers
+        .into_iter()
+        .map(|reviewer| reviewer.trim().to_string())
+        .filter(|reviewer| !reviewer.is_empty())
+        .collect();
+    reviewers.sort();
+    reviewers.dedup();
+    if reviewers.is_empty() {
+        return Ok(GithubReviewRequestResult {
+            requested: Vec::new(),
+            skipped: Vec::new(),
+        });
+    }
+
+    let repo_full_name = input.repo_full_name.trim();
+    if repo_full_name.is_empty() {
+        return Err("GitHub repository is required.".to_string());
+    }
+
+    let parts: Vec<&str> = repo_full_name
+        .split('/')
+        .filter(|part| !part.trim().is_empty())
+        .collect();
+    if parts.len() != 2 {
+        return Err("GitHub repository must be in the form owner/repo.".to_string());
+    }
+    let owner = parts[0];
+    let repo = parts[1];
+
+    let token = load_token(&app)?;
+    let response = client
+        .post(format!(
+            "{}/repos/{}/{}/pulls/{}/requested_reviewers",
+            API_BASE, owner, repo, input.pull_number
+        ))
+        .headers(build_api_headers(&token))
+        .json(&json!({ "reviewers": reviewers.clone() }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if response.status() == StatusCode::UNAUTHORIZED {
+        return Err("GitHub token is invalid or expired.".to_string());
+    }
+
+    if response.status() == StatusCode::UNPROCESSABLE_ENTITY {
+        let payload = response
+            .json::<serde_json::Value>()
+            .await
+            .unwrap_or_default();
+        let message = payload
+            .get("message")
+            .and_then(|value| value.as_str())
+            .unwrap_or("Reviewers could not be requested.");
+
+        let mut invalid: Vec<String> = Vec::new();
+        if let Some(errors) = payload.get("errors").and_then(|value| value.as_array()) {
+            for error in errors {
+                if let Some(msg) = error.get("message").and_then(|value| value.as_str()) {
+                    if let Some(list) = msg.split("Could not request reviews from:").nth(1) {
+                        for name in list.split(',') {
+                            let cleaned = name.trim();
+                            if !cleaned.is_empty() {
+                                invalid.push(cleaned.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        invalid.sort();
+        invalid.dedup();
+
+        if invalid.is_empty() {
+            return Err(message.to_string());
+        }
+
+        let valid: Vec<String> = reviewers
+            .iter()
+            .filter(|reviewer| !invalid.contains(reviewer))
+            .cloned()
+            .collect();
+
+        if valid.is_empty() {
+            return Err("None of the selected people could be added.".to_string());
+        }
+
+        let retry_response = client
+            .post(format!(
+                "{}/repos/{}/{}/pulls/{}/requested_reviewers",
+                API_BASE, owner, repo, input.pull_number
+            ))
+            .headers(build_api_headers(&token))
+            .json(&json!({ "reviewers": valid }))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if retry_response.status() == StatusCode::UNAUTHORIZED {
+            return Err("GitHub token is invalid or expired.".to_string());
+        }
+
+        if !retry_response.status().is_success() {
+            let body = retry_response.text().await.unwrap_or_default();
+            return Err(format!("GitHub reviewer request failed: {}", body));
+        }
+
+        return Ok(GithubReviewRequestResult {
+            requested: reviewers
+                .into_iter()
+                .filter(|reviewer| !invalid.contains(&reviewer))
+                .collect(),
+            skipped: invalid,
+        });
+    }
+
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("GitHub reviewer request failed: {}", body));
+    }
+
+    Ok(GithubReviewRequestResult {
+        requested: reviewers,
+        skipped: Vec::new(),
+    })
+}
+
+#[tauri::command]
+pub async fn github_create_pull_request(
+    app: AppHandle,
+    client: State<'_, Client>,
+    input: GithubCreatePullRequestInput,
+) -> Result<GithubPullRequest, String> {
+    let repo_full_name = input.repo_full_name.trim();
+    if repo_full_name.is_empty() {
+        return Err("GitHub repository is required.".to_string());
+    }
+    if input.title.trim().is_empty() {
+        return Err("Pull request title is required.".to_string());
+    }
+    if input.head.trim().is_empty() {
+        return Err("Pull request head branch is required.".to_string());
+    }
+    if input.base.trim().is_empty() {
+        return Err("Pull request base branch is required.".to_string());
+    }
+
+    let parts: Vec<&str> = repo_full_name
+        .split('/')
+        .filter(|part| !part.trim().is_empty())
+        .collect();
+    if parts.len() != 2 {
+        return Err("GitHub repository must be in the form owner/repo.".to_string());
+    }
+    let owner = parts[0];
+    let repo = parts[1];
+
+    let token = load_token(&app)?;
+    let body = input
+        .body
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let response = client
+        .post(format!("{}/repos/{}/{}/pulls", API_BASE, owner, repo))
+        .headers(build_api_headers(&token))
+        .json(&json!({
+            "title": input.title.trim(),
+            "head": input.head.trim(),
+            "base": input.base.trim(),
+            "body": body,
+            "draft": input.draft.unwrap_or(false),
+        }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if response.status() == StatusCode::UNAUTHORIZED {
+        return Err("GitHub token is invalid or expired.".to_string());
+    }
+
+    if response.status() == StatusCode::UNPROCESSABLE_ENTITY {
+        let payload = response
+            .json::<serde_json::Value>()
+            .await
+            .unwrap_or_default();
+        let message = payload
+            .get("message")
+            .and_then(|value| value.as_str())
+            .unwrap_or("Pull request could not be created.");
+        return Err(message.to_string());
+    }
+
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("GitHub pull request failed: {}", body));
+    }
+
+    response
+        .json::<GithubPullRequest>()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 pub async fn github_create_repo(

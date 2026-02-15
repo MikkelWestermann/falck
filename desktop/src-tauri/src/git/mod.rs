@@ -553,6 +553,17 @@ pub fn list_remotes(path: &str) -> GitResult<Vec<String>> {
     Ok(remote_names)
 }
 
+pub fn get_remote_url(path: &str, name: &str) -> GitResult<String> {
+    let repo = open_repository(path)?;
+    let remote = repo.find_remote(name)?;
+    let url = remote.pushurl().or_else(|| remote.url());
+    let resolved = url
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| GitError::Git(format!("Remote '{}' has no URL.", name)))?;
+    Ok(resolved)
+}
+
 pub fn add_or_update_remote(path: &str, name: &str, url: &str) -> GitResult<()> {
     let repo = open_repository(path)?;
     if repo.find_remote(name).is_ok() {

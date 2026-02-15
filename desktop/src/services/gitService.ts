@@ -129,6 +129,10 @@ export const gitService = {
     return invoke("get_remotes", { path });
   },
 
+  async getRemoteUrl(path: string, remote: string): Promise<string> {
+    return invoke("get_remote_url", { path, remote });
+  },
+
   async saveRepo(name: string, path: string): Promise<void> {
     return invoke("save_repo_entry", { name, path });
   },

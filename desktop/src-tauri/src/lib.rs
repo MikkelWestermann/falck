@@ -9,8 +9,8 @@ mod storage;
 use git::{
     checkout_branch, clone_repository, create_branch, create_commit, current_branch, delete_branch,
     discard_changes as discard_git_changes, get_commit_history, get_project_history,
-    get_repository_info, list_remotes, pull_from_remote, push_to_remote,
-    reset_to_commit as reset_git_to_commit, stage_file, unstage_file,
+    get_remote_url as get_git_remote_url, get_repository_info, list_remotes, pull_from_remote,
+    push_to_remote, reset_to_commit as reset_git_to_commit, stage_file, unstage_file,
 };
 use opencode::{
     check_command_exists, check_opencode_installed, install_opencode, opencode_send, OpencodeState,
@@ -137,6 +137,11 @@ fn get_remotes(path: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
+fn get_remote_url(path: String, remote: String) -> Result<String, String> {
+    get_git_remote_url(&path, &remote).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn save_repo_entry(app: tauri::AppHandle, name: String, path: String) -> Result<(), String> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -195,6 +200,7 @@ pub fn run() {
             push,
             pull,
             get_remotes,
+            get_remote_url,
             save_repo_entry,
             list_repo_entries,
             remove_repo_entry,
@@ -215,6 +221,9 @@ pub fn run() {
             github::github_clear_token,
             github::github_get_user,
             github::github_list_repos,
+            github::github_list_repo_collaborators,
+            github::github_request_reviewers,
+            github::github_create_pull_request,
             github::github_add_ssh_key,
             project::create_astro_project,
             falck::load_falck_config,

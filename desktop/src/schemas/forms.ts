@@ -45,6 +45,11 @@ export const createBranchSchema = z.object({
     .regex(branchNamePattern, "Invalid project name"),
 });
 
+export const pullRequestSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  base: z.string().min(1, "Starting point is required"),
+});
+
 export const createAISessionSchema = z.object({
   sessionName: z.string().min(1, "Session name is required"),
   description: z.string().optional(),
@@ -123,6 +128,7 @@ export type CloneRepoInput = z.infer<typeof cloneRepoSchema>;
 export type OpenRepoInput = z.infer<typeof openRepoSchema>;
 export type CommitInput = z.infer<typeof commitSchema>;
 export type CreateBranchInput = z.infer<typeof createBranchSchema>;
+export type PullRequestInput = z.infer<typeof pullRequestSchema>;
 export type CreateAISessionInput = z.infer<typeof createAISessionSchema>;
 export type CreateAstroProjectInput = z.infer<typeof createAstroProjectSchema>;
 export type SetAPIKeyInput = z.infer<typeof setAPIKeySchema>;

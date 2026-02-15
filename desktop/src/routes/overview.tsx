@@ -6,6 +6,7 @@ import { SaveChangesDialog } from "@/components/SaveChangesDialog";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { AIChat } from "@/components/AIChat";
 import { ChatHeaderActions } from "@/components/ChatHeaderActions";
+import { FinishProjectDialog } from "@/components/FinishProjectDialog";
 import { FalckDashboard } from "@/components/falck/FalckDashboard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ function OverviewRoute() {
     useState(false);
   const [showVersionHistoryDialog, setShowVersionHistoryDialog] =
     useState(false);
+  const [showFinishDialog, setShowFinishDialog] = useState(false);
   const [pullLoading, setPullLoading] = useState(false);
   const [pullError, setPullError] = useState<string | null>(null);
   const [defaultBranch, setDefaultBranch] = useState<string | null>(null);
@@ -306,6 +308,11 @@ function OverviewRoute() {
   const hasChanges = repoInfo.is_dirty;
   const changeCount = repoInfo.status_files.length;
   const saveBlocked = Boolean(saveBlockedReason);
+  const isDefaultProject =
+    resolvedDefaultBranch !== null &&
+    resolvedDefaultBranch === repoInfo.head_branch;
+  const showFinishCta =
+    !hasChanges && !isDefaultProject && repoInfo.head_branch !== "detached";
   const repoName =
     repoPath
       ?.replace(/[/\\]+$/, "")
@@ -355,16 +362,30 @@ function OverviewRoute() {
                     All changes saved
                   </Badge>
                 )}
-                <Button
-                  onClick={() => setShowSaveDialog(true)}
-                  disabled={!hasChanges || saveBlocked}
-                  size="lg"
-                  className="min-w-[170px] shadow-[var(--shadow-lg)]"
-                >
-                  Save
-                </Button>
+                <div className="flex flex-col items-start gap-2">
+                  <Button
+                    onClick={() => setShowSaveDialog(true)}
+                    disabled={!hasChanges || saveBlocked}
+                    size="lg"
+                    className="min-w-[170px] shadow-[var(--shadow-lg)]"
+                  >
+                    Save
+                  </Button>
+                </div>
               </div>
             </div>
+
+            {showFinishCta && (
+              <div className="flex justify-end mt-[-12px] mb-[-17px]">
+                <Button
+                  variant="ghost"
+                  className="h-auto px-0 py-0 text-[9px] text-muted-foreground hover:text-foreground text-right"
+                  onClick={() => setShowFinishDialog(true)}
+                >
+                  Done with this project?
+                </Button>
+              </div>
+            )}
 
             <div
               className="flex flex-wrap items-center justify-between gap-3"
@@ -396,6 +417,13 @@ function OverviewRoute() {
                 >
                   <History className="h-4 w-4" />
                   Version history
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowFinishDialog(true)}
+                >
+                  Close project
                 </Button>
               </div>
               <ChatHeaderActions />
@@ -464,6 +492,14 @@ function OverviewRoute() {
         saveDisabledReason={
           saveBlocked ? (saveBlockedReason ?? undefined) : undefined
         }
+      />
+      <FinishProjectDialog
+        open={showFinishDialog}
+        onOpenChange={setShowFinishDialog}
+        repoPath={repoPath}
+        repoInfo={repoInfo}
+        defaultBranch={resolvedDefaultBranch ?? undefined}
+        branchPrefix={branchPrefix}
       />
       <Dialog
         open={showDiscardConfirmDialog}
