@@ -375,18 +375,6 @@ function OverviewRoute() {
               </div>
             </div>
 
-            {showFinishCta && (
-              <div className="flex justify-end mt-[-12px] mb-[-17px]">
-                <Button
-                  variant="ghost"
-                  className="h-auto px-0 py-0 text-[9px] text-muted-foreground hover:text-foreground text-right"
-                  onClick={() => setShowFinishDialog(true)}
-                >
-                  Done with this project?
-                </Button>
-              </div>
-            )}
-
             <div
               className="flex flex-wrap items-center justify-between gap-3"
               data-tauri-drag-region="false"
@@ -418,13 +406,18 @@ function OverviewRoute() {
                   <History className="h-4 w-4" />
                   Version history
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowFinishDialog(true)}
-                >
-                  Close project
-                </Button>
+                {
+                  // if branch is not the default branch, show the close project button
+                  repoInfo.head_branch !== resolvedDefaultBranch && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowFinishDialog(true)}
+                    >
+                      Finish project
+                    </Button>
+                  )
+                }
               </div>
               <ChatHeaderActions />
               {/* <Button
