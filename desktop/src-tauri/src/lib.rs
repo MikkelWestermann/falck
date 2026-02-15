@@ -5,6 +5,7 @@ mod opencode;
 mod project;
 mod ssh;
 mod storage;
+mod blocking;
 
 use git::{
     checkout_branch, clone_repository, create_branch, create_commit, current_branch, delete_branch,
@@ -20,154 +21,177 @@ use storage::{
     get_default_repo_dir, list_repos, remove_repo, save_repo, set_default_repo_dir, SavedRepo,
 };
 use tauri::Manager;
+use blocking::run_blocking;
 
 // ============================================================================
 // Tauri Commands
 // ============================================================================
 
 #[tauri::command]
-fn clone_repo(url: String, path: String, ssh_key_path: Option<String>) -> Result<String, String> {
-    let ssh_key_path =
-        ssh_key_path.ok_or_else(|| "SSH key is required to clone repositories.".to_string())?;
-    if let Some(parent) = std::path::Path::new(&path).parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    clone_repository(&url, &path, &ssh_key_path).map_err(|e| e.to_string())?;
-    Ok("Repository cloned successfully".to_string())
+async fn clone_repo(url: String, path: String, ssh_key_path: Option<String>) -> Result<String, String> {
+    run_blocking(move || {
+        let ssh_key_path =
+            ssh_key_path.ok_or_else(|| "SSH key is required to clone repositories.".to_string())?;
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        clone_repository(&url, &path, &ssh_key_path).map_err(|e| e.to_string())?;
+        Ok("Repository cloned successfully".to_string())
+    }).await
 }
 
 #[tauri::command]
-fn get_repo_info(path: String) -> Result<git::RepositoryInfo, String> {
-    get_repository_info(&path).map_err(|e| e.to_string())
+async fn get_repo_info(path: String) -> Result<git::RepositoryInfo, String> {
+    run_blocking(move || get_repository_info(&path).map_err(|e| e.to_string())).await
 }
 
 #[tauri::command]
-fn get_commits(path: String, count: usize) -> Result<Vec<git::CommitInfo>, String> {
-    get_commit_history(&path, count).map_err(|e| e.to_string())
+async fn get_commits(path: String, count: usize) -> Result<Vec<git::CommitInfo>, String> {
+    run_blocking(move || get_commit_history(&path, count).map_err(|e| e.to_string())).await
 }
 
 #[tauri::command]
-fn get_project_commits(
+async fn get_project_commits(
     path: String,
     base_branch: String,
     count: usize,
 ) -> Result<Vec<git::CommitInfo>, String> {
-    get_project_history(&path, &base_branch, count).map_err(|e| e.to_string())
+    run_blocking(move || get_project_history(&path, &base_branch, count).map_err(|e| e.to_string())).await
 }
 
 #[tauri::command]
-fn stage(path: String, file: String) -> Result<String, String> {
-    stage_file(&path, &file).map_err(|e| e.to_string())?;
-    Ok("File staged".to_string())
+async fn stage(path: String, file: String) -> Result<String, String> {
+    run_blocking(move || {
+        stage_file(&path, &file).map_err(|e| e.to_string())?;
+        Ok("File staged".to_string())
+    }).await
 }
 
 #[tauri::command]
-fn unstage(path: String, file: String) -> Result<String, String> {
-    unstage_file(&path, &file).map_err(|e| e.to_string())?;
-    Ok("File unstaged".to_string())
+async fn unstage(path: String, file: String) -> Result<String, String> {
+    run_blocking(move || {
+        unstage_file(&path, &file).map_err(|e| e.to_string())?;
+        Ok("File unstaged".to_string())
+    }).await
 }
 
 #[tauri::command]
-fn commit(path: String, message: String, author: String, email: String) -> Result<String, String> {
-    create_commit(&path, &message, &author, &email).map_err(|e| e.to_string())
+async fn commit(path: String, message: String, author: String, email: String) -> Result<String, String> {
+    run_blocking(move || create_commit(&path, &message, &author, &email).map_err(|e| e.to_string())).await
 }
 
 #[tauri::command]
-fn reset_to_commit(path: String, commit_id: String) -> Result<String, String> {
-    reset_git_to_commit(&path, &commit_id).map_err(|e| e.to_string())?;
-    Ok("Reset to selected commit".to_string())
+async fn reset_to_commit(path: String, commit_id: String) -> Result<String, String> {
+    run_blocking(move || {
+        reset_git_to_commit(&path, &commit_id).map_err(|e| e.to_string())?;
+        Ok("Reset to selected commit".to_string())
+    }).await
 }
 
 #[tauri::command]
-fn discard_changes(path: String) -> Result<String, String> {
-    discard_git_changes(&path).map_err(|e| e.to_string())?;
-    Ok("Discarded changes".to_string())
+async fn discard_changes(path: String) -> Result<String, String> {
+    run_blocking(move || {
+        discard_git_changes(&path).map_err(|e| e.to_string())?;
+        Ok("Discarded changes".to_string())
+    }).await
 }
 
 #[tauri::command]
-fn create_new_branch(path: String, branch: String) -> Result<String, String> {
-    create_branch(&path, &branch).map_err(|e| e.to_string())?;
-    Ok(format!("Branch '{}' created", branch))
+async fn create_new_branch(path: String, branch: String) -> Result<String, String> {
+    run_blocking(move || {
+        create_branch(&path, &branch).map_err(|e| e.to_string())?;
+        Ok(format!("Branch '{}' created", branch))
+    }).await
 }
 
 #[tauri::command]
-fn delete_current_branch(path: String, branch: String) -> Result<String, String> {
-    if let Ok(current) = current_branch(&path) {
-        if current == branch {
-            return Err("Cannot delete the current branch.".to_string());
+async fn delete_current_branch(path: String, branch: String) -> Result<String, String> {
+    run_blocking(move || {
+        if let Ok(current) = current_branch(&path) {
+            if current == branch {
+                return Err("Cannot delete the current branch.".to_string());
+            }
         }
-    }
-    delete_branch(&path, &branch).map_err(|e| e.to_string())?;
-    Ok(format!("Branch '{}' deleted", branch))
+        delete_branch(&path, &branch).map_err(|e| e.to_string())?;
+        Ok(format!("Branch '{}' deleted", branch))
+    }).await
 }
 
 #[tauri::command]
-fn checkout(path: String, branch: String) -> Result<String, String> {
-    checkout_branch(&path, &branch).map_err(|e| e.to_string())?;
-    Ok(format!("Checked out branch '{}'", branch))
+async fn checkout(path: String, branch: String) -> Result<String, String> {
+    run_blocking(move || {
+        checkout_branch(&path, &branch).map_err(|e| e.to_string())?;
+        Ok(format!("Checked out branch '{}'", branch))
+    }).await
 }
 
 #[tauri::command]
-fn push(
+async fn push(
     path: String,
     remote: String,
     branch: String,
     ssh_key_path: Option<String>,
 ) -> Result<String, String> {
-    let ssh_key_path = ssh_key_path.ok_or_else(|| "SSH key is required to push.".to_string())?;
-    push_to_remote(&path, &remote, &branch, &ssh_key_path).map_err(|e| e.to_string())?;
-    Ok("Pushed successfully".to_string())
+    run_blocking(move || {
+        let ssh_key_path = ssh_key_path.ok_or_else(|| "SSH key is required to push.".to_string())?;
+        push_to_remote(&path, &remote, &branch, &ssh_key_path).map_err(|e| e.to_string())?;
+        Ok("Pushed successfully".to_string())
+    }).await
 }
 
 #[tauri::command]
-fn pull(
+async fn pull(
     path: String,
     remote: String,
     branch: String,
     ssh_key_path: Option<String>,
 ) -> Result<String, String> {
-    let ssh_key_path = ssh_key_path.ok_or_else(|| "SSH key is required to pull.".to_string())?;
-    pull_from_remote(&path, &remote, &branch, &ssh_key_path).map_err(|e| e.to_string())?;
-    Ok("Pulled successfully".to_string())
+    run_blocking(move || {
+        let ssh_key_path = ssh_key_path.ok_or_else(|| "SSH key is required to pull.".to_string())?;
+        pull_from_remote(&path, &remote, &branch, &ssh_key_path).map_err(|e| e.to_string())?;
+        Ok("Pulled successfully".to_string())
+    }).await
 }
 
 #[tauri::command]
-fn get_remotes(path: String) -> Result<Vec<String>, String> {
-    list_remotes(&path).map_err(|e| e.to_string())
+async fn get_remotes(path: String) -> Result<Vec<String>, String> {
+    run_blocking(move || list_remotes(&path).map_err(|e| e.to_string())).await
 }
 
 #[tauri::command]
-fn get_remote_url(path: String, remote: String) -> Result<String, String> {
-    get_git_remote_url(&path, &remote).map_err(|e| e.to_string())
+async fn get_remote_url(path: String, remote: String) -> Result<String, String> {
+    run_blocking(move || get_git_remote_url(&path, &remote).map_err(|e| e.to_string())).await
 }
 
 #[tauri::command]
-fn save_repo_entry(app: tauri::AppHandle, name: String, path: String) -> Result<(), String> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_secs() as i64;
-    save_repo(&app, &name, &path, now)
+async fn save_repo_entry(app: tauri::AppHandle, name: String, path: String) -> Result<(), String> {
+    run_blocking(move || {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_secs() as i64;
+        save_repo(&app, &name, &path, now)
+    }).await
 }
 
 #[tauri::command]
-fn list_repo_entries(app: tauri::AppHandle) -> Result<Vec<SavedRepo>, String> {
-    list_repos(&app)
+async fn list_repo_entries(app: tauri::AppHandle) -> Result<Vec<SavedRepo>, String> {
+    run_blocking(move || list_repos(&app)).await
 }
 
 #[tauri::command]
-fn remove_repo_entry(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    remove_repo(&app, &path)
+async fn remove_repo_entry(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    run_blocking(move || remove_repo(&app, &path)).await
 }
 
 #[tauri::command]
-fn get_default_repo_directory(app: tauri::AppHandle) -> Result<String, String> {
-    get_default_repo_dir(&app)
+async fn get_default_repo_directory(app: tauri::AppHandle) -> Result<String, String> {
+    run_blocking(move || get_default_repo_dir(&app)).await
 }
 
 #[tauri::command]
-fn set_default_repo_directory(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    set_default_repo_dir(&app, &path)
+async fn set_default_repo_directory(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    run_blocking(move || set_default_repo_dir(&app, &path)).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

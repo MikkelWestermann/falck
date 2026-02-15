@@ -8,6 +8,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, Runtime, State};
 
+use crate::blocking::run_blocking;
 use crate::falck::load_shell_env;
 
 pub struct OpencodeState(pub Mutex<Option<SidecarProcess>>);
@@ -32,35 +33,38 @@ pub struct OpenCodeStatus {
 }
 
 #[tauri::command]
-pub fn check_opencode_installed(app: AppHandle) -> Result<OpenCodeStatus, String> {
-    let Some(path) = find_opencode_cli(&app) else {
-        return Ok(OpenCodeStatus {
-            installed: false,
-            version: None,
-            path: None,
-        });
-    };
+pub async fn check_opencode_installed(app: AppHandle) -> Result<OpenCodeStatus, String> {
+    run_blocking(move || {
+        let Some(path) = find_opencode_cli(&app) else {
+            return Ok(OpenCodeStatus {
+                installed: false,
+                version: None,
+                path: None,
+            });
+        };
 
-    let output = Command::new(&path).arg("--version").output();
-    let version = output
-        .ok()
-        .filter(|result| result.status.success())
-        .and_then(|result| {
-            let stdout = String::from_utf8_lossy(&result.stdout);
-            let stderr = String::from_utf8_lossy(&result.stderr);
-            let combined = format!("{}\n{}", stdout, stderr);
-            combined
-                .lines()
-                .map(str::trim)
-                .find(|line| !line.is_empty())
-                .map(str::to_string)
-        });
+        let output = Command::new(&path).arg("--version").output();
+        let version = output
+            .ok()
+            .filter(|result| result.status.success())
+            .and_then(|result| {
+                let stdout = String::from_utf8_lossy(&result.stdout);
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                let combined = format!("{}\n{}", stdout, stderr);
+                combined
+                    .lines()
+                    .map(str::trim)
+                    .find(|line| !line.is_empty())
+                    .map(str::to_string)
+            });
 
-    Ok(OpenCodeStatus {
-        installed: true,
-        version,
-        path: Some(path.to_string_lossy().to_string()),
+        Ok(OpenCodeStatus {
+            installed: true,
+            version,
+            path: Some(path.to_string_lossy().to_string()),
+        })
     })
+    .await
 }
 
 #[tauri::command]
@@ -73,57 +77,64 @@ pub async fn install_opencode(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn check_command_exists(command: String) -> bool {
-    command_exists(&command)
+pub async fn check_command_exists(command: String) -> bool {
+    tauri::async_runtime::spawn_blocking(move || command_exists(&command))
+        .await
+        .unwrap_or(false)
 }
 
 #[tauri::command]
-pub fn opencode_send(
+pub async fn opencode_send(
     app: AppHandle,
-    state: State<OpencodeState>,
+    _state: State<'_, OpencodeState>,
     cmd: String,
     args: Value,
 ) -> Result<Value, String> {
-    let mut guard = state
-        .0
-        .lock()
-        .map_err(|_| "Sidecar lock poisoned".to_string())?;
-    if guard.is_none() {
-        *guard = Some(spawn_sidecar(&app)?);
-    }
+    run_blocking(move || {
+        let state = app.state::<OpencodeState>();
+        let mut guard = state
+            .0
+            .lock()
+            .map_err(|_| "Sidecar lock poisoned".to_string())?;
+        if guard.is_none() {
+            *guard = Some(spawn_sidecar(&app)?);
+        }
 
-    let process = guard.as_mut().ok_or("Sidecar not available")?;
-    let request = build_request(cmd, args)?;
+        let process = guard.as_mut().ok_or("Sidecar not available")?;
+        let request = build_request(cmd, args)?;
 
-    process
-        .stdin
-        .write_all(request.as_bytes())
-        .map_err(|e| e.to_string())?;
-    process.stdin.write_all(b"\n").map_err(|e| e.to_string())?;
-    process.stdin.flush().map_err(|e| e.to_string())?;
+        process
+            .stdin
+            .write_all(request.as_bytes())
+            .map_err(|e| e.to_string())?;
+        process.stdin.write_all(b"\n").map_err(|e| e.to_string())?;
+        process.stdin.flush().map_err(|e| e.to_string())?;
 
-    let mut response_line = String::new();
-    let bytes_read = process
-        .stdout
-        .read_line(&mut response_line)
-        .map_err(|e| e.to_string())?;
+        let mut response_line = String::new();
+        let bytes_read = process
+            .stdout
+            .read_line(&mut response_line)
+            .map_err(|e| e.to_string())?;
 
-    if bytes_read == 0 {
-        *guard = None;
-        return Err("OpenCode sidecar exited unexpectedly".to_string());
-    }
+        if bytes_read == 0 {
+            *guard = None;
+            return Err("OpenCode sidecar exited unexpectedly".to_string());
+        }
 
-    let response: Value = serde_json::from_str(response_line.trim()).map_err(|e| e.to_string())?;
+        let response: Value =
+            serde_json::from_str(response_line.trim()).map_err(|e| e.to_string())?;
 
-    match response.get("type").and_then(Value::as_str) {
-        Some("success") => Ok(response.get("data").cloned().unwrap_or(Value::Null)),
-        Some("error") => Err(response
-            .get("message")
-            .and_then(Value::as_str)
-            .unwrap_or("Unknown OpenCode error")
-            .to_string()),
-        _ => Err("Unexpected OpenCode response".to_string()),
-    }
+        match response.get("type").and_then(Value::as_str) {
+            Some("success") => Ok(response.get("data").cloned().unwrap_or(Value::Null)),
+            Some("error") => Err(response
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("Unknown OpenCode error")
+                .to_string()),
+            _ => Err("Unexpected OpenCode response".to_string()),
+        }
+    })
+    .await
 }
 
 fn build_request(cmd: String, args: Value) -> Result<String, String> {

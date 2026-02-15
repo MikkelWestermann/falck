@@ -1,3 +1,4 @@
+use crate::blocking::run_blocking;
 use crate::{git, github, opencode};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -150,10 +151,15 @@ pub async fn create_astro_project(
     } else {
         None
     };
-    std::fs::create_dir_all(parent_dir).map_err(|e| e.to_string())?;
+    let parent_dir = parent_dir.to_path_buf();
+    std::fs::create_dir_all(&parent_dir).map_err(|e| e.to_string())?;
 
     emit_progress(&app, &progress_id, "Checking Bun installation", None);
-    let bun_path = ensure_bun_installed(&app, &progress_id)?;
+    let bun_path = {
+        let app = app.clone();
+        let progress_id = progress_id.clone();
+        run_blocking(move || ensure_bun_installed(&app, &progress_id)).await?
+    };
     let project_dir = local_path
         .file_name()
         .and_then(|name| name.to_str())
@@ -166,7 +172,7 @@ pub async fn create_astro_project(
         "Scaffolding Astro template",
         Some(format!("bun {}", bun_args.join(" "))),
     );
-    run_bun_create(&bun_path, parent_dir, &bun_args)?;
+    run_blocking(move || run_bun_create(&bun_path, &parent_dir, &bun_args)).await?;
 
     if monorepo_enabled {
         let root_path = monorepo_root_path
@@ -184,7 +190,8 @@ pub async fn create_astro_project(
             root_path,
             &local_path,
             &monorepo_install_command,
-        )?;
+        )
+        .await?;
         emit_progress(&app, &progress_id, "Finalizing project", None);
         let repo_name = root_path
             .file_name()
@@ -201,14 +208,32 @@ pub async fn create_astro_project(
     }
 
     emit_progress(&app, &progress_id, "Initializing Git repository", None);
-    if git::open_repository(&input.local_path).is_err() {
-        git::init_repository(&input.local_path).map_err(|e| e.to_string())?;
-    }
+    run_blocking({
+        let local_path = input.local_path.clone();
+        move || {
+            if git::open_repository(&local_path).is_err() {
+                git::init_repository(&local_path).map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        }
+    })
+    .await?;
 
     emit_progress(&app, &progress_id, "Staging files", None);
-    git::stage_all(&input.local_path).map_err(|e| e.to_string())?;
-    let has_commits = git::has_commits(&input.local_path).map_err(|e| e.to_string())?;
-    let repo_info = git::get_repository_info(&input.local_path).map_err(|e| e.to_string())?;
+    run_blocking({
+        let local_path = input.local_path.clone();
+        move || git::stage_all(&local_path).map_err(|e| e.to_string())
+    })
+    .await?;
+    let (has_commits, repo_info) = run_blocking({
+        let local_path = input.local_path.clone();
+        move || {
+            let has_commits = git::has_commits(&local_path).map_err(|e| e.to_string())?;
+            let repo_info = git::get_repository_info(&local_path).map_err(|e| e.to_string())?;
+            Ok((has_commits, repo_info))
+        }
+    })
+    .await?;
     if repo_info.is_dirty || !has_commits {
         let name = input.project_name.trim();
         let message = if name.is_empty() {
@@ -222,11 +247,20 @@ pub async fn create_astro_project(
             "Creating initial commit",
             Some(message.clone()),
         );
-        git::create_commit(&input.local_path, &message, "", "").map_err(|e| e.to_string())?;
+        run_blocking({
+            let local_path = input.local_path.clone();
+            let message = message.clone();
+            move || git::create_commit(&local_path, &message, "", "").map_err(|e| e.to_string())
+        })
+        .await?;
     }
 
     emit_progress(&app, &progress_id, "Ensuring main branch", None);
-    let branch = git::ensure_main_branch(&input.local_path).map_err(|e| e.to_string())?;
+    let branch = run_blocking({
+        let local_path = input.local_path.clone();
+        move || git::ensure_main_branch(&local_path).map_err(|e| e.to_string())
+    })
+    .await?;
 
     let (repo_name, repo_full_name, repo_ssh_url) =
         resolve_repo_destination(&app, &client, &input, &progress_id).await?;
@@ -237,17 +271,26 @@ pub async fn create_astro_project(
         "Configuring Git remote",
         Some(format!("origin -> {}", repo_full_name)),
     );
-    git::add_or_update_remote(&input.local_path, "origin", &repo_ssh_url)
-        .map_err(|e| e.to_string())?;
+    run_blocking({
+        let local_path = input.local_path.clone();
+        let repo_ssh_url = repo_ssh_url.clone();
+        move || git::add_or_update_remote(&local_path, "origin", &repo_ssh_url).map_err(|e| e.to_string())
+    })
+    .await?;
     emit_progress(
         &app,
         &progress_id,
         "Pushing to GitHub",
         Some(format!("origin/{}", branch)),
     );
-    if let Err(err) = git::push_to_remote(&input.local_path, "origin", &branch, &input.ssh_key_path)
+    if let Err(message) = run_blocking({
+        let local_path = input.local_path.clone();
+        let branch = branch.clone();
+        let ssh_key_path = input.ssh_key_path.clone();
+        move || git::push_to_remote(&local_path, "origin", &branch, &ssh_key_path).map_err(|e| e.to_string())
+    })
+    .await
     {
-        let message = err.to_string();
         let lower = message.to_lowercase();
         if lower.contains("auth") || lower.contains("authentication") {
             return Err(format!(
@@ -333,7 +376,7 @@ async fn resolve_repo_destination(
     Ok((repo.name, repo.full_name, repo.ssh_url))
 }
 
-fn merge_falck_config_with_opencode(
+async fn merge_falck_config_with_opencode(
     app: &AppHandle,
     opencode_state: State<'_, opencode::OpencodeState>,
     monorepo_root: &Path,
@@ -350,7 +393,8 @@ fn merge_falck_config_with_opencode(
             "description": "Merge Falck config from Astro template into monorepo",
             "directory": directory,
         }),
-    )?;
+    )
+    .await?;
 
     let session_path = session_data
         .get("sessionPath")
@@ -407,7 +451,8 @@ Only touch Falck config files for this change and keep YAML formatting clean. Re
             "message": prompt,
             "directory": directory,
         }),
-    )?;
+    )
+    .await?;
 
     Ok(())
 }

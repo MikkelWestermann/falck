@@ -12,6 +12,8 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::State;
 
+use crate::blocking::{run_blocking, run_blocking_value};
+
 lazy_static! {
     static ref SECRETS_STORE: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
 }
@@ -1329,8 +1331,11 @@ impl<'a> ConditionParser<'a> {
 
 #[tauri::command]
 pub async fn load_falck_config(repo_path: String) -> Result<FalckConfig, String> {
-    let path = Path::new(&repo_path);
-    load_config(path).map_err(|e| e.to_string())
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        load_config(path).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1338,15 +1343,18 @@ pub async fn check_falck_prerequisites(
     repo_path: String,
     app_id: String,
 ) -> Result<Vec<PrerequisiteCheckResult>, String> {
-    let path = Path::new(&repo_path);
-    let config = load_config(path).map_err(|e| e.to_string())?;
-    let app = config
-        .applications
-        .iter()
-        .find(|app| app.id == app_id)
-        .ok_or_else(|| "Application not found".to_string())?;
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        let config = load_config(path).map_err(|e| e.to_string())?;
+        let app = config
+            .applications
+            .iter()
+            .find(|app| app.id == app_id)
+            .ok_or_else(|| "Application not found".to_string())?;
 
-    check_app_prerequisites(path, &config, app).map_err(|e| e.to_string())
+        check_app_prerequisites(path, &config, app).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1356,16 +1364,19 @@ pub async fn run_falck_prerequisite_install(
     prereq_index: usize,
     option_index: usize,
 ) -> Result<String, String> {
-    let path = Path::new(&repo_path);
-    let config = load_config(path).map_err(|e| e.to_string())?;
-    let app = config
-        .applications
-        .iter()
-        .find(|app| app.id == app_id)
-        .ok_or_else(|| "Application not found".to_string())?;
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        let config = load_config(path).map_err(|e| e.to_string())?;
+        let app = config
+            .applications
+            .iter()
+            .find(|app| app.id == app_id)
+            .ok_or_else(|| "Application not found".to_string())?;
 
-    run_prerequisite_install(path, &config, app, prereq_index, option_index)
-        .map_err(|e| e.to_string())
+        run_prerequisite_install(path, &config, app, prereq_index, option_index)
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1373,15 +1384,18 @@ pub async fn get_app_secrets_for_config(
     repo_path: String,
     app_id: String,
 ) -> Result<Vec<Secret>, String> {
-    let path = Path::new(&repo_path);
-    let config = load_config(path).map_err(|e| e.to_string())?;
-    let app = config
-        .applications
-        .iter()
-        .find(|app| app.id == app_id)
-        .ok_or_else(|| "Application not found".to_string())?;
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        let config = load_config(path).map_err(|e| e.to_string())?;
+        let app = config
+            .applications
+            .iter()
+            .find(|app| app.id == app_id)
+            .ok_or_else(|| "Application not found".to_string())?;
 
-    Ok(get_app_secrets(app))
+        Ok(get_app_secrets(app))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1392,15 +1406,18 @@ pub async fn set_app_secret(name: String, value: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn check_secrets_satisfied(repo_path: String, app_id: String) -> Result<bool, String> {
-    let path = Path::new(&repo_path);
-    let config = load_config(path).map_err(|e| e.to_string())?;
-    let app = config
-        .applications
-        .iter()
-        .find(|app| app.id == app_id)
-        .ok_or_else(|| "Application not found".to_string())?;
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        let config = load_config(path).map_err(|e| e.to_string())?;
+        let app = config
+            .applications
+            .iter()
+            .find(|app| app.id == app_id)
+            .ok_or_else(|| "Application not found".to_string())?;
 
-    Ok(check_app_secrets_satisfied(app))
+        Ok(check_app_secrets_satisfied(app))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1408,28 +1425,34 @@ pub async fn check_falck_setup(
     repo_path: String,
     app_id: String,
 ) -> Result<SetupCheckResult, String> {
-    let path = Path::new(&repo_path);
-    let config = load_config(path).map_err(|e| e.to_string())?;
-    let app = config
-        .applications
-        .iter()
-        .find(|app| app.id == app_id)
-        .ok_or_else(|| "Application not found".to_string())?;
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        let config = load_config(path).map_err(|e| e.to_string())?;
+        let app = config
+            .applications
+            .iter()
+            .find(|app| app.id == app_id)
+            .ok_or_else(|| "Application not found".to_string())?;
 
-    check_setup_status(path, &config, app).map_err(|e| e.to_string())
+        check_setup_status(path, &config, app).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn run_falck_setup(repo_path: String, app_id: String) -> Result<String, String> {
-    let path = Path::new(&repo_path);
-    let config = load_config(path).map_err(|e| e.to_string())?;
-    let app = config
-        .applications
-        .iter()
-        .find(|app| app.id == app_id)
-        .ok_or_else(|| "Application not found".to_string())?;
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        let config = load_config(path).map_err(|e| e.to_string())?;
+        let app = config
+            .applications
+            .iter()
+            .find(|app| app.id == app_id)
+            .ok_or_else(|| "Application not found".to_string())?;
 
-    run_setup(path, &config, app).map_err(|e| e.to_string())
+        run_setup(path, &config, app).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1438,46 +1461,54 @@ pub async fn launch_falck_app(
     repo_path: String,
     app_id: String,
 ) -> Result<u32, String> {
-    let path = Path::new(&repo_path);
-    let config = load_config(path).map_err(|e| e.to_string())?;
-    let app = config
-        .applications
-        .iter()
-        .find(|app| app.id == app_id)
-        .ok_or_else(|| "Application not found".to_string())?;
+    let pid = run_blocking(move || {
+        let path = Path::new(&repo_path);
+        let config = load_config(path).map_err(|e| e.to_string())?;
+        let app = config
+            .applications
+            .iter()
+            .find(|app| app.id == app_id)
+            .ok_or_else(|| "Application not found".to_string())?;
 
-    let pid = launch_app(path, &config, app).map_err(|e| e.to_string())?;
+        launch_app(path, &config, app).map_err(|e| e.to_string())
+    })
+    .await?;
     register_running_app(&state, RunningFalckApp { pid });
     Ok(pid)
 }
 
 #[tauri::command]
 pub async fn run_falck_cleanup(repo_path: String, app_id: String) -> Result<String, String> {
-    let path = Path::new(&repo_path);
-    let config = load_config(path).map_err(|e| e.to_string())?;
-    let app = config
-        .applications
-        .iter()
-        .find(|app| app.id == app_id)
-        .ok_or_else(|| "Application not found".to_string())?;
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        let config = load_config(path).map_err(|e| e.to_string())?;
+        let app = config
+            .applications
+            .iter()
+            .find(|app| app.id == app_id)
+            .ok_or_else(|| "Application not found".to_string())?;
 
-    run_cleanup(path, &config, app).map_err(|e| e.to_string())
+        run_cleanup(path, &config, app).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn kill_falck_app(state: State<'_, FalckProcessState>, pid: u32) -> Result<(), String> {
     let _ = unregister_running_app(&state, pid);
-    kill_app(pid).map_err(|e| e.to_string())
+    run_blocking(move || kill_app(pid).map_err(|e| e.to_string())).await
 }
 
 #[tauri::command]
 pub async fn check_port_available(port: u16) -> bool {
-    is_port_available(port)
+    run_blocking_value(move || is_port_available(port))
+        .await
+        .unwrap_or(false)
 }
 
 #[tauri::command]
 pub async fn open_browser_to_url(url: String) -> Result<(), String> {
-    open::that(&url).map_err(|e| e.to_string())
+    run_blocking(move || open::that(&url).map_err(|e| e.to_string())).await
 }
 
 #[tauri::command]

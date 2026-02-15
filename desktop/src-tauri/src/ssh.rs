@@ -4,6 +4,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use crate::blocking::run_blocking;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SSHKey {
     pub name: String,
@@ -291,12 +293,12 @@ pub async fn generate_new_ssh_key(
     passphrase: Option<String>,
     key_type: String,
 ) -> Result<SSHKey, String> {
-    generate_ssh_key(&name, passphrase.as_deref(), &key_type)
+    run_blocking(move || generate_ssh_key(&name, passphrase.as_deref(), &key_type)).await
 }
 
 #[tauri::command]
 pub async fn list_ssh_keys() -> Result<Vec<SSHKey>, String> {
-    list_available_keys()
+    run_blocking(list_available_keys).await
 }
 
 #[tauri::command]
@@ -304,12 +306,13 @@ pub async fn add_ssh_key_to_agent(
     private_key_path: String,
     passphrase: Option<String>,
 ) -> Result<(), String> {
-    add_key_to_agent(Path::new(&private_key_path), passphrase.as_deref())
+    run_blocking(move || add_key_to_agent(Path::new(&private_key_path), passphrase.as_deref()))
+        .await
 }
 
 #[tauri::command]
 pub async fn test_ssh_github(private_key_path: String) -> Result<bool, String> {
-    test_github_connection(Path::new(&private_key_path))
+    run_blocking(move || test_github_connection(Path::new(&private_key_path))).await
 }
 
 #[tauri::command]
