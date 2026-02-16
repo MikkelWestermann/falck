@@ -79,6 +79,29 @@ export interface OpenCodeServerInfo {
   startedAt: number | null;
 }
 
+export type OpenCodeTextPartInput = {
+  type: "text";
+  text: string;
+};
+
+export type OpenCodeFilePartInput = {
+  type: "file";
+  mime: string;
+  url: string;
+  filename?: string;
+  source?: {
+    type: "file";
+    path: string;
+    text: {
+      value: string;
+      start: number;
+      end: number;
+    };
+  };
+};
+
+export type OpenCodePartInput = OpenCodeTextPartInput | OpenCodeFilePartInput;
+
 export interface OpenCodeInstallResult {
   success: boolean;
   message: string;
@@ -218,6 +241,7 @@ export const opencodeService = {
     messageId?: string,
     directory?: string,
     system?: string,
+    parts?: OpenCodePartInput[],
   ): Promise<{
     messageId?: string;
     sessionId?: string;
@@ -229,7 +253,7 @@ export const opencodeService = {
     return withRetry(() =>
       sendCommand(
         "prompt",
-        { sessionPath, message, model, messageID: messageId, system },
+        { sessionPath, message, model, messageID: messageId, system, parts },
         directory,
       ),
     ) as Promise<{
@@ -249,14 +273,40 @@ export const opencodeService = {
     messageId?: string,
     directory?: string,
     system?: string,
+    parts?: OpenCodePartInput[],
   ): Promise<{ queued: boolean; sessionId?: string }> {
     return withRetry(() =>
       sendCommand(
         "promptAsync",
-        { sessionPath, message, model, messageID: messageId, system },
+        { sessionPath, message, model, messageID: messageId, system, parts },
         directory,
       ),
     ) as Promise<{ queued: boolean; sessionId?: string }>;
+  },
+
+  async findFiles(
+    query: string,
+    directory?: string,
+    options?: { includeDirs?: boolean; limit?: number; type?: "file" | "directory" },
+  ): Promise<string[]> {
+    const dirs = options?.includeDirs ? "true" : "false";
+    const result = (await withRetry(() =>
+      sendCommand(
+        "findFiles",
+        {
+          query,
+          dirs,
+          limit: options?.limit,
+          type: options?.type,
+        },
+        directory,
+      ),
+    )) as string[] | { files?: string[] };
+
+    if (Array.isArray(result)) {
+      return result;
+    }
+    return result.files ?? [];
   },
 
   async listMessages(sessionPath: string, directory?: string): Promise<Message[]> {

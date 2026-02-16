@@ -1,4 +1,5 @@
 import {
+  type KeyboardEvent,
   type ReactElement,
   useCallback,
   useEffect,
@@ -15,12 +16,15 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ClockIcon,
+  FileIcon,
+  FolderIcon,
   PlusIcon,
   SparklesIcon,
   UploadCloudIcon,
   WrenchIcon,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
+import { nanoid } from "nanoid";
 
 import {
   Message as AIMessage,
@@ -72,7 +76,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { AssetUploadDialog } from "@/components/falck/AssetUploadDialog";
-import { opencodeService } from "@/services/opencodeService";
+import { opencodeService, type OpenCodePartInput } from "@/services/opencodeService";
 import type { FalckApplication } from "@/services/falckService";
 import { useAIChat, type ChatMessage } from "@/contexts/AIChatContext";
 
@@ -108,6 +112,116 @@ const ACTIVE_TOOL_STATES: ToolState[] = [
   "approval-requested",
   "approval-responded",
 ];
+
+type MentionOption = {
+  path: string;
+  display: string;
+  isDir: boolean;
+};
+
+type MentionItem = {
+  id: string;
+  path: string;
+};
+
+const normalizeMentionPath = (value: string) => {
+  let normalized = value.trim().replace(/\\/g, "/");
+  while (normalized.startsWith("./")) {
+    normalized = normalized.slice(2);
+  }
+  return normalized;
+};
+
+const isAbsolutePath = (value: string) =>
+  value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value);
+
+const joinPath = (base: string, relative: string) => {
+  const normalizedBase = base.replace(/[\\/]+$/, "");
+  const normalizedRel = relative.replace(/^[\\/]+/, "");
+  if (!normalizedBase) {
+    return normalizedRel;
+  }
+  const separator = normalizedBase.includes("\\") ? "\\" : "/";
+  return `${normalizedBase}${separator}${normalizedRel}`;
+};
+
+const resolveFilePath = (base: string, relative: string) => {
+  const cleaned = relative.replace(/^[.][\\/]/, "");
+  if (isAbsolutePath(cleaned)) {
+    return cleaned;
+  }
+  return joinPath(base, cleaned);
+};
+
+const encodeFilePath = (filepath: string): string => {
+  let normalized = filepath.replace(/\\/g, "/");
+  if (/^[A-Za-z]:/.test(normalized)) {
+    normalized = "/" + normalized;
+  }
+  return normalized
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+};
+
+const getFilename = (value: string) => {
+  const normalized = value.replace(/\\/g, "/");
+  const trimmed = normalized.endsWith("/")
+    ? normalized.replace(/\/+$/, "")
+    : normalized;
+  const parts = trimmed.split("/");
+  return parts[parts.length - 1] ?? value;
+};
+
+const buildMentionParts = (
+  text: string,
+  mentions: MentionItem[],
+  repoPath: string | null,
+): OpenCodePartInput[] => {
+  const parts: OpenCodePartInput[] = [{ type: "text", text }];
+  if (!repoPath || mentions.length === 0) {
+    return parts;
+  }
+
+  const counts = new Map<string, number>();
+  for (const mention of mentions) {
+    const normalized = normalizeMentionPath(mention.path);
+    counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
+  }
+
+  const tokenRegex = /@(\S+)/g;
+  let match: RegExpExecArray | null = null;
+
+  while ((match = tokenRegex.exec(text)) !== null) {
+    const rawPath = normalizeMentionPath(match[1] ?? "");
+    const count = counts.get(rawPath) ?? 0;
+    if (count <= 0) {
+      continue;
+    }
+    counts.set(rawPath, count - 1);
+
+    const absolute = resolveFilePath(repoPath, rawPath);
+    const token = match[0] ?? `@${rawPath}`;
+
+    parts.push({
+      type: "file",
+      mime: "text/plain",
+      url: `file://${encodeFilePath(absolute)}`,
+      filename: getFilename(rawPath),
+      source: {
+        type: "file",
+        path: absolute,
+        text: {
+          value: token,
+          start: match.index,
+          end: match.index + token.length,
+        },
+      },
+    });
+  }
+
+  return parts;
+};
 
 const normalizeAppRoot = (root: string) => {
   let normalized = root.trim();
@@ -479,6 +593,20 @@ export function AIChat({ activeApp }: AIChatProps) {
 
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
   const [inputMessage, setInputMessage] = useState("");
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionOptions, setMentionOptions] = useState<MentionOption[]>([]);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
+  const [mentionStatus, setMentionStatus] = useState<
+    "idle" | "loading" | "error"
+  >("idle");
+  const [mentionError, setMentionError] = useState<string | null>(null);
+  const [mentionAnchor, setMentionAnchor] = useState<{
+    start: number;
+    end: number;
+  } | null>(null);
+  const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
+  const [recentMentions, setRecentMentions] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
@@ -501,6 +629,7 @@ export function AIChat({ activeApp }: AIChatProps) {
   const roleByMessage = useRef<Map<string, "user" | "assistant">>(new Map());
   const pendingUserIds = useRef<Set<string>>(new Set());
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const [assetUploadOpen, setAssetUploadOpen] = useState(false);
   const [assetUploadFiles, setAssetUploadFiles] = useState<File[]>([]);
 
@@ -523,6 +652,226 @@ export function AIChat({ activeApp }: AIChatProps) {
   const selectedProvider = useMemo(
     () => providers.find((provider) => provider.models.includes(selectedModel)),
     [providers, selectedModel],
+  );
+
+  const updateMentionState = useCallback(
+    (value: string, cursor: number) => {
+      if (!repoPath) {
+        setMentionOpen(false);
+        setMentionQuery("");
+        setMentionAnchor(null);
+        setMentionStatus("idle");
+        setMentionError(null);
+        return;
+      }
+
+      const slice = value.slice(0, cursor);
+      const match = slice.match(/@(\S*)$/);
+      if (!match) {
+        setMentionOpen(false);
+        setMentionQuery("");
+        setMentionAnchor(null);
+        setMentionStatus("idle");
+        setMentionError(null);
+        return;
+      }
+
+      const query = match[1] ?? "";
+      const start = cursor - match[0].length;
+      const end = cursor;
+
+      setMentionOpen(true);
+      setMentionQuery(query);
+      setMentionAnchor({ start, end });
+      setMentionActiveIndex(0);
+    },
+    [repoPath],
+  );
+
+  const updateMentionFromCursor = useCallback(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const cursor = input.selectionStart ?? input.value.length;
+    updateMentionState(input.value, cursor);
+  }, [updateMentionState]);
+
+  const applyMention = useCallback(
+    (option: MentionOption) => {
+      if (!mentionAnchor) return;
+      const mentionToken = `@${option.path}`;
+      const cursor = mentionAnchor.start + mentionToken.length + 1;
+
+      setInputMessage((prev) => {
+        const before = prev.slice(0, mentionAnchor.start);
+        const after = prev.slice(mentionAnchor.end);
+        return `${before}${mentionToken} ${after}`;
+      });
+
+      setMentionItems((prev) => [
+        ...prev,
+        { id: nanoid(), path: option.path },
+      ]);
+
+      setRecentMentions((prev) => {
+        const next = [option.path, ...prev.filter((p) => p !== option.path)];
+        return next.slice(0, 10);
+      });
+
+      setMentionOpen(false);
+      setMentionQuery("");
+      setMentionAnchor(null);
+      setMentionOptions([]);
+
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.setSelectionRange(cursor, cursor);
+      });
+    },
+    [mentionAnchor],
+  );
+
+  useEffect(() => {
+    if (!mentionOpen) {
+      setMentionOptions([]);
+      setMentionActiveIndex(0);
+      setMentionStatus("idle");
+      setMentionError(null);
+    }
+  }, [mentionOpen]);
+
+  useEffect(() => {
+    if (!mentionOpen || !repoPath) return;
+    let cancelled = false;
+    const query = mentionQuery.trim();
+    setMentionStatus("loading");
+    setMentionError(null);
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const [fileResults, dirResults] = await Promise.all([
+          opencodeService.findFiles(query, repoPath, {
+            type: "file",
+            limit: 30,
+          }),
+          opencodeService.findFiles(query, repoPath, {
+            type: "directory",
+            limit: 20,
+            includeDirs: true,
+          }),
+        ]);
+
+        if (cancelled) return;
+
+        const normalizedQuery = normalizeMentionPath(query).toLowerCase();
+        const seen = new Set<string>();
+        const options: MentionOption[] = [];
+
+        const recentMatches = recentMentions.filter((path) => {
+          if (!normalizedQuery) return true;
+          return path.toLowerCase().includes(normalizedQuery);
+        });
+
+        for (const path of recentMatches) {
+          const normalized = normalizeMentionPath(path);
+          if (seen.has(normalized)) continue;
+          seen.add(normalized);
+          options.push({ path: normalized, display: normalized, isDir: false });
+        }
+
+        for (const path of dirResults) {
+          const normalized = normalizeMentionPath(path);
+          if (seen.has(normalized)) continue;
+          seen.add(normalized);
+          options.push({ path: normalized, display: normalized, isDir: true });
+        }
+
+        for (const path of fileResults) {
+          const normalized = normalizeMentionPath(path);
+          if (seen.has(normalized)) continue;
+          seen.add(normalized);
+          options.push({ path: normalized, display: normalized, isDir: false });
+        }
+
+        setMentionOptions(options);
+        setMentionActiveIndex((prev) => {
+          if (options.length === 0) return 0;
+          return Math.min(prev, options.length - 1);
+        });
+        setMentionStatus("idle");
+      } catch {
+        if (!cancelled) {
+          setMentionOptions([]);
+          setMentionStatus("error");
+          setMentionError("Unable to search files. Check OpenCode connection.");
+        }
+      }
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [mentionOpen, mentionQuery, repoPath, recentMentions]);
+
+  const handleMentionKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.isComposing || event.nativeEvent.isComposing) {
+        return;
+      }
+      if (!mentionOpen) return;
+      if (mentionOptions.length === 0) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setMentionOpen(false);
+        }
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setMentionActiveIndex((prev) =>
+          Math.min(prev + 1, mentionOptions.length - 1),
+        );
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setMentionActiveIndex((prev) => Math.max(prev - 1, 0));
+        return;
+      }
+
+      if (event.key === "Tab" || event.key === "Enter") {
+        event.preventDefault();
+        const option =
+          mentionOptions[mentionActiveIndex] ?? mentionOptions[0];
+        if (option) {
+          applyMention(option);
+        }
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMentionOpen(false);
+      }
+    },
+    [mentionOpen, mentionOptions, mentionActiveIndex, applyMention],
+  );
+
+  const handleMentionKeyUp = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.isComposing || event.nativeEvent.isComposing) {
+        return;
+      }
+      if (
+        mentionOpen &&
+        ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(event.key)
+      ) {
+        return;
+      }
+      updateMentionFromCursor();
+    },
+    [mentionOpen, updateMentionFromCursor],
   );
 
   const handleAssetDrop = useCallback(
@@ -1521,8 +1870,9 @@ export function AIChat({ activeApp }: AIChatProps) {
     });
 
   const handleSendMessage = async (messageText?: string) => {
-    const text = (messageText ?? inputMessage).trim();
-    if (!text || !currentSession) {
+    const rawText = messageText ?? inputMessage;
+    const trimmed = rawText.trim();
+    if (!trimmed || !currentSession) {
       return;
     }
 
@@ -1533,7 +1883,7 @@ export function AIChat({ activeApp }: AIChatProps) {
     const userMessage: ChatMessage = {
       id: messageId,
       role: "user",
-      text,
+      text: trimmed,
       timestamp: new Date().toISOString(),
       pending: true,
     };
@@ -1546,19 +1896,27 @@ export function AIChat({ activeApp }: AIChatProps) {
       next.splice(insertAt, 0, userMessage);
       return next;
     });
+    const mentionSnapshot = mentionItems.slice();
     setInputMessage("");
+    setMentionItems([]);
+    setMentionOpen(false);
+    setMentionQuery("");
+    setMentionAnchor(null);
+    setMentionOptions([]);
     setSending(true);
     setStreaming(true);
     setError("");
 
     try {
+      const parts = buildMentionParts(rawText, mentionSnapshot, repoPath);
       await opencodeService.sendPromptAsync(
         currentSession.path,
-        text,
+        rawText,
         selectedModel,
         messageId,
         repoPath,
         appFocusSystem,
+        parts,
       );
     } catch (err) {
       setError(`Failed to get response: ${String(err)}`);
@@ -1583,6 +1941,11 @@ export function AIChat({ activeApp }: AIChatProps) {
     setToolActivity([]);
     setSessionStatus(null);
     setAwaitingResponse(false);
+    setMentionItems([]);
+    setMentionOpen(false);
+    setMentionQuery("");
+    setMentionAnchor(null);
+    setMentionOptions([]);
   }, [currentSession?.path]);
 
   useEffect(() => {
@@ -1807,7 +2170,7 @@ export function AIChat({ activeApp }: AIChatProps) {
               </div>
 
               <div>
-                <div>
+                <div className="relative">
                   <PromptInput
                     onSubmit={(message, event) => {
                       event.preventDefault();
@@ -1817,12 +2180,24 @@ export function AIChat({ activeApp }: AIChatProps) {
                   >
                     <PromptInputBody>
                       <PromptInputTextarea
+                        ref={inputRef}
                         rows={3}
                         value={inputMessage}
                         className="bg-background"
-                        onChange={(event) =>
-                          setInputMessage(event.target.value)
-                        }
+                        onChange={(event) => {
+                          setInputMessage(event.target.value);
+                          const cursor =
+                            event.target.selectionStart ??
+                            event.target.value.length;
+                          updateMentionState(event.target.value, cursor);
+                        }}
+                        onKeyDown={handleMentionKeyDown}
+                        onKeyUp={handleMentionKeyUp}
+                        onClick={() => updateMentionFromCursor()}
+                        onFocus={() => updateMentionFromCursor()}
+                        onBlur={() => {
+                          window.setTimeout(() => setMentionOpen(false), 150);
+                        }}
                         placeholder={
                           currentSession
                             ? "Ask Falck AI. Press Enter to send."
@@ -1835,25 +2210,27 @@ export function AIChat({ activeApp }: AIChatProps) {
                       />
                     </PromptInputBody>
                     <PromptInputFooter className="border-t border-border/40 bg-card/90">
-                      <PromptInputTools className="text-xs text-muted-foreground">
+                      <PromptInputTools className="flex-col items-start gap-1 text-xs text-muted-foreground">
+                        <div
+                          className="flex flex-wrap items-center gap-2"
+                          aria-live="polite"
+                          aria-busy={hasActiveWork}
+                          title={statusMeta.title}
+                        >
+                          <span className="inline-flex items-center gap-1.5 text-[0.7rem] font-medium text-foreground/80">
+                            <span className="shrink-0">{statusMeta.icon}</span>
+                            <span>{activityLabel}</span>
+                          </span>
+                          <span className="text-muted-foreground/80">
+                            {statusMeta.description}
+                          </span>
+                        </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <span>
                             {currentSession
                               ? "Enter to send, Shift+Enter for a new line."
                               : "Create a session to start writing."}
                           </span>
-                          {hasActiveWork && (
-                            <>
-                              <span
-                                className="inline-flex items-center gap-1.5 text-[0.65rem] text-muted-foreground/80 animate-pulse"
-                                aria-live="polite"
-                                aria-busy="true"
-                              >
-                                <span className="inline-block size-1 shrink-0 rounded-full bg-muted-foreground/50" />
-                                <span>{activityLabel}</span>
-                              </span>
-                            </>
-                          )}
                         </div>
                       </PromptInputTools>
                       <PromptInputTools>
@@ -1950,6 +2327,88 @@ export function AIChat({ activeApp }: AIChatProps) {
                       </PromptInputTools>
                     </PromptInputFooter>
                   </PromptInput>
+
+                  {mentionOpen && (
+                    <div className="absolute bottom-full left-0 right-0 mb-2 max-h-64 overflow-auto rounded-xl border border-border/60 bg-card/95 shadow-[var(--shadow-xs)] backdrop-blur">
+                      {(mentionStatus !== "idle" ||
+                        mentionOptions.length === 0) && (
+                        <div
+                          className={cn(
+                            "px-3 py-2 text-xs",
+                            mentionStatus === "error"
+                              ? "text-destructive"
+                              : "text-muted-foreground",
+                          )}
+                          aria-live="polite"
+                        >
+                          {mentionStatus === "loading" && (
+                            <span className="inline-flex items-center gap-2">
+                              <Loader size={12} />
+                              Searching files...
+                            </span>
+                          )}
+                          {mentionStatus === "error" && (
+                            <span>
+                              {mentionError ||
+                                "Unable to search files. Check OpenCode connection."}
+                            </span>
+                          )}
+                          {mentionStatus === "idle" &&
+                            mentionOptions.length === 0 && (
+                              <span>No files found.</span>
+                            )}
+                        </div>
+                      )}
+                      {mentionOptions.length > 0 && (
+                        <div className="py-1">
+                          {mentionOptions.slice(0, 10).map((option, index) => {
+                            const separatorIndex =
+                              option.path.lastIndexOf("/");
+                            const dir =
+                              separatorIndex >= 0
+                                ? option.path.slice(0, separatorIndex + 1)
+                                : "";
+                            const name =
+                              separatorIndex >= 0
+                                ? option.path.slice(separatorIndex + 1)
+                                : option.path;
+
+                            return (
+                              <button
+                                key={`${option.path}-${index}`}
+                                type="button"
+                                className={cn(
+                                  "flex w-full items-center gap-2 px-3 py-2 text-sm text-left transition-colors",
+                                  index === mentionActiveIndex
+                                    ? "bg-accent"
+                                    : "hover:bg-accent/60",
+                                )}
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  applyMention(option);
+                                }}
+                                onMouseEnter={() =>
+                                  setMentionActiveIndex(index)
+                                }
+                              >
+                                {option.isDir ? (
+                                  <FolderIcon className="size-4 text-muted-foreground" />
+                                ) : (
+                                  <FileIcon className="size-4 text-muted-foreground" />
+                                )}
+                                <span className="truncate text-muted-foreground">
+                                  {dir}
+                                </span>
+                                <span className="truncate font-medium text-foreground">
+                                  {name || option.path}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

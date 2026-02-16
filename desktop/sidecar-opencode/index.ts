@@ -12,6 +12,7 @@ type RequestMessage = {
   description?: string;
   model?: string;
   message?: string;
+  parts?: Array<unknown>;
   provider?: string;
   providerID?: string;
   apiKey?: string;
@@ -19,6 +20,10 @@ type RequestMessage = {
   code?: string;
   config?: unknown;
   system?: string;
+  query?: string;
+  dirs?: "true" | "false";
+  type?: "file" | "directory";
+  limit?: number;
 };
 
 type ResponseMessage =
@@ -307,6 +312,9 @@ async function handleCommand(request: RequestMessage) {
       case "promptAsync":
         await handlePromptAsync(sessionPath, args, directory);
         break;
+      case "findFiles":
+        await handleFindFiles(args, directory);
+        break;
       case "listMessages":
         await handleListMessages(sessionPath, directory);
         break;
@@ -584,7 +592,7 @@ async function handleListSessions(directory?: string) {
 
 async function handlePrompt(
   sessionPath?: string,
-  { message, model, messageID, system }: RequestMessage = {},
+  { message, model, messageID, system, parts }: RequestMessage = {},
   directory?: string,
 ) {
   if (!sessionPath) {
@@ -598,13 +606,21 @@ async function handlePrompt(
           modelID: model.split("/").slice(1).join("/"),
         }
       : undefined;
+  const normalizedParts = Array.isArray(parts) ? parts.slice() : [];
+  if (!normalizedParts.some((part) => part && typeof part === "object" && "type" in part)) {
+    normalizedParts.length = 0;
+  }
+  if (!normalizedParts.some((part) => (part as { type?: string })?.type === "text")) {
+    normalizedParts.unshift({ type: "text", text: message ?? "" });
+  }
+
   const response = await client.session.prompt({
     sessionID: sessionPath,
     directory,
     messageID,
     model: modelParts,
     system,
-    parts: [{ type: "text", text: message ?? "" }],
+    parts: normalizedParts,
   });
   const data = unwrapData(response);
 
@@ -624,7 +640,7 @@ async function handlePrompt(
 
 async function handlePromptAsync(
   sessionPath?: string,
-  { message, model, messageID, system }: RequestMessage = {},
+  { message, model, messageID, system, parts }: RequestMessage = {},
   directory?: string,
 ) {
   if (!sessionPath) {
@@ -639,13 +655,21 @@ async function handlePromptAsync(
         }
       : undefined;
 
+  const normalizedParts = Array.isArray(parts) ? parts.slice() : [];
+  if (!normalizedParts.some((part) => part && typeof part === "object" && "type" in part)) {
+    normalizedParts.length = 0;
+  }
+  if (!normalizedParts.some((part) => (part as { type?: string })?.type === "text")) {
+    normalizedParts.unshift({ type: "text", text: message ?? "" });
+  }
+
   await client.session.promptAsync({
     sessionID: sessionPath,
     directory,
     messageID,
     model: modelParts,
     system,
-    parts: [{ type: "text", text: message ?? "" }],
+    parts: normalizedParts,
   });
 
   sendMessage({
@@ -655,6 +679,28 @@ async function handlePromptAsync(
       queued: true,
       sessionId: sessionPath,
     },
+  });
+}
+
+async function handleFindFiles(
+  { query, dirs, type, limit }: RequestMessage = {},
+  directory?: string,
+) {
+  const trimmed = typeof query === "string" ? query.trim() : "";
+  const data = unwrapData(
+    await client.find.files({
+      directory,
+      query: trimmed,
+      dirs,
+      type,
+      limit,
+    }),
+  );
+
+  sendMessage({
+    type: "success",
+    cmd: "findFiles",
+    data,
   });
 }
 
