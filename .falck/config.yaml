@@ -47,7 +47,7 @@ applications:
     description: "Falck website"
     root: "website"
     assets:
-      root: "./assets"
+      root: "./src/assets"
       subdirectories:
         - "images"
 

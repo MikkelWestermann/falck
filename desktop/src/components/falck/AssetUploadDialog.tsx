@@ -18,6 +18,7 @@ import {
   type AssetUploadFile,
   type FalckApplication,
 } from "@/services/falckService";
+import { slugifyFilename } from "@/lib/utils";
 import { FolderIcon, UploadCloudIcon } from "lucide-react";
 
 interface AssetUploadDialogProps {
@@ -182,7 +183,7 @@ export function AssetUploadDialog({
         files.map(async (file) => {
           const buffer = await file.arrayBuffer();
           return {
-            name: file.name,
+            name: slugifyFilename(file.name),
             bytes: Array.from(new Uint8Array(buffer)),
           };
         }),

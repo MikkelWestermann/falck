@@ -2159,7 +2159,7 @@ export function AIChat({ activeApp }: AIChatProps) {
                               <Dialog key={part.id}>
                                 <DialogTrigger asChild>
                                   <button
-                                    className="group flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground"
+                                    className="group flex w-fit items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground"
                                     type="button"
                                   >
                                     <WrenchIcon className="size-4 shrink-0" />

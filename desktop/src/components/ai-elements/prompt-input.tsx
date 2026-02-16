@@ -33,7 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { cn, slugifyFilename } from "@/lib/utils";
 import type { ChatStatus, FileUIPart, SourceDocumentUIPart } from "ai";
 import {
   CornerDownLeftIcon,
@@ -165,7 +165,7 @@ export function PromptInputProvider({
           type: "file" as const,
           url: URL.createObjectURL(file),
           mediaType: file.type,
-          filename: file.name,
+          filename: slugifyFilename(file.name),
         }))
       )
     );
@@ -455,7 +455,7 @@ export const PromptInput = ({
             type: "file",
             url: URL.createObjectURL(file),
             mediaType: file.type,
-            filename: file.name,
+            filename: slugifyFilename(file.name),
           });
         }
         return prev.concat(next);
