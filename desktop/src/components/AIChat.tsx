@@ -60,9 +60,16 @@ import {
   PromptInputBody,
   PromptInputFooter,
   PromptInputSubmit,
-  PromptInputTextarea,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import {
+  RichTextarea,
+  type RichTextareaRef,
+} from "@/components/ai-elements/rich-textarea";
+import {
+  SiteContextChip,
+  useMessageSegments,
+} from "@/components/ai-elements/site-context-chip";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -473,11 +480,15 @@ const useThrottledValue = (value: string, delay = TEXT_RENDER_THROTTLE_MS) => {
 const ThrottledMessageResponse = ({
   text,
   isStreaming,
+  from = "assistant",
 }: {
   text: string;
   isStreaming: boolean;
+  from?: "user" | "assistant";
 }) => {
   const throttled = useThrottledValue(text);
+  const segments = useMessageSegments(throttled);
+
   if (isStreaming) {
     return (
       <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
@@ -485,6 +496,21 @@ const ThrottledMessageResponse = ({
       </div>
     );
   }
+
+  if (from === "user" && segments.some((s) => s.type === "context")) {
+    return (
+      <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+        {segments.map((seg, i) =>
+          seg.type === "text" ? (
+            <span key={i}>{seg.content}</span>
+          ) : (
+            <SiteContextChip key={i} item={seg.item} />
+          ),
+        )}
+      </div>
+    );
+  }
+
   return <MessageResponse>{text}</MessageResponse>;
 };
 
@@ -629,7 +655,7 @@ export function AIChat({ activeApp }: AIChatProps) {
   const roleByMessage = useRef<Map<string, "user" | "assistant">>(new Map());
   const pendingUserIds = useRef<Set<string>>(new Set());
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const richInputRef = useRef<RichTextareaRef | null>(null);
   const [assetUploadOpen, setAssetUploadOpen] = useState(false);
   const [assetUploadFiles, setAssetUploadFiles] = useState<File[]>([]);
 
@@ -689,23 +715,23 @@ export function AIChat({ activeApp }: AIChatProps) {
   );
 
   const updateMentionFromCursor = useCallback(() => {
-    const input = inputRef.current;
-    if (!input) return;
-    const cursor = input.selectionStart ?? input.value.length;
-    updateMentionState(input.value, cursor);
+    const ref = richInputRef.current;
+    if (!ref) return;
+    const cursor = ref.getCursorPosition();
+    const value = ref.getPlainText();
+    updateMentionState(value, cursor);
   }, [updateMentionState]);
 
   const applyMention = useCallback(
     (option: MentionOption) => {
       if (!mentionAnchor) return;
       const mentionToken = `@${option.path}`;
-      const cursor = mentionAnchor.start + mentionToken.length + 1;
 
-      setInputMessage((prev) => {
-        const before = prev.slice(0, mentionAnchor.start);
-        const after = prev.slice(mentionAnchor.end);
-        return `${before}${mentionToken} ${after}`;
-      });
+      richInputRef.current?.replaceRange(
+        mentionAnchor.start,
+        mentionAnchor.end,
+        `${mentionToken} `,
+      );
 
       setMentionItems((prev) => [
         ...prev,
@@ -723,8 +749,7 @@ export function AIChat({ activeApp }: AIChatProps) {
       setMentionOptions([]);
 
       requestAnimationFrame(() => {
-        inputRef.current?.focus();
-        inputRef.current?.setSelectionRange(cursor, cursor);
+        richInputRef.current?.focus();
       });
     },
     [mentionAnchor],
@@ -820,7 +845,7 @@ const isDropEventWithPreventDefault = (
   "preventDefault" in event;
 
   const handleMentionKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    (event: KeyboardEvent<HTMLElement>) => {
       const isComposing = event.nativeEvent?.isComposing ?? false;
       if (isComposing) {
         return;
@@ -867,7 +892,7 @@ const isDropEventWithPreventDefault = (
   );
 
   const handleMentionKeyUp = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    (event: KeyboardEvent<HTMLElement>) => {
       const isComposing = event.nativeEvent?.isComposing ?? false;
       if (isComposing) {
         return;
@@ -1882,7 +1907,10 @@ const isDropEventWithPreventDefault = (
     });
 
   const handleSendMessage = async (messageText?: string) => {
-    const rawText = messageText ?? inputMessage;
+    const rawText =
+      messageText ??
+      richInputRef.current?.getFullText() ??
+      inputMessage;
     const trimmed = rawText.trim();
     if (!trimmed || !currentSession) {
       return;
@@ -1909,6 +1937,7 @@ const isDropEventWithPreventDefault = (
       return next;
     });
     const mentionSnapshot = mentionItems.slice();
+    richInputRef.current?.clear();
     setInputMessage("");
     setMentionItems([]);
     setMentionOpen(false);
@@ -2115,6 +2144,7 @@ const isDropEventWithPreventDefault = (
                               <ThrottledMessageResponse
                                 text={msg.text}
                                 isStreaming={isMessageStreaming}
+                                from={msg.role}
                               />
                             )}
                           </MessageContent>
@@ -2184,24 +2214,20 @@ const isDropEventWithPreventDefault = (
               <div>
                 <div className="relative">
                   <PromptInput
-                    onSubmit={(message, event) => {
+                    onSubmit={(_message, event) => {
                       event.preventDefault();
-                      void handleSendMessage(message.text);
+                      const fullText = richInputRef.current?.getFullText();
+                      void handleSendMessage(fullText || _message.text);
                     }}
                     enableDrop={false}
                   >
                     <PromptInputBody>
-                      <PromptInputTextarea
-                        ref={inputRef}
-                        rows={3}
-                        value={inputMessage}
+                      <RichTextarea
+                        ref={richInputRef}
                         className="bg-background"
-                        onChange={(event) => {
-                          setInputMessage(event.target.value);
-                          const cursor =
-                            event.target.selectionStart ??
-                            event.target.value.length;
-                          updateMentionState(event.target.value, cursor);
+                        onChange={(plainText, cursorPosition) => {
+                          setInputMessage(plainText);
+                          updateMentionState(plainText, cursorPosition);
                         }}
                         onKeyDown={handleMentionKeyDown}
                         onKeyUp={handleMentionKeyUp}
@@ -2216,10 +2242,9 @@ const isDropEventWithPreventDefault = (
                             : "Create a session to start chatting."
                         }
                         disabled={!currentSession || sending || loadingSession}
-                        aria-disabled={
-                          !currentSession || sending || loadingSession
-                        }
                       />
+                      {/* Hidden input keeps the form submission path working */}
+                      <input type="hidden" name="message" value={inputMessage} />
                     </PromptInputBody>
                     <PromptInputFooter className="border-t border-border/40 bg-card/90">
                       <PromptInputTools className="flex-col items-start gap-1 text-xs text-muted-foreground">

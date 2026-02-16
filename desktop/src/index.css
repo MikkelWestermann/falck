@@ -457,3 +457,21 @@
   animation: create-text-in 0.45s ease both;
   animation-delay: 0.1s;
 }
+
+/* Site context chips inside contenteditable rich-textarea */
+.site-context-chip {
+  background-color: hsl(var(--accent) / 0.8);
+  border-color: hsl(var(--border) / 0.4);
+  color: hsl(var(--foreground));
+}
+.site-context-chip:hover {
+  background-color: hsl(var(--accent));
+}
+.site-context-chip .chip-close-btn {
+  opacity: 0.5;
+  transition: opacity 0.15s, background-color 0.15s;
+}
+.site-context-chip .chip-close-btn:hover {
+  opacity: 1;
+  background-color: hsl(var(--destructive) / 0.2);
+}

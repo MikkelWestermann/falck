@@ -46,6 +46,10 @@ applications:
     type: "web"
     description: "Falck website"
     root: "website"
+    assets:
+      root: "./assets"
+      subdirectories:
+        - "images"
 
     prerequisites:
       - type: "runtime"
