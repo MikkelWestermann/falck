@@ -334,6 +334,8 @@ export type PromptInputProps = Omit<
   multiple?: boolean;
   // When true, accepts drops anywhere on document. Default false (opt-in).
   globalDrop?: boolean;
+  // When false, disables drag/drop handlers on the form. Default true.
+  enableDrop?: boolean;
   // Render a hidden input with given name and keep it in sync for native form posts. Default false.
   syncHiddenInput?: boolean;
   // Minimal constraints
@@ -354,6 +356,7 @@ export const PromptInput = ({
   accept,
   multiple,
   globalDrop,
+  enableDrop = true,
   syncHiddenInput,
   maxFiles,
   maxFileSize,
@@ -565,6 +568,9 @@ export const PromptInput = ({
 
   // Attach drop handlers on nearest form and document (opt-in)
   useEffect(() => {
+    if (!enableDrop) {
+      return;
+    }
     const form = formRef.current;
     if (!form) {
       return;
@@ -592,9 +598,12 @@ export const PromptInput = ({
       form.removeEventListener("dragover", onDragOver);
       form.removeEventListener("drop", onDrop);
     };
-  }, [add, globalDrop]);
+  }, [add, enableDrop, globalDrop]);
 
   useEffect(() => {
+    if (!enableDrop) {
+      return;
+    }
     if (!globalDrop) {
       return;
     }
@@ -618,7 +627,7 @@ export const PromptInput = ({
       document.removeEventListener("dragover", onDragOver);
       document.removeEventListener("drop", onDrop);
     };
-  }, [add, globalDrop]);
+  }, [add, enableDrop, globalDrop]);
 
   useEffect(
     () => () => {

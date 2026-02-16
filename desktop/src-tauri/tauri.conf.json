@@ -16,6 +16,7 @@
         "width": 1200,
         "height": 800,
         "resizable": true,
+        "dragDropEnabled": false,
         "titleBarStyle": "Transparent",
         "backgroundColor": "#f5f7f9",
         "hiddenTitle": true

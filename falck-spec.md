@@ -42,6 +42,11 @@ applications:
     type: "web"
     description: "Express.js REST API"
     root: "./backend"
+    assets:
+      root: "./public/assets"
+      subdirectories:
+        - "images"
+        - "docs"
     
     prerequisites:
       - type: "runtime"
@@ -192,11 +197,21 @@ groups:
 | `type` | string | ✓ | Application type (currently "web") |
 | `description` | string | ✗ | What this application does |
 | `root` | string | ✓ | Relative path to application root (use "." for repo root) |
+| `assets` | object | ✗ | Asset upload configuration for this application |
 | `prerequisites` | array | ✗ | System requirements to check |
 | `secrets` | array | ✗ | Secret environment variables to prompt for |
 | `setup` | object | ✗ | Setup/installation configuration |
 | `launch` | object | ✓ | How to launch the application |
 | `cleanup` | object | ✗ | Cleanup commands when stopping |
+
+### Assets Object
+
+Asset configuration controls where Falck will place uploaded files for an application.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `root` | string | ✓ | Relative path to the asset root (relative to `applications[].root`) |
+| `subdirectories` | array | ✗ | Allowed subdirectories within the asset root (relative paths) |
 
 ### Prerequisite Object
 

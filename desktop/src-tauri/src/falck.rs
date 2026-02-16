@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -103,11 +103,18 @@ pub struct Application {
     pub app_type: String,
     pub description: Option<String>,
     pub root: String,
+    pub assets: Option<AssetsConfig>,
     pub prerequisites: Option<Vec<Prerequisite>>,
     pub secrets: Option<Vec<Secret>>,
     pub setup: Option<SetupConfig>,
     pub launch: LaunchConfig,
     pub cleanup: Option<CleanupConfig>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AssetsConfig {
+    pub root: String,
+    pub subdirectories: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -270,6 +277,141 @@ pub fn get_app_root(repo_path: &Path, app: &Application) -> PathBuf {
     } else {
         repo_path.join(&app.root)
     }
+}
+
+// ============================================================================
+// Asset Uploads
+// ============================================================================
+
+fn normalize_relative_path(value: &str) -> Result<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed == "." {
+        return Ok(String::new());
+    }
+
+    let path = Path::new(trimmed);
+    if path.is_absolute() {
+        bail!("Path must be relative.");
+    }
+
+    let mut parts = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(os_str) => {
+                let segment = os_str.to_string_lossy();
+                if !segment.is_empty() {
+                    parts.push(segment.to_string());
+                }
+            }
+            Component::ParentDir => bail!("Path cannot include '..' segments."),
+            Component::RootDir | Component::Prefix(_) => {
+                bail!("Path must be relative.");
+            }
+        }
+    }
+
+    Ok(parts.join("/"))
+}
+
+fn resolve_asset_root(repo_path: &Path, app: &Application) -> Result<PathBuf> {
+    let assets = app
+        .assets
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("No assets configuration for this application."))?;
+    let root = normalize_relative_path(&assets.root)?;
+    let app_root = get_app_root(repo_path, app);
+    if root.is_empty() {
+        Ok(app_root)
+    } else {
+        Ok(app_root.join(root))
+    }
+}
+
+fn resolve_asset_subdir(app: &Application, target: Option<&str>) -> Result<String> {
+    let assets = app
+        .assets
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("No assets configuration for this application."))?;
+    let normalized = normalize_relative_path(target.unwrap_or(""))?;
+
+    if let Some(subdirs) = &assets.subdirectories {
+        let mut allowed = Vec::with_capacity(subdirs.len());
+        for subdir in subdirs {
+            allowed.push(normalize_relative_path(subdir)?);
+        }
+        if !normalized.is_empty() && !allowed.contains(&normalized) {
+            bail!("Target directory is not allowed for this application.");
+        }
+    }
+
+    Ok(normalized)
+}
+
+fn validate_file_name(name: &str) -> Result<String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        bail!("File name is required.");
+    }
+
+    let path = Path::new(trimmed);
+    let mut components = path.components();
+    let first = components
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Invalid file name."))?;
+    if components.next().is_some() {
+        bail!("File name must not include a path.");
+    }
+
+    match first {
+        Component::Normal(os_str) => Ok(os_str.to_string_lossy().to_string()),
+        _ => bail!("File name must not include a path."),
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AssetUploadFile {
+    pub name: String,
+    pub bytes: Vec<u8>,
+}
+
+pub fn upload_assets(
+    repo_path: &Path,
+    app: &Application,
+    target_subdirectory: Option<String>,
+    files: Vec<AssetUploadFile>,
+) -> Result<Vec<String>> {
+    if files.is_empty() {
+        bail!("No files provided.");
+    }
+
+    let asset_root = resolve_asset_root(repo_path, app)?;
+    let target = resolve_asset_subdir(app, target_subdirectory.as_deref())?;
+    let destination_dir = if target.is_empty() {
+        asset_root.clone()
+    } else {
+        asset_root.join(&target)
+    };
+
+    std::fs::create_dir_all(&destination_dir)
+        .with_context(|| format!("Failed to create asset directory at {:?}", destination_dir))?;
+
+    let mut saved_paths = Vec::new();
+    for file in files {
+        let file_name = validate_file_name(&file.name)?;
+        let destination = destination_dir.join(&file_name);
+        std::fs::write(&destination, file.bytes)
+            .with_context(|| format!("Failed to write asset {:?}", destination))?;
+
+        let relative = destination
+            .strip_prefix(repo_path)
+            .unwrap_or(&destination)
+            .to_string_lossy()
+            .to_string();
+        saved_paths.push(relative);
+    }
+
+    Ok(saved_paths)
 }
 
 // ============================================================================
@@ -1489,6 +1631,27 @@ pub async fn run_falck_cleanup(repo_path: String, app_id: String) -> Result<Stri
             .ok_or_else(|| "Application not found".to_string())?;
 
         run_cleanup(path, &config, app).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn upload_falck_assets(
+    repo_path: String,
+    app_id: String,
+    target_subdirectory: Option<String>,
+    files: Vec<AssetUploadFile>,
+) -> Result<Vec<String>, String> {
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        let config = load_config(path).map_err(|e| e.to_string())?;
+        let app = config
+            .applications
+            .iter()
+            .find(|app| app.id == app_id)
+            .ok_or_else(|| "Application not found".to_string())?;
+
+        upload_assets(path, app, target_subdirectory, files).map_err(|e| e.to_string())
     })
     .await
 }

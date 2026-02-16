@@ -260,6 +260,7 @@ pub fn run() {
             falck::run_falck_setup,
             falck::launch_falck_app,
             falck::run_falck_cleanup,
+            falck::upload_falck_assets,
             falck::kill_falck_app,
             falck::check_port_available,
             falck::open_browser_to_url,

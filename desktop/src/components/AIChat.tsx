@@ -1,4 +1,11 @@
-import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { unstable_batchedUpdates } from "react-dom";
 
 import type { ChatStatus, ToolUIPart } from "ai";
@@ -10,8 +17,10 @@ import {
   ClockIcon,
   PlusIcon,
   SparklesIcon,
+  UploadCloudIcon,
   WrenchIcon,
 } from "lucide-react";
+import { useDropzone } from "react-dropzone";
 
 import {
   Message as AIMessage,
@@ -62,6 +71,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { AssetUploadDialog } from "@/components/falck/AssetUploadDialog";
 import { opencodeService } from "@/services/opencodeService";
 import type { FalckApplication } from "@/services/falckService";
 import { useAIChat, type ChatMessage } from "@/contexts/AIChatContext";
@@ -491,6 +501,11 @@ export function AIChat({ activeApp }: AIChatProps) {
   const roleByMessage = useRef<Map<string, "user" | "assistant">>(new Map());
   const pendingUserIds = useRef<Set<string>>(new Set());
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const [assetUploadOpen, setAssetUploadOpen] = useState(false);
+  const [assetUploadFiles, setAssetUploadFiles] = useState<File[]>([]);
+
+  const assetConfig = activeApp?.assets;
+  const canUploadAssets = Boolean(activeApp && assetConfig?.root);
   const appFocusSystem = useMemo(() => {
     if (!activeApp || isRepoRoot(activeApp.root)) {
       return undefined;
@@ -509,6 +524,52 @@ export function AIChat({ activeApp }: AIChatProps) {
     () => providers.find((provider) => provider.models.includes(selectedModel)),
     [providers, selectedModel],
   );
+
+  const handleAssetDrop = useCallback(
+    (files: File[]) => {
+      if (files.length === 0) {
+        return;
+      }
+      if (!canUploadAssets || !activeApp) {
+        setError("No asset directory is configured for this application.");
+        return;
+      }
+      setAssetUploadFiles(files);
+      setAssetUploadOpen(true);
+    },
+    [activeApp, canUploadAssets, setError],
+  );
+
+  const {
+    getRootProps,
+    getInputProps,
+    isDragActive: assetDragActive,
+    open: openAssetFileDialog,
+  } = useDropzone({
+    noClick: true,
+    noKeyboard: true,
+    multiple: true,
+    disabled: !canUploadAssets,
+    onDrop: (files, _rejections, event) => {
+      event?.preventDefault();
+      handleAssetDrop(files);
+    },
+  });
+
+  const handleUploadClick = useCallback(() => {
+    if (!canUploadAssets) {
+      setError("No asset directory is configured for this application.");
+      return;
+    }
+    openAssetFileDialog();
+  }, [canUploadAssets, openAssetFileDialog, setError]);
+
+  const handleAssetDialogOpenChange = useCallback((open: boolean) => {
+    setAssetUploadOpen(open);
+    if (!open) {
+      setAssetUploadFiles([]);
+    }
+  }, []);
 
   const chatStatus: ChatStatus | undefined = sending
     ? "submitted"
@@ -1548,7 +1609,28 @@ export function AIChat({ activeApp }: AIChatProps) {
 
   return (
     <>
-      <div className="relative flex flex-col">
+      <div
+        {...getRootProps({
+          className: "relative flex flex-col",
+          onDragOver: (event) => {
+            event.preventDefault();
+          },
+        })}
+      >
+        <input {...getInputProps()} />
+        {assetDragActive && canUploadAssets && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/60 bg-background/80 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-2 text-sm font-semibold text-foreground">
+              <UploadCloudIcon className="size-5" />
+              <span>Drop files to upload assets</span>
+              {assetConfig?.root && (
+                <span className="text-xs text-muted-foreground">
+                  {assetConfig.root}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
         <div className="flex flex-1 flex-col min-h-0">
           <div className="flex-1 min-h-0 px-6 pb-6">
             <div>
@@ -1731,6 +1813,7 @@ export function AIChat({ activeApp }: AIChatProps) {
                       event.preventDefault();
                       void handleSendMessage(message.text);
                     }}
+                    enableDrop={false}
                   >
                     <PromptInputBody>
                       <PromptInputTextarea
@@ -1774,6 +1857,17 @@ export function AIChat({ activeApp }: AIChatProps) {
                         </div>
                       </PromptInputTools>
                       <PromptInputTools>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          onClick={handleUploadClick}
+                          disabled={!canUploadAssets}
+                          className="gap-2"
+                        >
+                          <UploadCloudIcon className="size-4" />
+                          Upload
+                        </Button>
                         <ModelSelector
                           open={modelSelectorOpen}
                           onOpenChange={setModelSelectorOpen}
@@ -1870,6 +1964,15 @@ export function AIChat({ activeApp }: AIChatProps) {
           </div>
         )}
       </div>
+
+      <AssetUploadDialog
+        open={assetUploadOpen}
+        onOpenChange={handleAssetDialogOpenChange}
+        repoPath={repoPath}
+        app={activeApp ?? undefined}
+        files={assetUploadFiles}
+        onUploaded={() => setAssetUploadFiles([])}
+      />
     </>
   );
 }

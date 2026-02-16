@@ -27,11 +27,17 @@ export interface FalckApplication {
   type: string;
   description?: string;
   root: string;
+  assets?: AssetsConfig;
   prerequisites?: Prerequisite[];
   secrets?: Secret[];
   setup?: SetupConfig;
   launch: LaunchConfig;
   cleanup?: CleanupConfig;
+}
+
+export interface AssetsConfig {
+  root: string;
+  subdirectories?: string[];
 }
 
 export interface Prerequisite {
@@ -128,6 +134,11 @@ export interface CleanupStep {
   description?: string;
   timeout?: number;
   only_if?: string;
+}
+
+export interface AssetUploadFile {
+  name: string;
+  bytes: number[];
 }
 
 export interface AppGroup {
@@ -248,5 +259,19 @@ export const falckService = {
 
   async clearSecrets(): Promise<void> {
     return invoke<void>("clear_all_secrets");
+  },
+
+  async uploadAssetFiles(
+    repoPath: string,
+    appId: string,
+    targetSubdirectory: string | null,
+    files: AssetUploadFile[],
+  ): Promise<string[]> {
+    return invoke<string[]>("upload_falck_assets", {
+      repoPath,
+      appId,
+      targetSubdirectory,
+      files,
+    });
   },
 };
