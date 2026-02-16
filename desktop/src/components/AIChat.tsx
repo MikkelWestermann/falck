@@ -23,7 +23,7 @@ import {
   UploadCloudIcon,
   WrenchIcon,
 } from "lucide-react";
-import { useDropzone } from "react-dropzone";
+import { useDropzone, type DropEvent } from "react-dropzone";
 import { nanoid } from "nanoid";
 
 import {
@@ -812,9 +812,17 @@ export function AIChat({ activeApp }: AIChatProps) {
     };
   }, [mentionOpen, mentionQuery, repoPath, recentMentions]);
 
+const isDropEventWithPreventDefault = (
+  event: DropEvent | undefined,
+): event is DropEvent & { preventDefault: () => void } =>
+  event !== undefined &&
+  typeof event === "object" &&
+  "preventDefault" in event;
+
   const handleMentionKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.isComposing || event.nativeEvent.isComposing) {
+      const isComposing = event.nativeEvent?.isComposing ?? false;
+      if (isComposing) {
         return;
       }
       if (!mentionOpen) return;
@@ -860,7 +868,8 @@ export function AIChat({ activeApp }: AIChatProps) {
 
   const handleMentionKeyUp = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.isComposing || event.nativeEvent.isComposing) {
+      const isComposing = event.nativeEvent?.isComposing ?? false;
+      if (isComposing) {
         return;
       }
       if (
@@ -900,7 +909,9 @@ export function AIChat({ activeApp }: AIChatProps) {
     multiple: true,
     disabled: !canUploadAssets,
     onDrop: (files, _rejections, event) => {
-      event?.preventDefault();
+      if (isDropEventWithPreventDefault(event)) {
+        event.preventDefault();
+      }
       handleAssetDrop(files);
     },
   });
@@ -1186,8 +1197,9 @@ export function AIChat({ activeApp }: AIChatProps) {
     toolActivity,
   ]);
 
-  const hasActiveWork =
-    statusMeta.isActive || (connectionState === "error" && currentSession);
+  const hasActiveWork = Boolean(
+    statusMeta.isActive || (connectionState === "error" && currentSession),
+  );
   const activityLabel = statusMeta.label;
 
   useEffect(() => {

@@ -308,11 +308,6 @@ function OverviewRoute() {
   const hasChanges = repoInfo.is_dirty;
   const changeCount = repoInfo.status_files.length;
   const saveBlocked = Boolean(saveBlockedReason);
-  const isDefaultProject =
-    resolvedDefaultBranch !== null &&
-    resolvedDefaultBranch === repoInfo.head_branch;
-  const showFinishCta =
-    !hasChanges && !isDefaultProject && repoInfo.head_branch !== "detached";
   const repoName =
     repoPath
       ?.replace(/[/\\]+$/, "")
