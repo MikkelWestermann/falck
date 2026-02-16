@@ -83,7 +83,10 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { AssetUploadDialog } from "@/components/falck/AssetUploadDialog";
-import { opencodeService, type OpenCodePartInput } from "@/services/opencodeService";
+import {
+  opencodeService,
+  type OpenCodePartInput,
+} from "@/services/opencodeService";
 import type { FalckApplication } from "@/services/falckService";
 import { useAIChat, type ChatMessage } from "@/contexts/AIChatContext";
 
@@ -733,10 +736,7 @@ export function AIChat({ activeApp }: AIChatProps) {
         `${mentionToken} `,
       );
 
-      setMentionItems((prev) => [
-        ...prev,
-        { id: nanoid(), path: option.path },
-      ]);
+      setMentionItems((prev) => [...prev, { id: nanoid(), path: option.path }]);
 
       setRecentMentions((prev) => {
         const next = [option.path, ...prev.filter((p) => p !== option.path)];
@@ -837,12 +837,12 @@ export function AIChat({ activeApp }: AIChatProps) {
     };
   }, [mentionOpen, mentionQuery, repoPath, recentMentions]);
 
-const isDropEventWithPreventDefault = (
-  event: DropEvent | undefined,
-): event is DropEvent & { preventDefault: () => void } =>
-  event !== undefined &&
-  typeof event === "object" &&
-  "preventDefault" in event;
+  const isDropEventWithPreventDefault = (
+    event: DropEvent | undefined,
+  ): event is DropEvent & { preventDefault: () => void } =>
+    event !== undefined &&
+    typeof event === "object" &&
+    "preventDefault" in event;
 
   const handleMentionKeyDown = useCallback(
     (event: KeyboardEvent<HTMLElement>) => {
@@ -875,8 +875,7 @@ const isDropEventWithPreventDefault = (
 
       if (event.key === "Tab" || event.key === "Enter") {
         event.preventDefault();
-        const option =
-          mentionOptions[mentionActiveIndex] ?? mentionOptions[0];
+        const option = mentionOptions[mentionActiveIndex] ?? mentionOptions[0];
         if (option) {
           applyMention(option);
         }
@@ -1908,9 +1907,7 @@ const isDropEventWithPreventDefault = (
 
   const handleSendMessage = async (messageText?: string) => {
     const rawText =
-      messageText ??
-      richInputRef.current?.getFullText() ??
-      inputMessage;
+      messageText ?? richInputRef.current?.getFullText() ?? inputMessage;
     const trimmed = rawText.trim();
     if (!trimmed || !currentSession) {
       return;
@@ -2037,10 +2034,10 @@ const isDropEventWithPreventDefault = (
         )}
         <div className="flex flex-1 flex-col min-h-0">
           <div className="flex-1 min-h-0 px-6 pb-6">
-            <div>
+            <div className="flex h-[calc(100vh-180px)] min-h-[500px] flex-col">
               <div
                 ref={messagesContainerRef}
-                className="flex flex-1 min-h-[400px] flex-col gap-4 overflow-y-auto px-6 py-4 h-[calc(100vh-320px)]"
+                className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-4"
               >
                 {loadingSession ? (
                   <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-card/80 px-6 py-12 text-center">
@@ -2211,7 +2208,7 @@ const isDropEventWithPreventDefault = (
                 )}
               </div>
 
-              <div>
+              <div className="flex-shrink-0">
                 <div className="relative">
                   <PromptInput
                     onSubmit={(_message, event) => {
@@ -2244,7 +2241,11 @@ const isDropEventWithPreventDefault = (
                         disabled={!currentSession || sending || loadingSession}
                       />
                       {/* Hidden input keeps the form submission path working */}
-                      <input type="hidden" name="message" value={inputMessage} />
+                      <input
+                        type="hidden"
+                        name="message"
+                        value={inputMessage}
+                      />
                     </PromptInputBody>
                     <PromptInputFooter className="border-t border-border/40 bg-card/90">
                       <PromptInputTools className="flex-col items-start gap-1 text-xs text-muted-foreground">
@@ -2399,8 +2400,7 @@ const isDropEventWithPreventDefault = (
                       {mentionOptions.length > 0 && (
                         <div className="py-1">
                           {mentionOptions.slice(0, 10).map((option, index) => {
-                            const separatorIndex =
-                              option.path.lastIndexOf("/");
+                            const separatorIndex = option.path.lastIndexOf("/");
                             const dir =
                               separatorIndex >= 0
                                 ? option.path.slice(0, separatorIndex + 1)
