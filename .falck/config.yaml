@@ -28,12 +28,12 @@ applications:
     setup:
       steps:
         - name: "Install dependencies"
-          command: "npm install"
+          command: "bun install"
           timeout: 300
           description: "Install JavaScript dependencies and the Tauri CLI"
 
     launch:
-      command: "npm run tauri dev"
+      command: "bun desktop:dev"
       description: "Start the Falck desktop app"
       timeout: 60
       access:

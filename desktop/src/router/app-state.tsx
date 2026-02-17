@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { configService } from "@/services/configService";
+import { backendService } from "@/services/backendService";
 import { falckService } from "@/services/falckService";
 import { SSHKey, sshService } from "@/services/sshService";
 
@@ -64,8 +65,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    void backendService.ensureRepoBackend(repoPath).catch((err) => {
+      console.error("Failed to start virtualized backend:", err);
+    });
+
     return () => {
       void falckService.clearSecrets();
+      void backendService.stopRepoBackend(repoPath).catch((err) => {
+        console.error("Failed to stop virtualized backend:", err);
+      });
     };
   }, [repoPath]);
 

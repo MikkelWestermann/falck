@@ -10,6 +10,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { OpenCodeInstallPanel } from "@/components/OpenCodeManager";
 import { OpenCodeSettingsPanel } from "@/components/OpenCodeSettings";
 import { falckService } from "@/services/falckService";
@@ -18,6 +25,11 @@ import {
   GithubUser,
   githubService,
 } from "@/services/githubService";
+import {
+  backendService,
+  BackendMode,
+  BackendPrereqStatus,
+} from "@/services/backendService";
 import { settingsService } from "@/services/settingsService";
 import { SSHKey } from "@/services/sshService";
 import { cn } from "@/lib/utils";
@@ -25,6 +37,7 @@ import { ArrowLeft } from "lucide-react";
 
 interface SettingsPageProps {
   sshKey: SSHKey;
+  repoPath?: string | null;
   onManageSSHKey: () => void;
   onClose: () => void;
 }
@@ -37,6 +50,7 @@ function Skeleton({ className }: { className?: string }) {
 
 export function SettingsPage({
   sshKey,
+  repoPath,
   onManageSSHKey,
   onClose,
 }: SettingsPageProps) {
@@ -53,6 +67,22 @@ export function SettingsPage({
   const [githubChecking, setGithubChecking] = useState(true);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [openCodeReady, setOpenCodeReady] = useState(false);
+  const [backendMode, setBackendMode] = useState<BackendMode>("host");
+  const [backendLoading, setBackendLoading] = useState(true);
+  const [backendSaving, setBackendSaving] = useState(false);
+  const [backendChecking, setBackendChecking] = useState(false);
+  const [backendInstalling, setBackendInstalling] = useState(false);
+  const [backendError, setBackendError] = useState<string | null>(null);
+  const [backendPrereq, setBackendPrereq] =
+    useState<BackendPrereqStatus | null>(null);
+  const [backendInstallMessage, setBackendInstallMessage] = useState<
+    string | null
+  >(null);
+  const [backendResetting, setBackendResetting] = useState(false);
+  const [backendResetMessage, setBackendResetMessage] = useState<string | null>(
+    null,
+  );
+  const [pendingVirtualized, setPendingVirtualized] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -141,6 +171,153 @@ export function SettingsPage({
     const id = window.setTimeout(() => setOpenCodeReady(true), 300);
     return () => window.clearTimeout(id);
   }, []);
+
+  const checkBackendPrereq = async () => {
+    setBackendChecking(true);
+    try {
+      const status = await backendService.checkPrereq();
+      setBackendPrereq(status);
+      return status;
+    } catch (err) {
+      setBackendError(`Backend check failed: ${String(err)}`);
+      return null;
+    } finally {
+      setBackendChecking(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    const loadBackend = async () => {
+      setBackendLoading(true);
+      try {
+        const mode = await backendService.getMode();
+        if (!active) {
+          return;
+        }
+        setBackendMode(mode);
+        if (mode === "virtualized") {
+          setBackendChecking(true);
+          try {
+            const status = await backendService.checkPrereq();
+            if (active) {
+              setBackendPrereq(status);
+            }
+          } finally {
+            if (active) {
+              setBackendChecking(false);
+            }
+          }
+        }
+      } catch (err) {
+        if (active) {
+          setBackendError(`Failed to load backend setting: ${String(err)}`);
+        }
+      } finally {
+        if (active) {
+          setBackendLoading(false);
+        }
+      }
+    };
+    void loadBackend();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleBackendChange = async (value: BackendMode) => {
+    if (backendSaving || backendInstalling) {
+      return;
+    }
+    setBackendError(null);
+    setBackendInstallMessage(null);
+    setBackendResetMessage(null);
+    setPendingVirtualized(false);
+    setBackendSaving(true);
+    try {
+      if (value === "host") {
+        await backendService.setMode("host");
+        setBackendMode("host");
+        if (repoPath) {
+          await backendService.stopRepoBackend(repoPath);
+        }
+        return;
+      }
+
+      const prereq = await checkBackendPrereq();
+      if (!prereq?.installed) {
+        setPendingVirtualized(true);
+        return;
+      }
+      await backendService.setMode("virtualized");
+      setBackendMode("virtualized");
+      if (repoPath) {
+        await backendService.ensureRepoBackend(repoPath);
+      }
+    } catch (err) {
+      setBackendError(`Failed to update backend: ${String(err)}`);
+    } finally {
+      setBackendSaving(false);
+    }
+  };
+
+  const handleInstallBackend = async () => {
+    if (backendInstalling) {
+      return;
+    }
+    setBackendError(null);
+    setBackendInstallMessage(null);
+    setBackendResetMessage(null);
+    setBackendInstalling(true);
+    try {
+      const message = await backendService.installPrereq();
+      setBackendInstallMessage(message);
+      const status = await checkBackendPrereq();
+      if (status?.installed) {
+        await backendService.setMode("virtualized");
+        setBackendMode("virtualized");
+        setPendingVirtualized(false);
+        if (repoPath) {
+          await backendService.ensureRepoBackend(repoPath);
+        }
+      }
+    } catch (err) {
+      setBackendError(`Failed to install backend: ${String(err)}`);
+    } finally {
+      setBackendInstalling(false);
+    }
+  };
+
+  const handleResetBackend = async () => {
+    if (!repoPath || backendResetting) {
+      return;
+    }
+    const confirmReset = window.confirm(
+      "Delete the virtualized backend for this repo? It will be recreated next time you open the repo.",
+    );
+    if (!confirmReset) {
+      return;
+    }
+    setBackendError(null);
+    setBackendResetMessage(null);
+    setBackendResetting(true);
+    try {
+      await backendService.deleteRepoBackend(repoPath);
+      setBackendResetMessage("Virtualized backend deleted for this repo.");
+    } catch (err) {
+      setBackendError(`Failed to delete backend: ${String(err)}`);
+    } finally {
+      setBackendResetting(false);
+    }
+  };
+
+  const backendSelectDisabled =
+    backendLoading || backendSaving || backendInstalling;
+  const showBackendInstallPrompt =
+    pendingVirtualized ||
+    (backendMode === "virtualized" &&
+      backendPrereq &&
+      !backendPrereq.installed);
 
   const handleGithubConnect = async () => {
     setGithubError(null);
@@ -289,6 +466,134 @@ export function SettingsPage({
                 {repoDirError && (
                   <Alert variant="destructive">
                     <AlertDescription>{repoDirError}</AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card
+              className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4"
+              style={{ animationDuration: "760ms" }}
+            >
+              <CardHeader className="border-b border-border/60 pb-5">
+                <CardTitle className="text-xl">Backend</CardTitle>
+                <CardDescription>
+                  Choose where Falck runs setup and launch commands.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-6">
+                {backendLoading ? (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-40" />
+                      <Skeleton className="h-3 w-64" />
+                    </div>
+                    <Skeleton className="h-9 w-40" />
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="text-sm">
+                        <div className="font-semibold">Execution environment</div>
+                        <div className="text-xs text-muted-foreground">
+                          Run Falck commands on your host or in a VM per
+                          repository.
+                        </div>
+                      </div>
+                      <Select
+                        value={backendMode}
+                        onValueChange={(value) =>
+                          void handleBackendChange(value as BackendMode)
+                        }
+                        disabled={backendSelectDisabled}
+                      >
+                        <SelectTrigger className="w-full sm:w-56">
+                          <SelectValue placeholder="Select backend" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="host">Host machine</SelectItem>
+                          <SelectItem value="virtualized">
+                            Virtualized backend
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {backendMode === "virtualized" &&
+                      backendPrereq?.installed && (
+                        <div className="text-xs text-muted-foreground">
+                          Virtualized backend enabled via{" "}
+                          <span className="font-semibold">
+                            {backendPrereq.tool}
+                          </span>
+                          .
+                        </div>
+                      )}
+                    {backendChecking && (
+                      <div className="text-xs text-muted-foreground">
+                        Checking virtualized backend prerequisites…
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {showBackendInstallPrompt && (
+                  <Alert variant="destructive">
+                    <AlertDescription className="space-y-3">
+                      <div>
+                        {backendPrereq?.message ??
+                          "Install the virtualization prerequisite to enable this backend."}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          onClick={() => void handleInstallBackend()}
+                          disabled={backendInstalling}
+                          className="normal-case tracking-normal"
+                        >
+                          {backendInstalling
+                            ? "Installing…"
+                            : `Install ${backendPrereq?.tool ?? "tool"}`}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setPendingVirtualized(false)}
+                          className="normal-case tracking-normal"
+                        >
+                          Not now
+                        </Button>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {backendInstallMessage && (
+                  <Alert>
+                    <AlertDescription>{backendInstallMessage}</AlertDescription>
+                  </Alert>
+                )}
+
+                {backendMode === "virtualized" && repoPath && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <Button
+                      variant="outline"
+                      onClick={() => void handleResetBackend()}
+                      disabled={backendResetting}
+                      className="normal-case tracking-normal"
+                    >
+                      {backendResetting ? "Resetting…" : "Reset VM"}
+                    </Button>
+                    <span>Deletes the VM for this repo.</span>
+                  </div>
+                )}
+
+                {backendResetMessage && (
+                  <Alert>
+                    <AlertDescription>{backendResetMessage}</AlertDescription>
+                  </Alert>
+                )}
+
+                {backendError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{backendError}</AlertDescription>
                   </Alert>
                 )}
               </CardContent>

@@ -1,6 +1,7 @@
 mod falck;
 mod git;
 mod github;
+mod backend;
 mod opencode;
 mod project;
 mod ssh;
@@ -230,6 +231,13 @@ pub fn run() {
             remove_repo_entry,
             get_default_repo_directory,
             set_default_repo_directory,
+            backend::get_backend_mode,
+            backend::set_backend_mode,
+            backend::check_virtualized_backend_prereq,
+            backend::install_virtualized_backend_prereq,
+            backend::ensure_repo_backend,
+            backend::stop_repo_backend,
+            backend::delete_repo_backend,
             opencode_send,
             check_opencode_installed,
             install_opencode,

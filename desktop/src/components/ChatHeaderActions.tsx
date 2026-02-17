@@ -1,6 +1,7 @@
 import { ClockIcon, HistoryIcon, PlusIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { VmStatusIndicator } from "@/components/VmStatusIndicator";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +29,7 @@ export function ChatHeaderActions() {
 
   return (
     <div className="flex items-center gap-2">
+      <VmStatusIndicator />
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
         <DialogTrigger asChild>
           <Button variant="ghost" size="sm">

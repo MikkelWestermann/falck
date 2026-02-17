@@ -17,6 +17,7 @@ function SettingsIndexRoute() {
   return (
     <SettingsPage
       sshKey={sshKey}
+      repoPath={repoPath}
       onManageSSHKey={() => navigate({ to: "/settings/ssh" })}
       onClose={() =>
         navigate({ to: repoPath ? "/overview" : "/repo" })
