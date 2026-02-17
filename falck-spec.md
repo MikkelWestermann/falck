@@ -339,7 +339,7 @@ If configured, Falck uses the setup check during setup validation to determine w
 
 ## Template Variables
 
-Template variables can be used in commands and environment variables. They're replaced at runtime.
+Template variables can be used in commands and environment variables. They're replaced at runtime based on the execution backend (host or virtualized VM). In virtualized mode, `os` resolves to `linux` and `env.*` references the VM's login environment.
 
 ### Built-in Variables
 
@@ -347,7 +347,7 @@ Template variables can be used in commands and environment variables. They're re
 |----------|-------------|---------|
 | `{{ repo_root }}` | Absolute path to repository root | `/Users/dev/my-app` |
 | `{{ app_root }}` | Absolute path to application root | `/Users/dev/my-app/backend` |
-| `{{ os }}` | Operating system | `macos`, `linux`, `windows` |
+| `{{ os }}` | Operating system for the current execution backend | `macos`, `linux`, `windows` |
 | `{{ arch }}` | System architecture | `x86_64`, `arm64` |
 | `{{ system.user }}` | Current username | `john_doe` |
 | `{{ system.shell }}` | User's shell | `/bin/bash` |

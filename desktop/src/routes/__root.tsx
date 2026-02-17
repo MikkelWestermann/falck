@@ -2,7 +2,6 @@ import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { OpenCodeManager } from "@/components/OpenCodeManager";
 import { AIChatProvider } from "@/contexts/AIChatContext";
 import { VmStatusProvider } from "@/contexts/VmStatusContext";
-import { VmStatusOverlay } from "@/components/VmStatusOverlay";
 import { AppStateProvider, useAppState } from "@/router/app-state";
 
 export const Route = createRootRoute({
@@ -31,7 +30,6 @@ function RootGate() {
 
   const content = (
     <VmStatusProvider>
-      <VmStatusOverlay />
       <OpenCodeManager />
       <Outlet />
     </VmStatusProvider>

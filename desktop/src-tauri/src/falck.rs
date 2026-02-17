@@ -20,6 +20,7 @@ lazy_static! {
 
 static SHELL_ENV_CACHE: OnceLock<Option<HashMap<String, String>>> = OnceLock::new();
 static NEXT_HANDLE: AtomicU32 = AtomicU32::new(1);
+const VM_ENV_TIMEOUT_SECS: u32 = 20;
 
 #[derive(Debug, Clone)]
 pub struct RunningFalckApp {
@@ -453,15 +454,13 @@ pub fn clear_secrets() {
 // ============================================================================
 
 pub fn check_prerequisites(
-    repo_path: &Path,
-    app: &Application,
+    app_root: &Path,
     prereq: &Prerequisite,
+    ctx: &TemplateContext,
     env_map: &HashMap<String, String>,
     backend: &BackendContext,
 ) -> Result<PrerequisiteCheckResult> {
     const PREREQ_TIMEOUT_SECS: u32 = 20;
-    let app_root = get_app_root(repo_path, app);
-    let ctx = TemplateContext::new(repo_path, &app_root);
     let command = resolve_template(&prereq.command, &ctx)?;
 
     let (status, stdout, stderr) =
@@ -515,15 +514,13 @@ pub fn check_app_prerequisites(
     backend: &BackendContext,
 ) -> Result<Vec<PrerequisiteCheckResult>> {
     let mut results = Vec::new();
-    let app_root = get_app_root(repo_path, app);
-    let ctx = TemplateContext::new(repo_path, &app_root);
-    let env_map = build_env_map(config, app, &ctx, backend.mode == BackendMode::Host)?;
+    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
     if let Some(prereqs) = &app.prerequisites {
         for prereq in prereqs {
             results.push(check_prerequisites(
-                repo_path,
-                app,
+                &app_root,
                 prereq,
+                &ctx,
                 &env_map,
                 backend,
             )?);
@@ -559,9 +556,7 @@ pub fn run_prerequisite_install(
         .get(option_index)
         .context("Install option not found")?;
 
-    let app_root = get_app_root(repo_path, app);
-    let ctx = TemplateContext::new(repo_path, &app_root);
-    let env_map = build_env_map(config, app, &ctx, backend.mode == BackendMode::Host)?;
+    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
 
     if let Some(condition) = &option.only_if {
         if !evaluate_condition(condition, &ctx)? {
@@ -608,9 +603,7 @@ pub fn run_setup(
         bail!("Required secrets not configured for this application");
     }
 
-    let app_root = get_app_root(repo_path, app);
-    let ctx = TemplateContext::new(repo_path, &app_root);
-    let env_map = build_env_map(config, app, &ctx, backend.mode == BackendMode::Host)?;
+    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
 
     if let Some(setup) = &app.setup {
         if let Some(steps) = &setup.steps {
@@ -668,9 +661,7 @@ pub fn check_setup_status(
         });
     };
 
-    let app_root = get_app_root(repo_path, app);
-    let ctx = TemplateContext::new(repo_path, &app_root);
-    let env_map = build_env_map(config, app, &ctx, backend.mode == BackendMode::Host)?;
+    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
 
     if let Some(condition) = &check.only_if {
         if !evaluate_condition(condition, &ctx)? {
@@ -790,9 +781,7 @@ pub fn launch_app(
         bail!("Required secrets not configured for this application");
     }
 
-    let app_root = get_app_root(repo_path, app);
-    let ctx = TemplateContext::new(repo_path, &app_root);
-    let env_map = build_env_map(config, app, &ctx, backend.mode == BackendMode::Host)?;
+    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
     let command = resolve_template(&app.launch.command, &ctx)?;
 
     match backend.mode {
@@ -845,9 +834,7 @@ pub fn run_cleanup(
     app: &Application,
     backend: &BackendContext,
 ) -> Result<String> {
-    let app_root = get_app_root(repo_path, app);
-    let ctx = TemplateContext::new(repo_path, &app_root);
-    let env_map = build_env_map(config, app, &ctx, backend.mode == BackendMode::Host)?;
+    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
 
     if let Some(cleanup) = &app.cleanup {
         if let Some(steps) = &cleanup.steps {
@@ -872,28 +859,122 @@ pub fn run_cleanup(
     Ok("Cleanup completed successfully".to_string())
 }
 
+fn resolve_runtime_paths(
+    repo_path: &Path,
+    app_root: &Path,
+    backend: &BackendContext,
+) -> Result<(PathBuf, PathBuf)> {
+    match backend.mode {
+        BackendMode::Host => Ok((repo_path.to_path_buf(), app_root.to_path_buf())),
+        BackendMode::Virtualized => {
+            let vm = backend
+                .vm
+                .as_ref()
+                .context("Virtualized backend not initialized")?;
+            let repo_root = PathBuf::from(&vm.repo_root);
+            let app_root = backend::vm_app_root(vm, app_root).map_err(|e| anyhow::anyhow!(e))?;
+            Ok((repo_root, PathBuf::from(app_root)))
+        }
+    }
+}
+
+fn merge_shell_env(env_map: &mut HashMap<String, String>, shell_env: HashMap<String, String>) {
+    for (key, value) in shell_env {
+        if key == "PATH" {
+            env_map.insert(key, value);
+        } else {
+            env_map.entry(key).or_insert(value);
+        }
+    }
+}
+
+fn load_backend_env(backend: &BackendContext) -> HashMap<String, String> {
+    match backend.mode {
+        BackendMode::Host => {
+            let mut env_map: HashMap<String, String> = env::vars().collect();
+            if !cfg!(debug_assertions) {
+                if let Some(shell_env) = load_shell_env() {
+                    merge_shell_env(&mut env_map, shell_env);
+                }
+            }
+            env_map
+        }
+        BackendMode::Virtualized => backend
+            .vm
+            .as_ref()
+            .and_then(load_vm_shell_env)
+            .unwrap_or_default(),
+    }
+}
+
+fn load_vm_shell_env(vm: &backend::VmContext) -> Option<HashMap<String, String>> {
+    let marker_start = "__FALCK_ENV_BEGIN__";
+    let marker_end = "__FALCK_ENV_END__";
+    let script = format!(
+        r#"
+marker_start='{start}'
+marker_end='{end}'
+shell=""
+if [ -n "${{SHELL:-}}" ] && command -v "$SHELL" >/dev/null 2>&1; then
+  shell="$SHELL"
+elif command -v bash >/dev/null 2>&1; then
+  shell="$(command -v bash)"
+elif command -v zsh >/dev/null 2>&1; then
+  shell="$(command -v zsh)"
+else
+  shell="/bin/sh"
+fi
+emit_env() {{
+  "$shell" "$@" -c "printf '%s\\0' \"$marker_start\"; env -0; printf '%s\\0' \"$marker_end\""
+}}
+emit_env -l -i && exit 0
+emit_env -l && exit 0
+emit_env -i && exit 0
+emit_env
+"#,
+        start = marker_start,
+        end = marker_end
+    );
+
+    let cmd = backend::build_vm_command(vm, &script);
+    let (status, stdout, _stderr) =
+        backend::spawn_capture_with_timeout(cmd, Some(VM_ENV_TIMEOUT_SECS)).ok()?;
+    if !status.success() {
+        return None;
+    }
+
+    let stdout_bytes = stdout.into_bytes();
+    let start_marker = format!("{}\0", marker_start).into_bytes();
+    let end_marker = format!("{}\0", marker_end).into_bytes();
+    let start = find_subsequence(&stdout_bytes, &start_marker)?;
+    let env_start = start + start_marker.len();
+    let end =
+        find_subsequence(&stdout_bytes[env_start..], &end_marker).map(|offset| env_start + offset)?;
+    let env_bytes = &stdout_bytes[env_start..end];
+    Some(parse_env_null(env_bytes))
+}
+
+fn prepare_runtime_context(
+    repo_path: &Path,
+    config: &FalckConfig,
+    app: &Application,
+    backend: &BackendContext,
+) -> Result<(PathBuf, TemplateContext, HashMap<String, String>)> {
+    let app_root = get_app_root(repo_path, app);
+    let base_env = load_backend_env(backend);
+    let (ctx_repo_root, ctx_app_root) = resolve_runtime_paths(repo_path, &app_root, backend)?;
+    let ctx = TemplateContext::new(&ctx_repo_root, &ctx_app_root, &base_env, backend);
+    let env_map = build_env_map(config, app, &ctx, &base_env)?;
+    Ok((app_root, ctx, env_map))
+}
+
 fn build_env_map(
     config: &FalckConfig,
     app: &Application,
     ctx: &TemplateContext,
-    include_host_env: bool,
+    base_env: &HashMap<String, String>,
 ) -> Result<HashMap<String, String>> {
-    let mut env_map: HashMap<String, String> = if include_host_env {
-        env::vars().collect()
-    } else {
-        HashMap::new()
-    };
-    if include_host_env && !cfg!(debug_assertions) {
-        if let Some(shell_env) = load_shell_env() {
-            for (key, value) in shell_env {
-                if key == "PATH" {
-                    env_map.insert(key, value);
-                } else {
-                    env_map.entry(key).or_insert(value);
-                }
-            }
-        }
-    }
+    let mut env_map: HashMap<String, String> = base_env.clone();
 
     if let Some(global_env) = &config.global_env {
         for (key, value) in global_env {
@@ -1125,24 +1206,49 @@ struct TemplateContext {
     arch: String,
     system_user: String,
     system_shell: String,
+    env: HashMap<String, String>,
 }
 
 impl TemplateContext {
-    fn new(repo_root: &Path, app_root: &Path) -> Self {
+    fn new(
+        repo_root: &Path,
+        app_root: &Path,
+        base_env: &HashMap<String, String>,
+        backend: &BackendContext,
+    ) -> Self {
+        let os = match backend.mode {
+            BackendMode::Host => env::consts::OS.to_string(),
+            BackendMode::Virtualized => "linux".to_string(),
+        };
+        let arch = match env::consts::ARCH {
+            "aarch64" => "arm64".to_string(),
+            value => value.to_string(),
+        };
+        let system_user = base_env
+            .get("USER")
+            .or_else(|| base_env.get("USERNAME"))
+            .cloned()
+            .or_else(|| {
+                env::var("USER")
+                    .or_else(|_| env::var("USERNAME"))
+                    .ok()
+            })
+            .unwrap_or_default();
+        let system_shell = base_env
+            .get("SHELL")
+            .or_else(|| base_env.get("ComSpec"))
+            .cloned()
+            .or_else(|| env::var("SHELL").or_else(|_| env::var("ComSpec")).ok())
+            .unwrap_or_default();
+
         Self {
             repo_root: repo_root.to_path_buf(),
             app_root: app_root.to_path_buf(),
-            os: env::consts::OS.to_string(),
-            arch: match env::consts::ARCH {
-                "aarch64" => "arm64".to_string(),
-                value => value.to_string(),
-            },
-            system_user: env::var("USER")
-                .or_else(|_| env::var("USERNAME"))
-                .unwrap_or_default(),
-            system_shell: env::var("SHELL")
-                .or_else(|_| env::var("ComSpec"))
-                .unwrap_or_default(),
+            os,
+            arch,
+            system_user,
+            system_shell,
+            env: base_env.clone(),
         }
     }
 
@@ -1156,7 +1262,7 @@ impl TemplateContext {
             "system.shell" => Ok(self.system_shell.clone()),
             _ => {
                 if let Some(rest) = key.strip_prefix("env.") {
-                    Ok(env::var(rest).unwrap_or_default())
+                    Ok(self.env.get(rest).cloned().unwrap_or_default())
                 } else {
                     bail!("Unknown template variable: {}", key)
                 }
