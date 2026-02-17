@@ -8,8 +8,52 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useVmStatus } from "@/contexts/VmStatusContext";
-import { AlertTriangle, CircleCheck, Loader2, Server } from "lucide-react";
+import { AlertTriangle, CircleCheck, Server } from "lucide-react";
 import { motion } from "motion/react";
+
+function VmLoader({ size = "sm" }: { size?: "sm" | "md" }) {
+  const dotCount = 3;
+  const dotSize = size === "sm" ? "h-1.5 w-1.5" : "h-2 w-2";
+  const radius = size === "sm" ? 4 : 6;
+  const containerSize = size === "sm" ? "h-4 w-4" : "h-5 w-5";
+
+  return (
+    <span
+      className={cn(
+        "relative inline-flex items-center justify-center",
+        containerSize,
+      )}
+      aria-hidden
+    >
+      <motion.span
+        className="absolute inset-0"
+        animate={{ rotate: 360 }}
+        transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+        style={{ transformOrigin: "center center" }}
+      >
+        {Array.from({ length: dotCount }).map((_, i) => {
+          const angle = i * 120 * (Math.PI / 180);
+          const x = Math.cos(angle) * radius;
+          const y = Math.sin(angle) * radius;
+          return (
+            <span
+              key={i}
+              className={cn(
+                "absolute rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]",
+                dotSize,
+              )}
+              style={{
+                left: `calc(50% + ${x}px)`,
+                top: `calc(50% + ${y}px)`,
+                transform: "translate(-50%, -50%)",
+              }}
+            />
+          );
+        })}
+      </motion.span>
+    </span>
+  );
+}
 
 const phaseLabels: Record<string, string> = {
   idle: "Idle",
@@ -45,9 +89,9 @@ export function VmStatusIndicator() {
   const dotClass = isError
     ? "bg-destructive"
     : busy
-      ? "bg-amber-400 animate-pulse"
+      ? "bg-amber-400/80"
       : isReady
-        ? "bg-emerald-400"
+        ? "bg-emerald-400/80"
         : "bg-muted-foreground/50";
 
   const label = isError
@@ -60,25 +104,54 @@ export function VmStatusIndicator() {
 
   const logs = expanded ? state.logs : state.logs.slice(-3);
   const logsReversed = [...logs].reverse();
-  const popoverOpen = busy || expanded;
+  const latestEntry = state.logs[state.logs.length - 1];
+  const inlineMessage =
+    latestEntry?.message ||
+    state.message ||
+    phaseLabels[state.phase] ||
+    "Working";
+  const inlineText = inlineMessage;
+  const showInlineStatus = busy && !expanded && inlineMessage.length > 0;
 
   return (
-    <Popover
-      open={popoverOpen}
-      onOpenChange={(open) => {
-        if (open) setExpanded(true);
-        else if (!busy) setExpanded(false);
-      }}
-    >
+    <Popover open={expanded} onOpenChange={setExpanded}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
-          className="gap-2"
+          className="relative gap-1.5 overflow-visible"
           title={state.message || label}
         >
-          <span className={cn("h-2.5 w-2.5 rounded-full", dotClass)} />
-          <span className="text-xs font-medium">VM</span>
+          <span className="relative z-10 flex h-2.5 w-2.5 items-center justify-center">
+            {busy ? (
+              <VmLoader size="sm" />
+            ) : (
+              <span
+                className={cn(
+                  "h-2.5 w-2.5 rounded-full animate-pulse",
+                  dotClass,
+                )}
+              />
+            )}
+          </span>
+          <span className="relative z-10 text-xs font-medium">
+            VM
+            {showInlineStatus && (
+              <motion.span
+                key={inlineText}
+                initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{
+                  type: "spring",
+                  stiffness: 500,
+                  damping: 28,
+                }}
+                className="pointer-events-none absolute right-0 top-full mt-1 block max-w-[240px] truncate text-[0.6rem] font-medium text-sky-700/80 dark:text-sky-200/80 normal-case tracking-normal"
+              >
+                {inlineMessage}
+              </motion.span>
+            )}
+          </span>
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -104,7 +177,7 @@ export function VmStatusIndicator() {
                 {isError ? (
                   <AlertTriangle className="h-4 w-4" />
                 ) : busy ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <VmLoader size="md" />
                 ) : isReady ? (
                   <CircleCheck className="h-4 w-4" />
                 ) : (
@@ -120,14 +193,22 @@ export function VmStatusIndicator() {
                     {phaseLabels[state.phase] ?? "VM status"}
                   </span>
                   <Badge
-                    variant={isError ? "destructive" : isReady ? "secondary" : "outline"}
+                    variant={
+                      isError
+                        ? "destructive"
+                        : isReady
+                          ? "secondary"
+                          : "outline"
+                    }
                     className="text-[0.65rem]"
                   >
                     {state.phase}
                   </Badge>
                 </div>
                 {state.message && (
-                  <p className="text-xs text-muted-foreground">{state.message}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {state.message}
+                  </p>
                 )}
               </div>
             </div>
@@ -165,8 +246,12 @@ export function VmStatusIndicator() {
                         className="rounded-lg border border-border/60 bg-background/70 px-3 py-2"
                       >
                         <div className="flex items-center justify-between gap-2 text-[0.7rem] text-muted-foreground">
-                          <span className="font-mono">{formatTime(entry.timestamp_ms)}</span>
-                          <span className="uppercase tracking-wide">{entry.phase}</span>
+                          <span className="font-mono">
+                            {formatTime(entry.timestamp_ms)}
+                          </span>
+                          <span className="uppercase tracking-wide">
+                            {entry.phase}
+                          </span>
                         </div>
                         <div className="mt-1 text-xs text-foreground">
                           {entry.message}

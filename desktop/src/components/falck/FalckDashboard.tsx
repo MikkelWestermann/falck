@@ -384,7 +384,7 @@ export function FalckDashboard({
     incomplete: { label: "Setup incomplete", className: "bg-amber-500" },
     checking: {
       label: "Checking setup",
-      className: "bg-sky-500 animate-pulse",
+      className: "bg-amber-500 animate-pulse",
     },
     error: { label: "Setup check error", className: "bg-destructive" },
     not_configured: {

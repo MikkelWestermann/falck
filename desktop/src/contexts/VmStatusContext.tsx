@@ -128,7 +128,7 @@ export function VmStatusProvider({ children }: { children: ReactNode }) {
       message: "Starting virtualized backend...",
       logs: [],
     });
-    setExpanded(true);
+    setExpanded(false);
 
     let unlisten: UnlistenFn | null = null;
     let active = true;
@@ -155,9 +155,6 @@ export function VmStatusProvider({ children }: { children: ReactNode }) {
       });
       if (payload.phase === "error") {
         setExpanded(true);
-      }
-      if (payload.phase === "ready") {
-        setExpanded(false);
       }
     })
       .then((stop) => {
