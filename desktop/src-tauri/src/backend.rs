@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
@@ -160,6 +160,14 @@ pub struct BackendEnsureResult {
     pub mode: BackendMode,
     pub vm_name: Option<String>,
     pub provider: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct BackendVmInfo {
+    pub name: String,
+    pub provider: String,
+    pub status: String,
+    pub repo_path: Option<String>,
 }
 
 fn vm_provider() -> Result<VmProvider, String> {
@@ -435,6 +443,32 @@ fn lima_mounts_yq(repo_path: &Path) -> String {
     )
 }
 
+fn normalize_ports(ports: &[u16]) -> Vec<u16> {
+    let mut set = BTreeSet::new();
+    for port in ports {
+        if *port > 0 {
+            set.insert(*port);
+        }
+    }
+    set.into_iter().collect()
+}
+
+fn lima_port_forwards_yq(ports: &[u16]) -> Option<String> {
+    let ports = normalize_ports(ports);
+    if ports.is_empty() {
+        return None;
+    }
+    let entries = ports
+        .iter()
+        .map(|port| format!("{{\"guestPort\": {port}, \"hostPort\": {port}}}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!(
+        ".portForwards = (.portForwards // []) + [{}]",
+        entries
+    ))
+}
+
 fn lima_legacy_mount_target(repo_path: &Path) -> String {
     let base = repo_path
         .file_name()
@@ -454,6 +488,93 @@ fn lima_instance_dir(name: &str) -> Option<PathBuf> {
 #[derive(Debug, Deserialize)]
 struct LimaListEntry {
     name: String,
+    status: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LimaConfig {
+    mounts: Option<Vec<LimaMount>>,
+    #[serde(rename = "portForwards")]
+    port_forwards: Option<Vec<LimaPortForward>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LimaMount {
+    location: Option<String>,
+    #[serde(rename = "mountPoint")]
+    mount_point: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct LimaPortForward {
+    #[serde(rename = "guestPort")]
+    guest_port: Option<u16>,
+}
+
+fn entries_from_array(items: Vec<serde_json::Value>) -> Result<Vec<LimaListEntry>, String> {
+    let mut entries = Vec::new();
+    for entry in items {
+        let parsed: LimaListEntry = serde_json::from_value(entry)
+            .map_err(|e| format!("Failed to parse Lima VM list entry: {e}"))?;
+        entries.push(parsed);
+    }
+    Ok(entries)
+}
+
+fn entries_from_value(value: serde_json::Value) -> Result<Option<Vec<LimaListEntry>>, String> {
+    match value {
+        serde_json::Value::Array(items) => Ok(Some(entries_from_array(items)?)),
+        serde_json::Value::Object(obj) => {
+            if let Some(entries) = obj.get("entries") {
+                if let serde_json::Value::Array(items) = entries {
+                    return Ok(Some(entries_from_array(items.clone())?));
+                }
+            }
+            if obj.contains_key("name") {
+                let parsed: LimaListEntry = serde_json::from_value(serde_json::Value::Object(obj))
+                    .map_err(|e| format!("Failed to parse Lima VM list entry: {e}"))?;
+                return Ok(Some(vec![parsed]));
+            }
+            Ok(None)
+        }
+        _ => Ok(None),
+    }
+}
+
+fn parse_lima_list_entries(raw: &[u8]) -> Result<Vec<LimaListEntry>, String> {
+    let mut slices = vec![raw];
+    if let Some(start) = raw.iter().position(|b| *b == b'{' || *b == b'[') {
+        slices.push(&raw[start..]);
+    }
+
+    let mut last_error = None;
+    let mut entries = Vec::new();
+    for slice in slices {
+        let mut stream = serde_json::Deserializer::from_slice(slice).into_iter::<serde_json::Value>();
+        while let Some(result) = stream.next() {
+            match result {
+                Ok(value) => match entries_from_value(value) {
+                    Ok(Some(mut next)) => {
+                        entries.append(&mut next);
+                    }
+                    Ok(None) => {}
+                    Err(err) => {
+                        last_error = Some(err);
+                    }
+                },
+                Err(err) => {
+                    last_error = Some(format!("Failed to parse Lima VM list: {err}"));
+                    break;
+                }
+            }
+        }
+        if !entries.is_empty() {
+            return Ok(entries);
+        }
+    }
+    Err(last_error.unwrap_or_else(|| {
+        "Failed to parse Lima VM list: unexpected JSON format.".to_string()
+    }))
 }
 
 fn lima_instance_registered(name: &str) -> bool {
@@ -469,9 +590,42 @@ fn lima_instance_registered(name: &str) -> bool {
     if !output.status.success() {
         return false;
     }
-    serde_json::from_slice::<Vec<LimaListEntry>>(&output.stdout)
+    parse_lima_list_entries(&output.stdout)
         .map(|items| items.iter().any(|item| item.name == name))
         .unwrap_or(false)
+}
+
+fn lima_config_path(name: &str) -> Option<PathBuf> {
+    let dir = lima_instance_dir(name)?;
+    let candidates = ["lima.yaml", "config.yaml"];
+    for file in candidates {
+        let path = dir.join(file);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn read_lima_config(name: &str) -> Option<LimaConfig> {
+    let path = lima_config_path(name)?;
+    let contents = fs::read_to_string(path).ok()?;
+    serde_yaml::from_str::<LimaConfig>(&contents).ok()
+}
+
+fn lima_repo_path_from_config(name: &str) -> Option<String> {
+    let config = read_lima_config(name)?;
+    let mounts = config.mounts?;
+    for mount in mounts {
+        let mount_point = mount.mount_point.unwrap_or_default();
+        if mount_point.starts_with("/mnt/falck") {
+            let location = mount.location?;
+            if !location.trim().is_empty() {
+                return Some(location);
+            }
+        }
+    }
+    None
 }
 
 fn cleanup_stale_lima_instance(name: &str) -> Result<(), String> {
@@ -525,6 +679,235 @@ fn lima_debug_logs(name: &str) -> Option<String> {
     } else {
         Some(sections.join("\n\n"))
     }
+}
+
+fn normalize_vm_status(value: Option<&str>) -> String {
+    let raw = value.unwrap_or("").trim().to_lowercase();
+    if raw.contains("running") {
+        "running".to_string()
+    } else if raw.contains("stopped") || raw.contains("stop") || raw.contains("terminated") {
+        "stopped".to_string()
+    } else if raw.contains("starting") || raw.contains("boot") {
+        "starting".to_string()
+    } else {
+        "unknown".to_string()
+    }
+}
+
+fn build_repo_vm_map(app: &AppHandle) -> Result<HashMap<String, String>, String> {
+    let repos = storage::list_repos(app)?;
+    let mut map = HashMap::new();
+    for repo in repos {
+        let name = vm_name_for_repo(Path::new(&repo.path));
+        map.insert(name, repo.path);
+    }
+    Ok(map)
+}
+
+fn list_lima_vms(app: &AppHandle) -> Result<Vec<BackendVmInfo>, String> {
+    if !command_exists("limactl") {
+        return Err("Lima is not installed.".to_string());
+    }
+    let output = {
+        let mut cmd = Command::new("limactl");
+        cmd.args(["list", "--json", "--tty=false"]);
+        apply_shell_env(&mut cmd);
+        cmd.output()
+    }
+    .map_err(|e| format!("Failed to list Lima VMs: {e}"))?;
+    if !output.status.success() {
+        return Err("Failed to list Lima VMs.".to_string());
+    }
+    let entries = parse_lima_list_entries(&output.stdout)?;
+    let repo_map = build_repo_vm_map(app)?;
+    let mut vms = Vec::new();
+    for entry in entries {
+        let repo_path = repo_map
+            .get(&entry.name)
+            .cloned()
+            .or_else(|| lima_repo_path_from_config(&entry.name));
+        vms.push(BackendVmInfo {
+            name: entry.name,
+            provider: "lima".to_string(),
+            status: normalize_vm_status(entry.status.as_deref()),
+            repo_path,
+        });
+    }
+    Ok(vms)
+}
+
+fn parse_wsl_list(output: &str) -> Vec<(String, String)> {
+    let mut vms = Vec::new();
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let lower = trimmed.to_lowercase();
+        if lower.starts_with("name") && lower.contains("state") {
+            continue;
+        }
+        let trimmed = trimmed.trim_start_matches('*').trim();
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.len() < 2 {
+            continue;
+        }
+        let state = parts[parts.len().saturating_sub(2)];
+        let name = parts[..parts.len().saturating_sub(2)].join(" ");
+        if name.is_empty() {
+            continue;
+        }
+        vms.push((name, state.to_string()));
+    }
+    vms
+}
+
+fn list_wsl_vms(app: &AppHandle) -> Result<Vec<BackendVmInfo>, String> {
+    if !command_exists("wsl") {
+        return Err("WSL is not installed.".to_string());
+    }
+    let output = {
+        let mut cmd = Command::new("wsl");
+        cmd.args(["-l", "-v"]);
+        apply_shell_env(&mut cmd);
+        cmd.output()
+    }
+    .map_err(|e| format!("Failed to list WSL distributions: {e}"))?;
+    if !output.status.success() {
+        return Err("Failed to list WSL distributions.".to_string());
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let repo_map = build_repo_vm_map(app)?;
+    let mut vms = Vec::new();
+    for (name, state) in parse_wsl_list(&stdout) {
+        let repo_path = repo_map.get(&name).cloned();
+        vms.push(BackendVmInfo {
+            name,
+            provider: "wsl".to_string(),
+            status: normalize_vm_status(Some(&state)),
+            repo_path,
+        });
+    }
+    Ok(vms)
+}
+
+fn lima_forwarded_ports(name: &str) -> HashSet<u16> {
+    let mut ports = HashSet::new();
+    let Some(config) = read_lima_config(name) else {
+        return ports;
+    };
+    let Some(entries) = config.port_forwards else {
+        return ports;
+    };
+    for entry in entries {
+        if let Some(guest) = entry.guest_port {
+            ports.insert(guest);
+        }
+    }
+    ports
+}
+
+pub fn ensure_vm_port_forwards(
+    app: Option<&AppHandle>,
+    vm: &VmContext,
+    ports: &[u16],
+) -> Result<(), String> {
+    if vm.provider != VmProvider::Lima {
+        return Ok(());
+    }
+    let desired = normalize_ports(ports);
+    if desired.is_empty() {
+        return Ok(());
+    }
+
+    let existing = lima_forwarded_ports(&vm.name);
+    let missing: Vec<u16> = desired
+        .into_iter()
+        .filter(|port| !existing.contains(port))
+        .collect();
+
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    emit_vm_status(
+        app,
+        &vm.repo_path,
+        Some(&vm.name),
+        Some(vm.provider),
+        "stopping",
+        "Restarting VM to apply port forwards",
+    );
+
+    let _guard = vm_lock()?;
+    let _ = stop_vm_inner(vm.provider, &vm.name);
+
+    emit_vm_status(
+        app,
+        &vm.repo_path,
+        Some(&vm.name),
+        Some(vm.provider),
+        "starting",
+        "Applying port forwards",
+    );
+    limactl_start(&vm.name, Some(&vm.repo_path), Some(&missing)).map_err(|err| {
+        emit_vm_status(
+            app,
+            &vm.repo_path,
+            Some(&vm.name),
+            Some(vm.provider),
+            "error",
+            &format!("Failed to start VM with port forwards: {err}"),
+        );
+        err
+    })?;
+    emit_vm_status(
+        app,
+        &vm.repo_path,
+        Some(&vm.name),
+        Some(vm.provider),
+        "waiting",
+        "Waiting for VM to become ready",
+    );
+    wait_for_vm_ready(vm.provider, &vm.name, 90).map_err(|err| {
+        emit_vm_status(
+            app,
+            &vm.repo_path,
+            Some(&vm.name),
+            Some(vm.provider),
+            "error",
+            &format!("VM did not become ready: {err}"),
+        );
+        err
+    })?;
+    emit_vm_status(
+        app,
+        &vm.repo_path,
+        Some(&vm.name),
+        Some(vm.provider),
+        "bootstrapping",
+        "Ensuring VM packages are installed",
+    );
+    ensure_vm_bootstrap(vm.provider, &vm.name).map_err(|err| {
+        emit_vm_status(
+            app,
+            &vm.repo_path,
+            Some(&vm.name),
+            Some(vm.provider),
+            "error",
+            &format!("VM bootstrap failed: {err}"),
+        );
+        err
+    })?;
+    emit_vm_status(
+        app,
+        &vm.repo_path,
+        Some(&vm.name),
+        Some(vm.provider),
+        "ready",
+        "VM is ready",
+    );
+    Ok(())
 }
 
 fn windows_path_to_wsl(path: &Path) -> String {
@@ -716,13 +1099,22 @@ fn resolve_repo_root(provider: VmProvider, name: &str, repo_path: &Path) -> Resu
     }
 }
 
-fn limactl_start(name: &str, repo_path: Option<&Path>) -> Result<(), String> {
+fn limactl_start(
+    name: &str,
+    repo_path: Option<&Path>,
+    port_forwards: Option<&[u16]>,
+) -> Result<(), String> {
     let cmd = {
         let mut cmd = Command::new("limactl");
         cmd.args(["start", "--tty=false"]);
         if let Some(repo_path) = repo_path {
             let mounts_expr = lima_mounts_yq(repo_path);
             cmd.args(["--set", &mounts_expr]);
+        }
+        if let Some(port_forwards) = port_forwards {
+            if let Some(expr) = lima_port_forwards_yq(port_forwards) {
+                cmd.args(["--set", &expr]);
+            }
         }
         cmd.arg(name);
         apply_shell_env(&mut cmd);
@@ -747,7 +1139,11 @@ fn limactl_start(name: &str, repo_path: Option<&Path>) -> Result<(), String> {
     }
 }
 
-fn limactl_create(name: &str, repo_path: &Path) -> Result<(), String> {
+fn limactl_create(
+    name: &str,
+    repo_path: &Path,
+    port_forwards: Option<&[u16]>,
+) -> Result<(), String> {
     let mounts_expr = lima_mounts_yq(repo_path);
     let cmd = {
         let mut cmd = Command::new("limactl");
@@ -760,6 +1156,11 @@ fn limactl_create(name: &str, repo_path: &Path) -> Result<(), String> {
             &mounts_expr,
             "template:default",
         ]);
+        if let Some(port_forwards) = port_forwards {
+            if let Some(expr) = lima_port_forwards_yq(port_forwards) {
+                cmd.args(["--set", &expr]);
+            }
+        }
         apply_shell_env(&mut cmd);
         cmd
     };
@@ -914,7 +1315,7 @@ fn ensure_vm_running_inner(
                 "starting",
                 &format!("Starting Lima VM {}", name),
             );
-            if limactl_start(&name, Some(repo_path)).is_ok() {
+            if limactl_start(&name, Some(repo_path), None).is_ok() {
                 emit_vm_status(
                     app,
                     repo_path,
@@ -966,7 +1367,7 @@ fn ensure_vm_running_inner(
                     "Existing VM found, restarting",
                 );
                 let _ = stop_vm_inner(provider, &name);
-                if let Err(err) = limactl_start(&name, Some(repo_path)) {
+                if let Err(err) = limactl_start(&name, Some(repo_path), None) {
                     emit_vm_status(
                         app,
                         repo_path,
@@ -1053,7 +1454,7 @@ fn ensure_vm_running_inner(
                 "creating",
                 "Creating new VM",
             );
-            limactl_create(&name, repo_path).map_err(|err| {
+            limactl_create(&name, repo_path, None).map_err(|err| {
                 emit_vm_status(
                     app,
                     repo_path,
@@ -1072,7 +1473,7 @@ fn ensure_vm_running_inner(
                 "starting",
                 "Starting newly created VM",
             );
-            limactl_start(&name, Some(repo_path)).map_err(|err| {
+            limactl_start(&name, Some(repo_path), None).map_err(|err| {
                 emit_vm_status(
                     app,
                     repo_path,
@@ -1617,6 +2018,37 @@ pub fn stop_backend_for_repo(app: &AppHandle, repo_path: &Path) -> Result<(), St
             Err(err)
         }
     }
+}
+
+fn list_backend_vms_inner(app: &AppHandle) -> Result<Vec<BackendVmInfo>, String> {
+    let provider = vm_provider()?;
+    match provider {
+        VmProvider::Lima => list_lima_vms(app),
+        VmProvider::Wsl => list_wsl_vms(app),
+    }
+}
+
+#[tauri::command]
+pub async fn list_backend_vms(app: AppHandle) -> Result<Vec<BackendVmInfo>, String> {
+    run_blocking(move || list_backend_vms_inner(&app)).await
+}
+
+#[tauri::command]
+pub async fn stop_backend_vm(name: String) -> Result<(), String> {
+    run_blocking(move || {
+        let provider = vm_provider()?;
+        stop_vm(provider, &name)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn delete_backend_vm(name: String) -> Result<(), String> {
+    run_blocking(move || {
+        let provider = vm_provider()?;
+        delete_vm(provider, &name)
+    })
+    .await
 }
 
 pub fn kill_vm_process(handle: &VmProcessHandle, pid: u32) -> Result<(), String> {

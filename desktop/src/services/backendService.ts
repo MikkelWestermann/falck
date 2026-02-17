@@ -14,6 +14,13 @@ export interface BackendEnsureResult {
   provider?: string | null;
 }
 
+export interface BackendVmInfo {
+  name: string;
+  provider: string;
+  status: string;
+  repo_path?: string | null;
+}
+
 export const backendService = {
   async getMode(): Promise<BackendMode> {
     return invoke<BackendMode>("get_backend_mode");
@@ -41,5 +48,17 @@ export const backendService = {
 
   async deleteRepoBackend(repoPath: string): Promise<void> {
     return invoke("delete_repo_backend", { repoPath });
+  },
+
+  async listVms(): Promise<BackendVmInfo[]> {
+    return invoke<BackendVmInfo[]>("list_backend_vms");
+  },
+
+  async stopVm(name: string): Promise<void> {
+    return invoke("stop_backend_vm", { name });
+  },
+
+  async deleteVm(name: string): Promise<void> {
+    return invoke("delete_backend_vm", { name });
   },
 };

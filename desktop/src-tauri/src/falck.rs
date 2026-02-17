@@ -453,7 +453,7 @@ pub fn clear_secrets() {
 // Prerequisite Checks
 // ============================================================================
 
-pub fn check_prerequisites(
+fn check_prerequisites(
     app_root: &Path,
     prereq: &Prerequisite,
     ctx: &TemplateContext,
@@ -966,6 +966,29 @@ fn prepare_runtime_context(
     let ctx = TemplateContext::new(&ctx_repo_root, &ctx_app_root, &base_env, backend);
     let env_map = build_env_map(config, app, &ctx, &base_env)?;
     Ok((app_root, ctx, env_map))
+}
+
+fn extract_port_from_url(url: &str) -> Option<u16> {
+    let re = Regex::new(r":(\d{2,5})(?:/|$)").ok()?;
+    let caps = re.captures(url)?;
+    caps.get(1)?.as_str().parse().ok()
+}
+
+fn collect_launch_ports(app: &Application) -> Vec<u16> {
+    let mut ports = Vec::new();
+    if let Some(list) = &app.launch.ports {
+        ports.extend(list.iter().copied());
+    }
+    if let Some(access) = &app.launch.access {
+        if let Some(port) = access.port {
+            ports.push(port);
+        } else if let Some(url) = &access.url {
+            if let Some(port) = extract_port_from_url(url) {
+                ports.push(port);
+            }
+        }
+    }
+    ports
 }
 
 fn build_env_map(
@@ -1788,13 +1811,21 @@ pub async fn launch_falck_app(
         let path = Path::new(&repo_path);
         let backend = backend::resolve_backend(&app, path).map_err(|e| e.to_string())?;
         let config = load_config(path).map_err(|e| e.to_string())?;
-        let app = config
+        let app_config = config
             .applications
             .iter()
             .find(|app| app.id == app_id)
             .ok_or_else(|| "Application not found".to_string())?;
 
-        launch_app(path, &config, app, &backend).map_err(|e| e.to_string())
+        if backend.mode == BackendMode::Virtualized {
+            if let Some(vm) = backend.vm.as_ref() {
+                let ports = collect_launch_ports(app_config);
+                backend::ensure_vm_port_forwards(Some(&app), vm, &ports)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        launch_app(path, &config, app_config, &backend).map_err(|e| e.to_string())
     })
     .await?;
     let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);

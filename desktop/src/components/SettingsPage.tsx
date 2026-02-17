@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -29,6 +30,7 @@ import {
   backendService,
   BackendMode,
   BackendPrereqStatus,
+  BackendVmInfo,
 } from "@/services/backendService";
 import { settingsService } from "@/services/settingsService";
 import { SSHKey } from "@/services/sshService";
@@ -40,6 +42,7 @@ interface SettingsPageProps {
   repoPath?: string | null;
   onManageSSHKey: () => void;
   onClose: () => void;
+  onOpenRepo?: (path: string) => void;
 }
 
 function Skeleton({ className }: { className?: string }) {
@@ -53,6 +56,7 @@ export function SettingsPage({
   repoPath,
   onManageSSHKey,
   onClose,
+  onOpenRepo,
 }: SettingsPageProps) {
   const [defaultRepoDir, setDefaultRepoDir] = useState<string | null>(null);
   const [repoDirLoading, setRepoDirLoading] = useState(true);
@@ -83,6 +87,11 @@ export function SettingsPage({
     null,
   );
   const [pendingVirtualized, setPendingVirtualized] = useState(false);
+  const [vmList, setVmList] = useState<BackendVmInfo[]>([]);
+  const [vmLoading, setVmLoading] = useState(true);
+  const [vmRefreshing, setVmRefreshing] = useState(false);
+  const [vmError, setVmError] = useState<string | null>(null);
+  const [vmAction, setVmAction] = useState<Record<string, "stopping" | "deleting" | null>>({});
 
   useEffect(() => {
     let mounted = true;
@@ -391,6 +400,66 @@ export function SettingsPage({
     }
   };
 
+  const loadVms = async (refresh = false) => {
+    if (refresh) {
+      setVmRefreshing(true);
+    } else {
+      setVmLoading(true);
+    }
+    setVmError(null);
+    try {
+      const vms = await backendService.listVms();
+      setVmList(vms);
+    } catch (err) {
+      setVmError(`Failed to load VMs: ${String(err)}`);
+    } finally {
+      setVmLoading(false);
+      setVmRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadVms();
+  }, []);
+
+  const handleStopVm = async (vm: BackendVmInfo) => {
+    if (vmAction[vm.name]) {
+      return;
+    }
+    setVmAction((prev) => ({ ...prev, [vm.name]: "stopping" }));
+    setVmError(null);
+    try {
+      await backendService.stopVm(vm.name);
+      await loadVms(true);
+    } catch (err) {
+      setVmError(`Failed to stop VM ${vm.name}: ${String(err)}`);
+    } finally {
+      setVmAction((prev) => ({ ...prev, [vm.name]: null }));
+    }
+  };
+
+  const handleDeleteVm = async (vm: BackendVmInfo) => {
+    if (vmAction[vm.name]) {
+      return;
+    }
+    const confirmed = window.confirm(
+      `Delete VM ${vm.name}? Any running processes inside it will stop.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+    setVmAction((prev) => ({ ...prev, [vm.name]: "deleting" }));
+    setVmError(null);
+    try {
+      await backendService.deleteVm(vm.name);
+      await loadVms(true);
+    } catch (err) {
+      setVmError(`Failed to delete VM ${vm.name}: ${String(err)}`);
+    } finally {
+      setVmAction((prev) => ({ ...prev, [vm.name]: null }));
+    }
+  };
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-page-background text-foreground">
       <div className="relative mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10 lg:py-14">
@@ -602,6 +671,133 @@ export function SettingsPage({
             <Card
               className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4"
               style={{ animationDuration: "800ms" }}
+            >
+              <CardHeader className="border-b border-border/60 pb-5">
+                <CardTitle className="text-xl">Virtual machines</CardTitle>
+                <CardDescription>
+                  Review VM status, linked repositories, and lifecycle actions.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-sm">
+                    <div className="font-semibold">Managed backends</div>
+                    <div className="text-xs text-muted-foreground">
+                      Keep an eye on running VMs and clean up unused ones.
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => void loadVms(true)}
+                    disabled={vmLoading || vmRefreshing}
+                    className="normal-case tracking-normal"
+                  >
+                    {vmRefreshing ? "Refreshing..." : "Refresh list"}
+                  </Button>
+                </div>
+
+                {vmLoading ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-16 w-full" />
+                    <Skeleton className="h-16 w-full" />
+                  </div>
+                ) : vmList.length === 0 ? (
+                  <div className="text-xs text-muted-foreground">
+                    No virtual machines found.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {vmList.map((vm) => {
+                      const status = vm.status || "unknown";
+                      const statusLabel =
+                        status.charAt(0).toUpperCase() + status.slice(1);
+                      const statusVariant: "secondary" | "outline" | "destructive" =
+                        status === "running"
+                          ? "secondary"
+                          : status === "stopped"
+                            ? "outline"
+                            : "destructive";
+                      const isActiveRepo =
+                        Boolean(repoPath) &&
+                        Boolean(vm.repo_path) &&
+                        repoPath === vm.repo_path;
+                      const action = vmAction[vm.name];
+                      const isStopping = action === "stopping";
+                      const isDeleting = action === "deleting";
+                      const stopDisabled = status === "stopped" || isStopping || isDeleting;
+                      return (
+                        <div
+                          key={vm.name}
+                          className="rounded-xl border border-border/60 bg-background/70 px-4 py-3 space-y-2"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="space-y-1">
+                              <div className="text-sm font-semibold text-foreground">
+                                {vm.name}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {vm.provider.toUpperCase()}
+                                {isActiveRepo ? " • Active repo" : ""}
+                              </div>
+                            </div>
+                            <Badge variant={statusVariant}>{statusLabel}</Badge>
+                          </div>
+                          {vm.repo_path ? (
+                            <div className="text-xs font-mono text-muted-foreground break-all">
+                              {vm.repo_path}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">
+                              Repo mapping unavailable.
+                            </div>
+                          )}
+                          <div className="flex flex-wrap gap-2">
+                            {vm.repo_path && onOpenRepo && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => onOpenRepo(vm.repo_path!)}
+                                className="normal-case tracking-normal"
+                              >
+                                Open repo
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void handleStopVm(vm)}
+                              disabled={stopDisabled}
+                              className="normal-case tracking-normal"
+                            >
+                              {isStopping ? "Stopping…" : "Stop"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => void handleDeleteVm(vm)}
+                              disabled={isDeleting}
+                              className="normal-case tracking-normal"
+                            >
+                              {isDeleting ? "Deleting…" : "Delete"}
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {vmError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{vmError}</AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card
+              className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4"
+              style={{ animationDuration: "860ms" }}
             >
               <CardHeader className="border-b border-border/60 pb-5">
                 <CardTitle className="text-xl">GitHub integration</CardTitle>

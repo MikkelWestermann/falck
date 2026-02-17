@@ -8,7 +8,7 @@ export const Route = createFileRoute("/settings/")({
 
 function SettingsIndexRoute() {
   const navigate = Route.useNavigate();
-  const { sshKey, repoPath } = useAppState();
+  const { sshKey, repoPath, setRepoPath } = useAppState();
 
   if (!sshKey) {
     return <Navigate to="/ssh" />;
@@ -22,6 +22,10 @@ function SettingsIndexRoute() {
       onClose={() =>
         navigate({ to: repoPath ? "/overview" : "/repo" })
       }
+      onOpenRepo={(path) => {
+        setRepoPath(path);
+        navigate({ to: "/overview" });
+      }}
     />
   );
 }
