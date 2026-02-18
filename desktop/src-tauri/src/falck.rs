@@ -10,7 +10,7 @@ use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::blocking::{run_blocking, run_blocking_value};
 
@@ -199,13 +199,41 @@ pub struct SetupCheckResult {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LaunchResult {
+    pub kind: String,
+    pub pid: Option<u32>,
+    pub container: Option<crate::containers::ContainerHandle>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LaunchConfig {
-    pub command: String,
+    pub command: Option<String>,
     pub description: Option<String>,
     pub timeout: Option<u32>,
     pub access: Option<AccessConfig>,
     pub env: Option<HashMap<String, String>>,
     pub ports: Option<Vec<u16>>,
+    pub container: Option<ContainerLaunchConfig>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ContainerLaunchConfig {
+    pub dockerfile: String,
+    pub context: Option<String>,
+    pub image: Option<String>,
+    pub name: Option<String>,
+    pub vm: Option<String>,
+    pub workdir: Option<String>,
+    pub ports: Option<Vec<String>>,
+    pub mounts: Option<Vec<ContainerMount>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ContainerMount {
+    pub source: Option<String>,
+    pub volume: Option<String>,
+    pub target: String,
+    pub mode: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -752,7 +780,12 @@ pub fn launch_app(repo_path: &Path, config: &FalckConfig, app: &Application) -> 
     let app_root = get_app_root(repo_path, app);
     let ctx = TemplateContext::new(repo_path, &app_root);
     let env_map = build_env_map(config, app, &ctx)?;
-    let command = resolve_template(&app.launch.command, &ctx)?;
+    let command = app
+        .launch
+        .command
+        .as_ref()
+        .context("Launch command missing for this application")?;
+    let command = resolve_template(command, &ctx)?;
 
     let mut cmd = build_shell_command(&command);
     cmd.current_dir(&app_root)
@@ -823,6 +856,182 @@ fn build_env_map(
 
     env_map.extend(get_all_secrets());
     Ok(env_map)
+}
+
+fn build_container_env_map(
+    config: &FalckConfig,
+    app: &Application,
+    ctx: &TemplateContext,
+) -> Result<HashMap<String, String>> {
+    let mut env_map: HashMap<String, String> = HashMap::new();
+
+    if let Some(global_env) = &config.global_env {
+        for (key, value) in global_env {
+            env_map.insert(key.clone(), resolve_template(value, ctx)?);
+        }
+    }
+
+    if let Some(launch_env) = &app.launch.env {
+        for (key, value) in launch_env {
+            env_map.insert(key.clone(), resolve_template(value, ctx)?);
+        }
+    }
+
+    env_map.extend(get_all_secrets());
+    Ok(env_map)
+}
+
+fn normalize_container_name(input: &str) -> String {
+    let mut output = String::new();
+    let mut last_dash = false;
+    for ch in input.chars() {
+        let candidate = ch.to_ascii_lowercase();
+        if candidate.is_ascii_alphanumeric() || candidate == '.' || candidate == '_' || candidate == '-' {
+            if candidate == '-' {
+                if !last_dash {
+                    output.push(candidate);
+                }
+                last_dash = true;
+            } else {
+                output.push(candidate);
+                last_dash = false;
+            }
+        } else if !last_dash {
+            output.push('-');
+            last_dash = true;
+        }
+    }
+
+    let trimmed = output.trim_matches('-').to_string();
+    if trimmed.is_empty() {
+        "falck-app".to_string()
+    } else {
+        trimmed
+    }
+}
+
+fn default_container_name(repo_path: &Path, app: &Application) -> String {
+    let repo_name = repo_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("repo");
+    normalize_container_name(&format!("falck-{}-{}", repo_name, app.id))
+}
+
+fn resolve_path_from_app_root(input: &str, app_root: &Path) -> PathBuf {
+    let path = PathBuf::from(input);
+    if path.is_absolute() {
+        path
+    } else {
+        app_root.join(path)
+    }
+}
+
+fn build_container_launch_spec(
+    repo_path: &Path,
+    config: &FalckConfig,
+    app: &Application,
+) -> Result<crate::containers::ContainerLaunchSpec> {
+    let container = app
+        .launch
+        .container
+        .as_ref()
+        .context("Container launch configuration missing")?;
+
+    let app_root = get_app_root(repo_path, app);
+    let ctx = TemplateContext::new(repo_path, &app_root);
+
+    let dockerfile_template = resolve_template(&container.dockerfile, &ctx)?;
+    let dockerfile_path = resolve_path_from_app_root(&dockerfile_template, &app_root);
+
+    let context_template = resolve_template(container.context.as_deref().unwrap_or("."), &ctx)?;
+    let context_dir = resolve_path_from_app_root(&context_template, &app_root);
+
+    let default_name = default_container_name(repo_path, app);
+    let name = container
+        .name
+        .clone()
+        .map(|value| normalize_container_name(&value))
+        .unwrap_or_else(|| default_name.clone());
+    let image = container
+        .image
+        .clone()
+        .unwrap_or_else(|| default_name.clone());
+    let vm = container
+        .vm
+        .clone()
+        .unwrap_or_else(|| "falck-dev".to_string());
+    let workdir = container
+        .workdir
+        .clone()
+        .unwrap_or_else(|| "/app".to_string());
+
+    let ports = if let Some(ports) = &container.ports {
+        ports.clone()
+    } else if let Some(ports) = &app.launch.ports {
+        ports.iter().map(|port| format!("{0}:{0}", port)).collect()
+    } else if let Some(access) = &app.launch.access {
+        if let Some(port) = access.port {
+            vec![format!("{0}:{0}", port)]
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
+    let mounts = if let Some(mounts) = &container.mounts {
+        mounts
+            .iter()
+            .map(|mount| {
+                match (&mount.source, &mount.volume) {
+                    (Some(source), None) => {
+                        let source_template = resolve_template(source, &ctx)?;
+                        let source_path =
+                            resolve_path_from_app_root(&source_template, &app_root);
+                        Ok(crate::containers::ContainerMountSpec {
+                            source: crate::containers::ContainerMountSource::Bind(source_path),
+                            target: mount.target.clone(),
+                            mode: mount.mode.clone(),
+                        })
+                    }
+                    (None, Some(volume)) => Ok(crate::containers::ContainerMountSpec {
+                        source: crate::containers::ContainerMountSource::Volume(volume.clone()),
+                        target: mount.target.clone(),
+                        mode: mount.mode.clone(),
+                    }),
+                    (Some(_), Some(_)) => Err(anyhow::anyhow!(
+                        "Container mounts must specify either source or volume, not both"
+                    )),
+                    (None, None) => Err(anyhow::anyhow!(
+                        "Container mounts must specify a source or a volume"
+                    )),
+                }
+            })
+            .collect::<Result<Vec<_>>>()?
+    } else {
+        vec![crate::containers::ContainerMountSpec {
+            source: crate::containers::ContainerMountSource::Bind(app_root.clone()),
+            target: "/app".to_string(),
+            mode: Some("delegated".to_string()),
+        }]
+    };
+
+    let env = build_container_env_map(config, app, &ctx)?;
+
+    Ok(crate::containers::ContainerLaunchSpec {
+        repo_path: repo_path.to_path_buf(),
+        app_id: Some(app.id.clone()),
+        vm,
+        name,
+        image,
+        dockerfile_path,
+        context_dir,
+        ports,
+        mounts,
+        env,
+        workdir,
+    })
 }
 
 fn run_command(
@@ -1599,11 +1808,19 @@ pub async fn run_falck_setup(repo_path: String, app_id: String) -> Result<String
 
 #[tauri::command]
 pub async fn launch_falck_app(
+    app: AppHandle,
     state: State<'_, FalckProcessState>,
     repo_path: String,
     app_id: String,
-) -> Result<u32, String> {
-    let pid = run_blocking(move || {
+) -> Result<LaunchResult, String> {
+    #[derive(Debug)]
+    enum LaunchOutcome {
+        Process(u32),
+        Container(crate::containers::ContainerHandle),
+    }
+
+    let app_handle = app.clone();
+    let outcome = run_blocking(move || {
         let path = Path::new(&repo_path);
         let config = load_config(path).map_err(|e| e.to_string())?;
         let app = config
@@ -1611,12 +1828,33 @@ pub async fn launch_falck_app(
             .iter()
             .find(|app| app.id == app_id)
             .ok_or_else(|| "Application not found".to_string())?;
-
-        launch_app(path, &config, app).map_err(|e| e.to_string())
+        if app.launch.container.is_some() {
+            let spec = build_container_launch_spec(path, &config, app).map_err(|e| e.to_string())?;
+            let handle = crate::containers::launch_container(&app_handle, spec)
+                .map_err(|e| e.to_string())?;
+            Ok(LaunchOutcome::Container(handle))
+        } else {
+            let pid = launch_app(path, &config, app).map_err(|e| e.to_string())?;
+            Ok(LaunchOutcome::Process(pid))
+        }
     })
     .await?;
-    register_running_app(&state, RunningFalckApp { pid });
-    Ok(pid)
+
+    match outcome {
+        LaunchOutcome::Process(pid) => {
+            register_running_app(&state, RunningFalckApp { pid });
+            Ok(LaunchResult {
+                kind: "process".to_string(),
+                pid: Some(pid),
+                container: None,
+            })
+        }
+        LaunchOutcome::Container(handle) => Ok(LaunchResult {
+            kind: "container".to_string(),
+            pid: None,
+            container: Some(handle),
+        }),
+    }
 }
 
 #[tauri::command]

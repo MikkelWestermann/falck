@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,7 +37,9 @@ import {
   FalckApplication,
   FalckConfig,
   PrerequisiteCheckResult,
+  LaunchResult,
 } from "@/services/falckService";
+import { containerService } from "@/services/containerService";
 import { PrerequisiteStatus } from "@/components/falck/PrerequisiteStatus";
 import { SecretsDialog } from "@/components/falck/SecretsDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -53,6 +56,27 @@ type SetupStatus =
   | "incomplete"
   | "not_configured"
   | "error";
+
+type RunningAppHandle =
+  | { kind: "process"; pid: number }
+  | { kind: "container"; id: string; name: string; vm: string; repoPath: string };
+
+interface ContainerStatusEvent {
+  status: string;
+  message: string;
+  repo_path?: string;
+  app_id?: string;
+  vm?: string;
+  container?: string;
+}
+
+interface ContainerLogEvent {
+  log: string;
+  repo_path?: string;
+  app_id?: string;
+  vm?: string;
+  container?: string;
+}
 
 export function FalckDashboard({
   repoPath,
@@ -78,13 +102,29 @@ export function FalckDashboard({
     Record<string, string>
   >({});
   const [launchError, setLaunchError] = useState<Record<string, string>>({});
-  const [runningApps, setRunningApps] = useState<Record<string, number>>({});
-  const runningAppsRef = useRef<Record<string, number>>({});
+  const [runningApps, setRunningApps] = useState<
+    Record<string, RunningAppHandle>
+  >({});
+  const [launchingApps, setLaunchingApps] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [containerStatusByApp, setContainerStatusByApp] = useState<
+    Record<string, { status: string; message: string }>
+  >({});
+  const [containerLogsByApp, setContainerLogsByApp] = useState<
+    Record<string, string[]>
+  >({});
+  const runningAppsRef = useRef<Record<string, RunningAppHandle>>({});
   const [setupDialogOpen, setSetupDialogOpen] = useState(false);
   const [secretsSatisfied, setSecretsSatisfied] = useState<
     Record<string, boolean>
   >({});
   const [secretsDialogApp, setSecretsDialogApp] =
+    useState<FalckApplication | null>(null);
+  const [limaPromptOpen, setLimaPromptOpen] = useState(false);
+  const [limaInstalling, setLimaInstalling] = useState(false);
+  const [limaPromptError, setLimaPromptError] = useState<string | null>(null);
+  const [pendingLaunchApp, setPendingLaunchApp] =
     useState<FalckApplication | null>(null);
   const [prereqInstallRunning, setPrereqInstallRunning] = useState<
     Record<string, boolean>
@@ -107,17 +147,88 @@ export function FalckDashboard({
   useEffect(() => {
     setRunningApps({});
     setLaunchError({});
+    setLaunchingApps({});
+    setContainerStatusByApp({});
+    setContainerLogsByApp({});
   }, [repoPath]);
 
   useEffect(() => {
     return () => {
-      const pids = Object.values(runningAppsRef.current);
-      if (pids.length === 0) {
+      const running = Object.values(runningAppsRef.current);
+      if (running.length === 0) {
         return;
       }
-      pids.forEach((pid) => {
-        void falckService.killApp(pid);
+      running.forEach((handle) => {
+        if (handle.kind === "process") {
+          void falckService.killApp(handle.pid);
+        } else {
+          void containerService.stopContainer(handle.id, handle.vm, handle.name);
+        }
       });
+    };
+  }, [repoPath]);
+
+  useEffect(() => {
+    let unlistenStatus: (() => void) | undefined;
+    let unlistenLogs: (() => void) | undefined;
+
+    const setupListeners = async () => {
+      unlistenStatus = await listen<ContainerStatusEvent>(
+        "container-status",
+        (event) => {
+          const payload = event.payload;
+          if (!payload.repo_path || payload.repo_path !== repoPath) {
+            return;
+          }
+          if (!payload.app_id) {
+            return;
+          }
+          setContainerStatusByApp((prev) => ({
+            ...prev,
+            [payload.app_id!]: {
+              status: payload.status,
+              message: payload.message,
+            },
+          }));
+          setContainerLogsByApp((prev) => {
+            const existing = prev[payload.app_id!] ?? [];
+            const next = [
+              ...existing,
+              `[${payload.status}] ${payload.message}`,
+            ].slice(-200);
+            return { ...prev, [payload.app_id!]: next };
+          });
+        },
+      );
+
+      unlistenLogs = await listen<ContainerLogEvent>(
+        "container-log",
+        (event) => {
+          const payload = event.payload;
+          if (!payload.repo_path || payload.repo_path !== repoPath) {
+            return;
+          }
+          if (!payload.app_id) {
+            return;
+          }
+          setContainerLogsByApp((prev) => {
+            const existing = prev[payload.app_id!] ?? [];
+            const next = [...existing, payload.log].slice(-200);
+            return { ...prev, [payload.app_id!]: next };
+          });
+        },
+      );
+    };
+
+    void setupListeners();
+
+    return () => {
+      if (unlistenStatus) {
+        unlistenStatus();
+      }
+      if (unlistenLogs) {
+        unlistenLogs();
+      }
     };
   }, [repoPath]);
 
@@ -276,26 +387,72 @@ export function FalckDashboard({
     }
   };
 
-  const handleLaunch = async (app: FalckApplication) => {
+  const resolveLaunchHandle = (result: LaunchResult): RunningAppHandle => {
+    if (result.kind === "process") {
+      return { kind: "process", pid: result.pid };
+    }
+    return {
+      kind: "container",
+      id: result.container.id,
+      name: result.container.name,
+      vm: result.container.vm,
+      repoPath: result.container.repo_path,
+    };
+  };
+
+  const performLaunch = async (
+    app: FalckApplication,
+    options?: { skipLimaCheck?: boolean },
+  ) => {
     setLaunchError((prev) => ({ ...prev, [app.id]: "" }));
+    setLaunchingApps((prev) => ({ ...prev, [app.id]: true }));
+    if (app.launch.container) {
+      setContainerLogsByApp((prev) => ({ ...prev, [app.id]: [] }));
+      setContainerStatusByApp((prev) => ({
+        ...prev,
+        [app.id]: { status: "starting", message: "Starting container..." },
+      }));
+    }
     try {
-      const pid = await falckService.launchApp(repoPath, app.id);
-      setRunningApps((prev) => ({ ...prev, [app.id]: pid }));
+      if (app.launch.container && !options?.skipLimaCheck) {
+        const limaStatus = await containerService.checkLimaInstalled();
+        if (!limaStatus.installed) {
+          setPendingLaunchApp(app);
+          setLimaPromptError(null);
+          setLimaPromptOpen(true);
+          setLaunchingApps((prev) => ({ ...prev, [app.id]: false }));
+          return;
+        }
+      }
+
+      const result = await falckService.launchApp(repoPath, app.id);
+      const handle = resolveLaunchHandle(result);
+      setRunningApps((prev) => ({ ...prev, [app.id]: handle }));
       if (app.launch.access?.open_browser && app.launch.access.url) {
         await falckService.openInBrowser(app.launch.access.url);
       }
     } catch (err) {
       setLaunchError((prev) => ({ ...prev, [app.id]: String(err) }));
+    } finally {
+      setLaunchingApps((prev) => ({ ...prev, [app.id]: false }));
     }
   };
 
+  const handleLaunch = async (app: FalckApplication) => {
+    await performLaunch(app);
+  };
+
   const handleStop = async (app: FalckApplication) => {
-    const pid = runningApps[app.id];
-    if (!pid) {
+    const handle = runningApps[app.id];
+    if (!handle) {
       return;
     }
     try {
-      await falckService.killApp(pid);
+      if (handle.kind === "process") {
+        await falckService.killApp(handle.pid);
+      } else {
+        await containerService.stopContainer(handle.id, handle.vm, handle.name);
+      }
       setRunningApps((prev) => {
         const next = { ...prev };
         delete next[app.id];
@@ -303,6 +460,25 @@ export function FalckDashboard({
       });
     } catch (err) {
       setLaunchError((prev) => ({ ...prev, [app.id]: String(err) }));
+    }
+  };
+
+  const handleInstallLima = async () => {
+    if (!pendingLaunchApp) {
+      return;
+    }
+    setLimaInstalling(true);
+    setLimaPromptError(null);
+    try {
+      await containerService.installLima();
+      setLimaPromptOpen(false);
+      const appToLaunch = pendingLaunchApp;
+      setPendingLaunchApp(null);
+      await performLaunch(appToLaunch, { skipLimaCheck: true });
+    } catch (err) {
+      setLimaPromptError(`Lima install failed: ${String(err)}`);
+    } finally {
+      setLimaInstalling(false);
     }
   };
 
@@ -372,6 +548,13 @@ export function FalckDashboard({
       : true
     : true;
   const isRunning = activeApp ? Boolean(runningApps[activeApp.id]) : false;
+  const isLaunching = activeApp ? Boolean(launchingApps[activeApp.id]) : false;
+  const activeContainerStatus = activeApp
+    ? containerStatusByApp[activeApp.id]
+    : undefined;
+  const activeContainerLogs = activeApp
+    ? containerLogsByApp[activeApp.id] ?? []
+    : [];
   const setupStatus: SetupStatus = activeApp
     ? (setupStatusByApp[activeApp.id] ??
       (activeApp.setup?.check?.command ? "checking" : "not_configured"))
@@ -489,11 +672,14 @@ export function FalckDashboard({
                     className="gap-2"
                     onClick={() => handleLaunch(activeApp)}
                     disabled={
-                      Boolean(prereqsMissing) || !secretsOk || setupBlocked
+                      Boolean(prereqsMissing) ||
+                      !secretsOk ||
+                      setupBlocked ||
+                      isLaunching
                     }
                   >
                     <Play className="h-4 w-4" />
-                    Start
+                    {isLaunching ? "Starting..." : "Start"}
                   </Button>
                 )}
               </div>
@@ -529,6 +715,30 @@ export function FalckDashboard({
                   </AlertDescription>
                 </Alert>
               )}
+              {activeApp.launch.container ? (
+                <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-semibold">Container activity</span>
+                    <Badge variant="outline">
+                      {activeContainerStatus?.status ??
+                        (isLaunching ? "starting" : "idle")}
+                    </Badge>
+                  </div>
+                  <p className="text-muted-foreground">
+                    {activeContainerStatus?.message ??
+                      (isLaunching
+                        ? "Preparing container build..."
+                        : "No container activity yet.")}
+                  </p>
+                  {activeContainerLogs.length > 0 ? (
+                    <ScrollArea className="mt-2 h-[180px] rounded border border-border/60 bg-background/80 p-2">
+                      <pre className="text-xs font-mono whitespace-pre-wrap">
+                        {activeContainerLogs.slice(-200).join("\n")}
+                      </pre>
+                    </ScrollArea>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -733,6 +943,50 @@ export function FalckDashboard({
                   )}
                 </div>
               </ScrollArea>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={limaPromptOpen}
+            onOpenChange={(open) => {
+              if (!open) {
+                setLimaPromptOpen(false);
+                setPendingLaunchApp(null);
+                setLimaPromptError(null);
+              }
+            }}
+          >
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Lima required</DialogTitle>
+                <DialogDescription>
+                  This app is configured to run from a Dockerfile. Install Lima
+                  to create the dev container.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                {limaPromptError ? (
+                  <Alert variant="destructive">
+                    <AlertDescription>{limaPromptError}</AlertDescription>
+                  </Alert>
+                ) : null}
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setLimaPromptOpen(false);
+                      setPendingLaunchApp(null);
+                      setLimaPromptError(null);
+                    }}
+                    disabled={limaInstalling}
+                  >
+                    Not now
+                  </Button>
+                  <Button onClick={() => void handleInstallLima()} disabled={limaInstalling}>
+                    {limaInstalling ? "Installing..." : "Install Lima"}
+                  </Button>
+                </div>
+              </div>
             </DialogContent>
           </Dialog>
         </div>

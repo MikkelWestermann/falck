@@ -1,6 +1,7 @@
 mod falck;
 mod git;
 mod github;
+mod containers;
 mod opencode;
 mod project;
 mod ssh;
@@ -265,6 +266,12 @@ pub fn run() {
             falck::check_port_available,
             falck::open_browser_to_url,
             falck::clear_all_secrets,
+            containers::check_lima_installed,
+            containers::install_lima,
+            containers::list_containers,
+            containers::start_container,
+            containers::stop_container,
+            containers::delete_container,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

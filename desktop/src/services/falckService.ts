@@ -107,13 +107,43 @@ export interface SetupCheckResult {
   message?: string;
 }
 
+export interface ContainerHandle {
+  id: string;
+  name: string;
+  vm: string;
+  repo_path: string;
+}
+
+export type LaunchResult =
+  | { kind: "process"; pid: number }
+  | { kind: "container"; container: ContainerHandle };
+
 export interface LaunchConfig {
-  command: string;
+  command?: string;
   description?: string;
   timeout?: number;
   access?: AccessConfig;
   env?: Record<string, string>;
   ports?: number[];
+  container?: ContainerLaunchConfig;
+}
+
+export interface ContainerLaunchConfig {
+  dockerfile: string;
+  context?: string;
+  image?: string;
+  name?: string;
+  vm?: string;
+  workdir?: string;
+  ports?: string[];
+  mounts?: ContainerMount[];
+}
+
+export interface ContainerMount {
+  source?: string;
+  volume?: string;
+  target: string;
+  mode?: string;
 }
 
 export interface AccessConfig {
@@ -232,8 +262,8 @@ export const falckService = {
     });
   },
 
-  async launchApp(repoPath: string, appId: string): Promise<number> {
-    return invoke<number>("launch_falck_app", {
+  async launchApp(repoPath: string, appId: string): Promise<LaunchResult> {
+    return invoke<LaunchResult>("launch_falck_app", {
       repoPath,
       appId,
     });

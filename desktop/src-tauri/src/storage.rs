@@ -18,6 +18,18 @@ pub struct SavedRepo {
     pub last_opened: i64,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct StoredContainer {
+    pub id: String,
+    pub repo_path: String,
+    pub app_id: Option<String>,
+    pub name: String,
+    pub vm: String,
+    pub image: Option<String>,
+    pub created_at: i64,
+    pub last_used: i64,
+}
+
 fn open_db<R: Runtime>(app: &AppHandle<R>) -> Result<Connection, String> {
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
@@ -36,6 +48,20 @@ fn open_db<R: Runtime>(app: &AppHandle<R>) -> Result<Connection, String> {
         "CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        )",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS containers (
+            id TEXT PRIMARY KEY,
+            repo_path TEXT NOT NULL,
+            app_id TEXT,
+            name TEXT NOT NULL,
+            vm TEXT NOT NULL,
+            image TEXT,
+            created_at INTEGER NOT NULL,
+            last_used INTEGER NOT NULL
         )",
         [],
     )
@@ -203,4 +229,102 @@ pub fn list_repos<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<SavedRepo>, Stri
     }
 
     Ok(repos)
+}
+
+pub fn upsert_container<R: Runtime>(
+    app: &AppHandle<R>,
+    container: &StoredContainer,
+) -> Result<(), String> {
+    let conn = open_db(app)?;
+    conn.execute(
+        "INSERT INTO containers (id, repo_path, app_id, name, vm, image, created_at, last_used)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT(id) DO UPDATE SET
+            repo_path = excluded.repo_path,
+            app_id = excluded.app_id,
+            name = excluded.name,
+            vm = excluded.vm,
+            image = excluded.image,
+            last_used = excluded.last_used",
+        params![
+            container.id,
+            container.repo_path,
+            container.app_id,
+            container.name,
+            container.vm,
+            container.image,
+            container.created_at,
+            container.last_used
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn list_containers<R: Runtime>(
+    app: &AppHandle<R>,
+    repo_path: Option<&str>,
+) -> Result<Vec<StoredContainer>, String> {
+    let conn = open_db(app)?;
+    let mut containers = Vec::new();
+    if let Some(repo_path) = repo_path {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, repo_path, app_id, name, vm, image, created_at, last_used
+                 FROM containers
+                 WHERE repo_path = ?1
+                 ORDER BY last_used DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![repo_path], |row| {
+                Ok(StoredContainer {
+                    id: row.get(0)?,
+                    repo_path: row.get(1)?,
+                    app_id: row.get(2)?,
+                    name: row.get(3)?,
+                    vm: row.get(4)?,
+                    image: row.get(5)?,
+                    created_at: row.get(6)?,
+                    last_used: row.get(7)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            containers.push(row.map_err(|e| e.to_string())?);
+        }
+    } else {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, repo_path, app_id, name, vm, image, created_at, last_used
+                 FROM containers
+                 ORDER BY last_used DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(StoredContainer {
+                    id: row.get(0)?,
+                    repo_path: row.get(1)?,
+                    app_id: row.get(2)?,
+                    name: row.get(3)?,
+                    vm: row.get(4)?,
+                    image: row.get(5)?,
+                    created_at: row.get(6)?,
+                    last_used: row.get(7)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            containers.push(row.map_err(|e| e.to_string())?);
+        }
+    }
+    Ok(containers)
+}
+
+pub fn remove_container<R: Runtime>(app: &AppHandle<R>, id: &str) -> Result<(), String> {
+    let conn = open_db(app)?;
+    conn.execute("DELETE FROM containers WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
