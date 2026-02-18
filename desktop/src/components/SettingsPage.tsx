@@ -675,7 +675,8 @@ export function SettingsPage({
               <CardHeader className="border-b border-border/60 pb-5">
                 <CardTitle className="text-xl">Virtual machines</CardTitle>
                 <CardDescription>
-                  Review VM status, linked repositories, and lifecycle actions.
+                  Review VM status, linked repositories, and VM/container
+                  lifecycle actions.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 pt-6">
@@ -683,7 +684,7 @@ export function SettingsPage({
                   <div className="text-sm">
                     <div className="font-semibold">Managed backends</div>
                     <div className="text-xs text-muted-foreground">
-                      Keep an eye on running VMs and clean up unused ones.
+                      Keep an eye on running VMs and clean up unused containers.
                     </div>
                   </div>
                   <Button

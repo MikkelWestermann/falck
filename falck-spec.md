@@ -257,6 +257,7 @@ Asset configuration controls where Falck will place uploaded files for an applic
 |-------|------|----------|-------------|
 | `steps` | array | ✗ | List of setup commands to execute |
 | `check` | object | ✗ | Command used to validate if setup is complete |
+| `env` | object | ✗ | Environment variables applied to every setup step |
 
 ### Setup Step Object
 
@@ -269,6 +270,15 @@ Asset configuration controls where Falck will place uploaded files for an applic
 | `silent` | boolean | ✗ | Whether to suppress output (default: false) |
 | `optional` | boolean | ✗ | Whether to skip on failure (default: false) |
 | `only_if` | string | ✗ | Conditional execution (e.g., "os == 'macos'") |
+| `env` | object | ✗ | Environment variables applied to just this step |
+
+Setup environment variables are merged in this order:
+1. Base environment (from the backend runtime)
+2. `global_env`
+3. `setup.env`
+4. `setup.steps[].env`
+
+Use template variables like `{{ env.PATH }}` and `{{ env.HOME }}` when extending paths.
 
 ### Setup Check Object
 
@@ -296,12 +306,15 @@ If configured, Falck uses the setup check during setup validation to determine w
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `command` | string | ✓ | Shell command to launch the application |
+| `command` | string | ✓ (unless `dockerfile` is set) | Shell command to launch the application |
+| `dockerfile` | string | ✗ | Path to a Dockerfile relative to the repository root. When set and the backend is virtualized, Falck builds and runs this Dockerfile instead of `command`. |
 | `description` | string | ✗ | What launching this application does |
 | `timeout` | integer | ✗ | Seconds to wait for app to start (default: 30) |
 | `env` | object | ✗ | Environment variables specific to this app |
 | `ports` | array | ✗ | Ports the application will use |
 | `access` | object | ✗ | How to access the running application |
+
+When `launch.dockerfile` is set, Falck builds and runs the Dockerfile inside the virtualized backend (Lima + containerd). The build context is the application root. The host backend still uses `launch.command`. Ports and access settings are still read from `launch`, and `env` plus configured secrets are passed into the container.
 
 ### Access Object
 
@@ -339,7 +352,7 @@ If configured, Falck uses the setup check during setup validation to determine w
 
 ## Template Variables
 
-Template variables can be used in commands and environment variables. They're replaced at runtime based on the execution backend (host or virtualized VM). In virtualized mode, `os` resolves to `linux` and `env.*` references the VM's login environment.
+Template variables can be used in commands, Dockerfile paths, and environment variables. They're replaced at runtime based on the execution backend (host or virtualized VM). In virtualized mode, `os` resolves to `linux` and `env.*` references the VM's login environment.
 
 ### Built-in Variables
 

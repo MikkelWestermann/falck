@@ -108,7 +108,8 @@ export interface SetupCheckResult {
 }
 
 export interface LaunchConfig {
-  command: string;
+  command?: string;
+  dockerfile?: string;
   description?: string;
   timeout?: number;
   access?: AccessConfig;

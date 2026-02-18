@@ -1,6 +1,6 @@
 # Falck
 
-Falck is a local-first AI IDE/desktop app that helps non-technical teammates contribute to real codebases with guardrails, setup guidance, and friendly Git workflows. The desktop app reads a `.falck/config.yaml` file in a repo to understand prerequisites, secrets, setup steps, and launch commands.
+Falck is a local-first AI IDE/desktop app that helps non-technical teammates contribute to real codebases with guardrails, setup guidance, and friendly Git workflows. The desktop app reads a `.falck/config.yaml` file in a repo to understand prerequisites, secrets, setup steps, launch commands, and optional Dockerfile launches.
 
 ## Repository layout
 
@@ -69,10 +69,11 @@ applications:
           command: "bun install"
     launch:
       command: "bun run dev"
+      # dockerfile: "Dockerfile" # path is relative to repo root
       access:
         type: "http"
         url: "http://localhost:3000"
         port: 3000
 ```
 
-Once the config is in place, open the repo in Falck and use the setup/launch actions to run the apps defined in the configuration.
+Once the config is in place, open the repo in Falck and use the setup/launch actions to run the apps defined in the configuration. If you set `launch.dockerfile`, switch the backend to Virtualized to run it via Lima.
