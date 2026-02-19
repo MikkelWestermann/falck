@@ -2,6 +2,7 @@ mod falck;
 mod git;
 mod github;
 mod containers;
+mod backend;
 mod opencode;
 mod project;
 mod ssh;
@@ -272,6 +273,16 @@ pub fn run() {
             containers::start_container,
             containers::stop_container,
             containers::delete_container,
+            backend::get_backend_mode,
+            backend::set_backend_mode,
+            backend::check_virtualized_backend_prereq,
+            backend::install_virtualized_backend_prereq,
+            backend::ensure_repo_backend,
+            backend::stop_repo_backend,
+            backend::delete_repo_backend,
+            backend::list_backend_vms,
+            backend::stop_backend_vm,
+            backend::delete_backend_vm,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

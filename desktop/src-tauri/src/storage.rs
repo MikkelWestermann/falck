@@ -1,11 +1,12 @@
 use git2::Repository;
 use keyring_core::{Entry, Error as KeyringError};
 use rusqlite::{params, Connection};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use tauri::{AppHandle, Manager, Runtime};
 
 const DEFAULT_REPO_DIR_KEY: &str = "default_repo_dir";
+const BACKEND_MODE_KEY: &str = "backend_mode";
 const GITHUB_TOKEN_SERVICE_SUFFIX: &str = "github";
 const GITHUB_TOKEN_USERNAME: &str = "access_token";
 
@@ -28,6 +29,21 @@ pub struct StoredContainer {
     pub image: Option<String>,
     pub created_at: i64,
     pub last_used: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum BackendMode {
+    Host,
+    Virtualized,
+}
+
+fn parse_backend_mode(value: &str) -> Option<BackendMode> {
+    match value.trim().to_lowercase().as_str() {
+        "host" => Some(BackendMode::Host),
+        "virtualized" => Some(BackendMode::Virtualized),
+        _ => None,
+    }
 }
 
 fn open_db<R: Runtime>(app: &AppHandle<R>) -> Result<Connection, String> {
@@ -129,6 +145,47 @@ pub fn set_default_repo_dir<R: Runtime>(app: &AppHandle<R>, path: &str) -> Resul
         "INSERT INTO settings (key, value) VALUES (?1, ?2)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         params![DEFAULT_REPO_DIR_KEY, trimmed],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn get_backend_mode_raw<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<Option<BackendMode>, String> {
+    let conn = open_db(app)?;
+    let mut stmt = conn
+        .prepare("SELECT value FROM settings WHERE key = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt
+        .query(params![BACKEND_MODE_KEY])
+        .map_err(|e| e.to_string())?;
+    if let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        let value: String = row.get(0).map_err(|e| e.to_string())?;
+        if let Some(mode) = parse_backend_mode(&value) {
+            return Ok(Some(mode));
+        }
+    }
+    Ok(None)
+}
+
+pub fn get_backend_mode<R: Runtime>(app: &AppHandle<R>) -> Result<BackendMode, String> {
+    Ok(get_backend_mode_raw(app)?.unwrap_or(BackendMode::Host))
+}
+
+pub fn set_backend_mode<R: Runtime>(
+    app: &AppHandle<R>,
+    mode: BackendMode,
+) -> Result<(), String> {
+    let conn = open_db(app)?;
+    let value = match mode {
+        BackendMode::Host => "host",
+        BackendMode::Virtualized => "virtualized",
+    };
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![BACKEND_MODE_KEY, value],
     )
     .map_err(|e| e.to_string())?;
     Ok(())

@@ -1,6 +1,7 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { OpenCodeManager } from "@/components/OpenCodeManager";
 import { AIChatProvider } from "@/contexts/AIChatContext";
+import { VmStatusProvider } from "@/contexts/VmStatusContext";
 import { AppStateProvider, useAppState } from "@/router/app-state";
 
 export const Route = createRootRoute({
@@ -35,7 +36,9 @@ function RootGate() {
   );
 
   return repoPath ? (
-    <AIChatProvider repoPath={repoPath}>{content}</AIChatProvider>
+    <VmStatusProvider>
+      <AIChatProvider repoPath={repoPath}>{content}</AIChatProvider>
+    </VmStatusProvider>
   ) : (
     content
   );

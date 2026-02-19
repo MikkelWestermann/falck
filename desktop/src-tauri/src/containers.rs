@@ -214,6 +214,10 @@ fn find_limactl_path(app: &AppHandle) -> Option<PathBuf> {
     find_in_path(limactl_executable_name())
 }
 
+pub(crate) fn limactl_path(app: &AppHandle) -> Option<PathBuf> {
+    find_limactl_path(app)
+}
+
 fn limactl_version(path: &Path) -> Option<String> {
     let output = Command::new(path).arg("--version").output().ok()?;
     if !output.status.success() {

@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
 use semver::Version;
@@ -13,16 +13,18 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, State};
 
 use crate::blocking::{run_blocking, run_blocking_value};
+use crate::backend::{self, BackendContext, BackendProcess, VmProcessHandle};
 
 lazy_static! {
     static ref SECRETS_STORE: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
 }
 
 static SHELL_ENV_CACHE: OnceLock<Option<HashMap<String, String>>> = OnceLock::new();
+const VM_ENV_TIMEOUT_SECS: u32 = 20;
 
 #[derive(Debug, Clone)]
 pub struct RunningFalckApp {
-    pub pid: u32,
+    pub process: BackendProcess,
 }
 
 pub struct FalckProcessState(pub Mutex<HashMap<u32, RunningFalckApp>>);
@@ -34,11 +36,12 @@ impl Default for FalckProcessState {
 }
 
 fn register_running_app(state: &FalckProcessState, app: RunningFalckApp) {
+    let pid = backend_process_pid(&app.process);
     let mut guard = match state.0.lock() {
         Ok(guard) => guard,
         Err(err) => err.into_inner(),
     };
-    guard.insert(app.pid, app);
+    guard.insert(pid, app);
 }
 
 fn unregister_running_app(state: &FalckProcessState, pid: u32) -> Option<RunningFalckApp> {
@@ -47,6 +50,35 @@ fn unregister_running_app(state: &FalckProcessState, pid: u32) -> Option<Running
         Err(err) => err.into_inner(),
     };
     guard.remove(&pid)
+}
+
+fn backend_process_pid(process: &BackendProcess) -> u32 {
+    match process {
+        BackendProcess::Host { pid } => *pid,
+        BackendProcess::Virtualized { pid, vm } => {
+            let input = format!("{}:{}", vm.name, pid);
+            let hash = fnv1a_hash_u32(&input);
+            0x8000_0000 | hash
+        }
+    }
+}
+
+fn fnv1a_hash_u32(value: &str) -> u32 {
+    let mut hash: u32 = 0x811c9dc5;
+    for byte in value.as_bytes() {
+        hash ^= *byte as u32;
+        hash = hash.wrapping_mul(0x0100_0193);
+    }
+    hash
+}
+
+fn kill_backend_process(process: BackendProcess) -> Result<()> {
+    match process {
+        BackendProcess::Host { pid } => kill_app(pid),
+        BackendProcess::Virtualized { pid, vm } => {
+            backend::kill_vm_process(&vm, pid).map_err(|err| anyhow!(err))
+        }
+    }
 }
 
 pub fn stop_all_running_apps(state: &FalckProcessState) {
@@ -59,7 +91,7 @@ pub fn stop_all_running_apps(state: &FalckProcessState) {
     };
 
     for app in running {
-        let _ = kill_app(app.pid);
+        let _ = kill_backend_process(app.process);
     }
 }
 
@@ -478,25 +510,19 @@ pub fn clear_secrets() {
 // Prerequisite Checks
 // ============================================================================
 
-pub fn check_prerequisites(
-    repo_path: &Path,
-    app: &Application,
+fn check_prerequisites(
+    app_root: &Path,
     prereq: &Prerequisite,
+    ctx: &TemplateContext,
     env_map: &HashMap<String, String>,
+    backend: &BackendContext,
 ) -> Result<PrerequisiteCheckResult> {
-    let app_root = get_app_root(repo_path, app);
-    let ctx = TemplateContext::new(repo_path, &app_root);
-    let command = resolve_template(&prereq.command, &ctx)?;
+    let command = resolve_template(&prereq.command, ctx)?;
+    let (status, stdout, stderr) =
+        run_command_capture_backend(backend, &command, &app_root, env_map, None)
+            .context("Failed to run prerequisite command")?;
 
-    let output = build_shell_command(&command)
-        .current_dir(&app_root)
-        .envs(env_map)
-        .output()
-        .context("Failed to run prerequisite command")?;
-
-    let mut installed = output.status.success();
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut installed = status.success();
     let current_version = if installed {
         parse_version(format!("{}\n{}", stdout, stderr).as_str())
     } else {
@@ -532,14 +558,13 @@ pub fn check_app_prerequisites(
     repo_path: &Path,
     config: &FalckConfig,
     app: &Application,
+    backend: &BackendContext,
 ) -> Result<Vec<PrerequisiteCheckResult>> {
     let mut results = Vec::new();
-    let app_root = get_app_root(repo_path, app);
-    let ctx = TemplateContext::new(repo_path, &app_root);
-    let env_map = build_env_map(config, app, &ctx)?;
+    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
     if let Some(prereqs) = &app.prerequisites {
         for prereq in prereqs {
-            results.push(check_prerequisites(repo_path, app, prereq, &env_map)?);
+            results.push(check_prerequisites(&app_root, prereq, &ctx, &env_map, backend)?);
         }
     }
     Ok(results)
@@ -551,6 +576,7 @@ pub fn run_prerequisite_install(
     app: &Application,
     prereq_index: usize,
     option_index: usize,
+    backend: &BackendContext,
 ) -> Result<String> {
     let prereqs = app
         .prerequisites
@@ -571,9 +597,7 @@ pub fn run_prerequisite_install(
         .get(option_index)
         .context("Install option not found")?;
 
-    let app_root = get_app_root(repo_path, app);
-    let ctx = TemplateContext::new(repo_path, &app_root);
-    let env_map = build_env_map(config, app, &ctx)?;
+    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
 
     if let Some(condition) = &option.only_if {
         if !evaluate_condition(condition, &ctx)? {
@@ -584,7 +608,7 @@ pub fn run_prerequisite_install(
     let command = resolve_template(&option.command, &ctx)?;
     let timeout = option.timeout.unwrap_or(300);
     let silent = option.silent.unwrap_or(false);
-    let status = run_command(&command, &app_root, &env_map, Some(timeout), silent)?;
+    let status = run_command_backend(backend, &command, &app_root, &env_map, Some(timeout), silent)?;
 
     if !status.success() {
         bail!("Prerequisite install option '{}' failed", option.name);
@@ -603,18 +627,32 @@ fn parse_version(output: &str) -> Option<String> {
 // Setup / Launch / Cleanup
 // ============================================================================
 
-pub fn run_setup(repo_path: &Path, config: &FalckConfig, app: &Application) -> Result<String> {
+pub fn run_setup(
+    repo_path: &Path,
+    config: &FalckConfig,
+    app: &Application,
+    backend: &BackendContext,
+) -> Result<String> {
     if !check_app_secrets_satisfied(app) {
         bail!("Required secrets not configured for this application");
     }
 
     let app_root = get_app_root(repo_path, app);
-    let ctx = TemplateContext::new(repo_path, &app_root);
-    let env_map = build_env_map(config, app, &ctx)?;
+    let refresh_each_step = backend.vm.is_some();
+    let (mut ctx, mut env_map) = {
+        let (_, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
+        (ctx, env_map)
+    };
 
     if let Some(setup) = &app.setup {
         if let Some(steps) = &setup.steps {
-            for step in steps {
+            for (index, step) in steps.iter().enumerate() {
+                if refresh_each_step && index > 0 {
+                    let (_, refreshed_ctx, refreshed_env) =
+                        prepare_runtime_context(repo_path, config, app, backend)?;
+                    ctx = refreshed_ctx;
+                    env_map = refreshed_env;
+                }
                 if let Some(condition) = &step.only_if {
                     if !evaluate_condition(condition, &ctx)? {
                         continue;
@@ -624,7 +662,14 @@ pub fn run_setup(repo_path: &Path, config: &FalckConfig, app: &Application) -> R
                 let command = resolve_template(&step.command, &ctx)?;
                 let timeout = step.timeout.unwrap_or(300);
                 let silent = step.silent.unwrap_or(false);
-                let status = run_command(&command, &app_root, &env_map, Some(timeout), silent)?;
+                let status = run_command_backend(
+                    backend,
+                    &command,
+                    &app_root,
+                    &env_map,
+                    Some(timeout),
+                    silent,
+                )?;
 
                 if !status.success() {
                     if step.optional.unwrap_or(false) {
@@ -643,6 +688,7 @@ pub fn check_setup_status(
     repo_path: &Path,
     config: &FalckConfig,
     app: &Application,
+    backend: &BackendContext,
 ) -> Result<SetupCheckResult> {
     let Some(setup) = &app.setup else {
         return Ok(SetupCheckResult {
@@ -660,9 +706,7 @@ pub fn check_setup_status(
         });
     };
 
-    let app_root = get_app_root(repo_path, app);
-    let ctx = TemplateContext::new(repo_path, &app_root);
-    let env_map = build_env_map(config, app, &ctx)?;
+    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
 
     if let Some(condition) = &check.only_if {
         if !evaluate_condition(condition, &ctx)? {
@@ -694,7 +738,7 @@ pub fn check_setup_status(
     let trim_output = check.trim.unwrap_or(true);
     let output_mode = check.output.clone().unwrap_or_else(|| "stdout".to_string());
 
-    match run_command_capture(&command, &app_root, &env_map, Some(timeout)) {
+    match run_command_capture_backend(backend, &command, &app_root, &env_map, Some(timeout)) {
         Ok((status, stdout, stderr)) => {
             if !status.success() && !ignore_exit {
                 return Ok(SetupCheckResult {
@@ -772,14 +816,17 @@ pub fn check_setup_status(
     }
 }
 
-pub fn launch_app(repo_path: &Path, config: &FalckConfig, app: &Application) -> Result<u32> {
+pub fn launch_app(
+    repo_path: &Path,
+    config: &FalckConfig,
+    app: &Application,
+    backend: &BackendContext,
+) -> Result<BackendProcess> {
     if !check_app_secrets_satisfied(app) {
         bail!("Required secrets not configured for this application");
     }
 
-    let app_root = get_app_root(repo_path, app);
-    let ctx = TemplateContext::new(repo_path, &app_root);
-    let env_map = build_env_map(config, app, &ctx)?;
+    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
     let command = app
         .launch
         .command
@@ -787,24 +834,73 @@ pub fn launch_app(repo_path: &Path, config: &FalckConfig, app: &Application) -> 
         .context("Launch command missing for this application")?;
     let command = resolve_template(command, &ctx)?;
 
-    let mut cmd = build_shell_command(&command);
-    cmd.current_dir(&app_root)
-        .envs(&env_map)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    if let Some(vm) = &backend.vm {
+        let exports = backend::vm_env_exports(&env_map);
+        let vm_root = backend::vm_app_root(vm, &app_root).map_err(|err| anyhow!(err))?;
+        let script = format!(
+            "{}cd {} && {}",
+            exports,
+            backend::shell_escape(&vm_root),
+            backend::background_launch_script(&command)
+        );
+        let cmd = backend::build_vm_command(vm, &script);
+        let (status, stdout, stderr) =
+            backend::spawn_capture_with_timeout(cmd, Some(20)).map_err(|err| anyhow!(err))?;
+        if !status.success() {
+            let combined = format!("{}\n{}", stdout.trim(), stderr.trim())
+                .trim()
+                .to_string();
+            let message = if combined.is_empty() {
+                "Failed to launch application inside VM.".to_string()
+            } else {
+                combined
+            };
+            bail!(message);
+        }
+        let pid = backend::extract_pid(&format!("{}\n{}", stdout, stderr))
+            .map_err(|err| anyhow!(err))?;
+        Ok(BackendProcess::Virtualized {
+            pid,
+            vm: VmProcessHandle {
+                provider: vm.provider,
+                name: vm.name.clone(),
+                limactl_path: vm.limactl_path.clone(),
+            },
+        })
+    } else {
+        let mut cmd = build_shell_command(&command);
+        cmd.current_dir(&app_root)
+            .envs(&env_map)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
 
-    let child = cmd.spawn().context("Failed to spawn application process")?;
-    Ok(child.id())
+        let child = cmd.spawn().context("Failed to spawn application process")?;
+        Ok(BackendProcess::Host { pid: child.id() })
+    }
 }
 
-pub fn run_cleanup(repo_path: &Path, config: &FalckConfig, app: &Application) -> Result<String> {
+pub fn run_cleanup(
+    repo_path: &Path,
+    config: &FalckConfig,
+    app: &Application,
+    backend: &BackendContext,
+) -> Result<String> {
     let app_root = get_app_root(repo_path, app);
-    let ctx = TemplateContext::new(repo_path, &app_root);
-    let env_map = build_env_map(config, app, &ctx)?;
+    let refresh_each_step = backend.vm.is_some();
+    let (mut ctx, mut env_map) = {
+        let (_, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
+        (ctx, env_map)
+    };
 
     if let Some(cleanup) = &app.cleanup {
         if let Some(steps) = &cleanup.steps {
-            for step in steps {
+            for (index, step) in steps.iter().enumerate() {
+                if refresh_each_step && index > 0 {
+                    let (_, refreshed_ctx, refreshed_env) =
+                        prepare_runtime_context(repo_path, config, app, backend)?;
+                    ctx = refreshed_ctx;
+                    env_map = refreshed_env;
+                }
                 if let Some(condition) = &step.only_if {
                     if !evaluate_condition(condition, &ctx)? {
                         continue;
@@ -813,7 +909,14 @@ pub fn run_cleanup(repo_path: &Path, config: &FalckConfig, app: &Application) ->
 
                 let command = resolve_template(&step.command, &ctx)?;
                 let timeout = step.timeout.unwrap_or(30);
-                let status = run_command(&command, &app_root, &env_map, Some(timeout), true)?;
+                let status = run_command_backend(
+                    backend,
+                    &command,
+                    &app_root,
+                    &env_map,
+                    Some(timeout),
+                    true,
+                )?;
                 if !status.success() {
                     bail!("Cleanup step '{}' failed", step.name);
                 }
@@ -824,23 +927,74 @@ pub fn run_cleanup(repo_path: &Path, config: &FalckConfig, app: &Application) ->
     Ok("Cleanup completed successfully".to_string())
 }
 
+fn merge_shell_env(env_map: &mut HashMap<String, String>, shell_env: HashMap<String, String>) {
+    for (key, value) in shell_env {
+        if key == "PATH" {
+            env_map.insert(key, value);
+        } else {
+            env_map.entry(key).or_insert(value);
+        }
+    }
+}
+
+fn load_backend_env(backend: &BackendContext) -> HashMap<String, String> {
+    if backend.mode == backend::BackendMode::Host {
+        let mut env_map: HashMap<String, String> = env::vars().collect();
+        if !cfg!(debug_assertions) {
+            if let Some(shell_env) = load_shell_env() {
+                merge_shell_env(&mut env_map, shell_env);
+            }
+        }
+        env_map
+    } else {
+        backend
+            .vm
+            .as_ref()
+            .and_then(load_vm_shell_env)
+            .unwrap_or_default()
+    }
+}
+
+fn resolve_runtime_paths(
+    repo_path: &Path,
+    app_root: &Path,
+    backend: &BackendContext,
+) -> Result<(PathBuf, PathBuf)> {
+    match backend.mode {
+        backend::BackendMode::Host => Ok((repo_path.to_path_buf(), app_root.to_path_buf())),
+        backend::BackendMode::Virtualized => {
+            let vm = backend
+                .vm
+                .as_ref()
+                .context("Virtualized backend not initialized")?;
+            let repo_root = PathBuf::from(&vm.repo_root);
+            let app_root = backend::vm_app_root(vm, app_root).map_err(|e| anyhow!(e))?;
+            Ok((repo_root, PathBuf::from(app_root)))
+        }
+    }
+}
+
+fn prepare_runtime_context(
+    repo_path: &Path,
+    config: &FalckConfig,
+    app: &Application,
+    backend: &BackendContext,
+) -> Result<(PathBuf, TemplateContext, HashMap<String, String>)> {
+    let app_root = get_app_root(repo_path, app);
+    let base_env = load_backend_env(backend);
+    let (ctx_repo_root, ctx_app_root) = resolve_runtime_paths(repo_path, &app_root, backend)?;
+    let ctx = TemplateContext::new_for_backend(&ctx_repo_root, &ctx_app_root, &base_env, backend);
+    let env_map = build_env_map(config, app, &ctx, &base_env)?;
+    Ok((app_root, ctx, env_map))
+}
+
 fn build_env_map(
     config: &FalckConfig,
     app: &Application,
     ctx: &TemplateContext,
+    base_env: &HashMap<String, String>,
 ) -> Result<HashMap<String, String>> {
-    let mut env_map: HashMap<String, String> = env::vars().collect();
-    if !cfg!(debug_assertions) {
-        if let Some(shell_env) = load_shell_env() {
-            for (key, value) in shell_env {
-                if key == "PATH" {
-                    env_map.insert(key, value);
-                } else {
-                    env_map.entry(key).or_insert(value);
-                }
-            }
-        }
-    }
+    let mut env_map: HashMap<String, String> = base_env.clone();
 
     if let Some(global_env) = &config.global_env {
         for (key, value) in global_env {
@@ -1032,6 +1186,82 @@ fn build_container_launch_spec(
         env,
         workdir,
     })
+}
+
+fn run_command_backend(
+    backend: &BackendContext,
+    command: &str,
+    cwd: &Path,
+    env_map: &HashMap<String, String>,
+    timeout_secs: Option<u32>,
+    silent: bool,
+) -> Result<ExitStatus> {
+    if let Some(vm) = &backend.vm {
+        let vm_cwd = backend::vm_app_root(vm, cwd).map_err(|err| anyhow!(err))?;
+        let exports = backend::vm_env_exports(env_map);
+        let script = format!(
+            "{}cd {} && {}",
+            exports,
+            backend::shell_escape(&vm_cwd),
+            command
+        );
+        let cmd = backend::build_vm_command(vm, &script);
+        let status = backend::spawn_with_timeout(cmd, timeout_secs, silent)
+            .map_err(|err| anyhow!(err))?;
+        Ok(status)
+    } else {
+        run_command(command, cwd, env_map, timeout_secs, silent)
+    }
+}
+
+fn run_command_capture_backend(
+    backend: &BackendContext,
+    command: &str,
+    cwd: &Path,
+    env_map: &HashMap<String, String>,
+    timeout_secs: Option<u32>,
+) -> Result<(ExitStatus, String, String)> {
+    if let Some(vm) = &backend.vm {
+        let vm_cwd = backend::vm_app_root(vm, cwd).map_err(|err| anyhow!(err))?;
+        let exports = backend::vm_env_exports(env_map);
+        let script = format!(
+            "{}cd {} && {}",
+            exports,
+            backend::shell_escape(&vm_cwd),
+            command
+        );
+        let cmd = backend::build_vm_command(vm, &script);
+        let (status, stdout, stderr) = backend::spawn_capture_with_timeout(cmd, timeout_secs)
+            .map_err(|err| anyhow!(err))?;
+        Ok((status, stdout, stderr))
+    } else {
+        run_command_capture(command, cwd, env_map, timeout_secs)
+    }
+}
+
+fn collect_app_ports(app: &Application) -> Vec<u16> {
+    let mut ports = Vec::new();
+    if let Some(app_ports) = &app.launch.ports {
+        ports.extend(app_ports.iter().copied());
+    }
+    if let Some(access) = &app.launch.access {
+        if let Some(port) = access.port {
+            ports.push(port);
+        }
+    }
+    ports
+}
+
+fn resolve_backend_for_app(
+    app_handle: &AppHandle,
+    repo_path: &Path,
+    app: &Application,
+) -> Result<BackendContext, String> {
+    if app.launch.container.is_some() {
+        Ok(BackendContext::host())
+    } else {
+        backend::resolve_backend(app_handle, repo_path)
+    }
 }
 
 fn run_command(
@@ -1236,6 +1466,53 @@ fn capture_shell_env() -> Option<HashMap<String, String>> {
     Some(parse_env_null(env_bytes))
 }
 
+fn load_vm_shell_env(vm: &backend::VmContext) -> Option<HashMap<String, String>> {
+    let marker_start = "__FALCK_ENV_BEGIN__";
+    let marker_end = "__FALCK_ENV_END__";
+    let script = format!(
+        r#"
+marker_start='{start}'
+marker_end='{end}'
+shell=""
+if [ -n "${{SHELL:-}}" ] && command -v "$SHELL" >/dev/null 2>&1; then
+  shell="$SHELL"
+elif command -v bash >/dev/null 2>&1; then
+  shell="$(command -v bash)"
+elif command -v zsh >/dev/null 2>&1; then
+  shell="$(command -v zsh)"
+else
+  shell="/bin/sh"
+fi
+emit_env() {{
+  "$shell" "$@" -c "printf '%s\\0' \"$marker_start\"; env -0; printf '%s\\0' \"$marker_end\""
+}}
+emit_env -l -i && exit 0
+emit_env -l && exit 0
+emit_env -i && exit 0
+emit_env
+"#,
+        start = marker_start,
+        end = marker_end
+    );
+
+    let cmd = backend::build_vm_command(vm, &script);
+    let (status, stdout, _stderr) =
+        backend::spawn_capture_with_timeout(cmd, Some(VM_ENV_TIMEOUT_SECS)).ok()?;
+    if !status.success() {
+        return None;
+    }
+
+    let stdout_bytes = stdout.into_bytes();
+    let start_marker = format!("{}\0", marker_start).into_bytes();
+    let end_marker = format!("{}\0", marker_end).into_bytes();
+    let start = find_subsequence(&stdout_bytes, &start_marker)?;
+    let env_start = start + start_marker.len();
+    let end =
+        find_subsequence(&stdout_bytes[env_start..], &end_marker).map(|offset| env_start + offset)?;
+    let env_bytes = &stdout_bytes[env_start..end];
+    Some(parse_env_null(env_bytes))
+}
+
 fn parse_env_null(bytes: &[u8]) -> HashMap<String, String> {
     let mut map = HashMap::new();
     for entry in bytes.split(|b| *b == 0) {
@@ -1271,24 +1548,68 @@ struct TemplateContext {
     arch: String,
     system_user: String,
     system_shell: String,
+    env: HashMap<String, String>,
 }
 
 impl TemplateContext {
     fn new(repo_root: &Path, app_root: &Path) -> Self {
+        let base_env: HashMap<String, String> = env::vars().collect();
+        Self::new_with_env(repo_root, app_root, &base_env, None)
+    }
+
+    fn new_for_backend(
+        repo_root: &Path,
+        app_root: &Path,
+        base_env: &HashMap<String, String>,
+        backend: &BackendContext,
+    ) -> Self {
+        Self::new_with_env(repo_root, app_root, base_env, Some(backend))
+    }
+
+    fn new_with_env(
+        repo_root: &Path,
+        app_root: &Path,
+        base_env: &HashMap<String, String>,
+        backend: Option<&BackendContext>,
+    ) -> Self {
+        let os = match backend.map(|value| value.mode) {
+            Some(backend::BackendMode::Virtualized) => "linux".to_string(),
+            _ => env::consts::OS.to_string(),
+        };
+        let arch = match env::consts::ARCH {
+            "aarch64" => "arm64".to_string(),
+            value => value.to_string(),
+        };
+        let system_user = base_env
+            .get("USER")
+            .or_else(|| base_env.get("USERNAME"))
+            .cloned()
+            .or_else(|| {
+                env::var("USER")
+                    .or_else(|_| env::var("USERNAME"))
+                    .ok()
+            })
+            .unwrap_or_default();
+        let mut system_shell = base_env
+            .get("SHELL")
+            .or_else(|| base_env.get("ComSpec"))
+            .cloned()
+            .or_else(|| env::var("SHELL").or_else(|_| env::var("ComSpec")).ok())
+            .unwrap_or_default();
+        if system_shell.is_empty()
+            && matches!(backend.map(|value| value.mode), Some(backend::BackendMode::Virtualized))
+        {
+            system_shell = "/bin/sh".to_string();
+        }
+
         Self {
             repo_root: repo_root.to_path_buf(),
             app_root: app_root.to_path_buf(),
-            os: env::consts::OS.to_string(),
-            arch: match env::consts::ARCH {
-                "aarch64" => "arm64".to_string(),
-                value => value.to_string(),
-            },
-            system_user: env::var("USER")
-                .or_else(|_| env::var("USERNAME"))
-                .unwrap_or_default(),
-            system_shell: env::var("SHELL")
-                .or_else(|_| env::var("ComSpec"))
-                .unwrap_or_default(),
+            os,
+            arch,
+            system_user,
+            system_shell,
+            env: base_env.clone(),
         }
     }
 
@@ -1302,7 +1623,11 @@ impl TemplateContext {
             "system.shell" => Ok(self.system_shell.clone()),
             _ => {
                 if let Some(rest) = key.strip_prefix("env.") {
-                    Ok(env::var(rest).unwrap_or_default())
+                    Ok(self
+                        .env
+                        .get(rest)
+                        .cloned()
+                        .unwrap_or_default())
                 } else {
                     bail!("Unknown template variable: {}", key)
                 }
@@ -1691,25 +2016,28 @@ pub async fn load_falck_config(repo_path: String) -> Result<FalckConfig, String>
 
 #[tauri::command]
 pub async fn check_falck_prerequisites(
+    app: AppHandle,
     repo_path: String,
     app_id: String,
 ) -> Result<Vec<PrerequisiteCheckResult>, String> {
     run_blocking(move || {
         let path = Path::new(&repo_path);
         let config = load_config(path).map_err(|e| e.to_string())?;
-        let app = config
+        let app_config = config
             .applications
             .iter()
             .find(|app| app.id == app_id)
             .ok_or_else(|| "Application not found".to_string())?;
-
-        check_app_prerequisites(path, &config, app).map_err(|e| e.to_string())
+        let backend = resolve_backend_for_app(&app, path, app_config)?;
+        check_app_prerequisites(path, &config, app_config, &backend)
+            .map_err(|e| e.to_string())
     })
     .await
 }
 
 #[tauri::command]
 pub async fn run_falck_prerequisite_install(
+    app: AppHandle,
     repo_path: String,
     app_id: String,
     prereq_index: usize,
@@ -1718,13 +2046,21 @@ pub async fn run_falck_prerequisite_install(
     run_blocking(move || {
         let path = Path::new(&repo_path);
         let config = load_config(path).map_err(|e| e.to_string())?;
-        let app = config
+        let app_config = config
             .applications
             .iter()
             .find(|app| app.id == app_id)
             .ok_or_else(|| "Application not found".to_string())?;
+        let backend = resolve_backend_for_app(&app, path, app_config)?;
 
-        run_prerequisite_install(path, &config, app, prereq_index, option_index)
+        run_prerequisite_install(
+            path,
+            &config,
+            app_config,
+            prereq_index,
+            option_index,
+            &backend,
+        )
             .map_err(|e| e.to_string())
     })
     .await
@@ -1773,35 +2109,42 @@ pub async fn check_secrets_satisfied(repo_path: String, app_id: String) -> Resul
 
 #[tauri::command]
 pub async fn check_falck_setup(
+    app: AppHandle,
     repo_path: String,
     app_id: String,
 ) -> Result<SetupCheckResult, String> {
     run_blocking(move || {
         let path = Path::new(&repo_path);
         let config = load_config(path).map_err(|e| e.to_string())?;
-        let app = config
+        let app_config = config
             .applications
             .iter()
             .find(|app| app.id == app_id)
             .ok_or_else(|| "Application not found".to_string())?;
+        let backend = resolve_backend_for_app(&app, path, app_config)?;
 
-        check_setup_status(path, &config, app).map_err(|e| e.to_string())
+        check_setup_status(path, &config, app_config, &backend).map_err(|e| e.to_string())
     })
     .await
 }
 
 #[tauri::command]
-pub async fn run_falck_setup(repo_path: String, app_id: String) -> Result<String, String> {
+pub async fn run_falck_setup(
+    app: AppHandle,
+    repo_path: String,
+    app_id: String,
+) -> Result<String, String> {
     run_blocking(move || {
         let path = Path::new(&repo_path);
         let config = load_config(path).map_err(|e| e.to_string())?;
-        let app = config
+        let app_config = config
             .applications
             .iter()
             .find(|app| app.id == app_id)
             .ok_or_else(|| "Application not found".to_string())?;
+        let backend = resolve_backend_for_app(&app, path, app_config)?;
 
-        run_setup(path, &config, app).map_err(|e| e.to_string())
+        run_setup(path, &config, app_config, &backend).map_err(|e| e.to_string())
     })
     .await
 }
@@ -1815,7 +2158,7 @@ pub async fn launch_falck_app(
 ) -> Result<LaunchResult, String> {
     #[derive(Debug)]
     enum LaunchOutcome {
-        Process(u32),
+        Process(BackendProcess),
         Container(crate::containers::ContainerHandle),
     }
 
@@ -1823,26 +2166,35 @@ pub async fn launch_falck_app(
     let outcome = run_blocking(move || {
         let path = Path::new(&repo_path);
         let config = load_config(path).map_err(|e| e.to_string())?;
-        let app = config
+        let app_config = config
             .applications
             .iter()
             .find(|app| app.id == app_id)
             .ok_or_else(|| "Application not found".to_string())?;
-        if app.launch.container.is_some() {
-            let spec = build_container_launch_spec(path, &config, app).map_err(|e| e.to_string())?;
+        if app_config.launch.container.is_some() {
+            let spec =
+                build_container_launch_spec(path, &config, app_config).map_err(|e| e.to_string())?;
             let handle = crate::containers::launch_container(&app_handle, spec)
                 .map_err(|e| e.to_string())?;
             Ok(LaunchOutcome::Container(handle))
         } else {
-            let pid = launch_app(path, &config, app).map_err(|e| e.to_string())?;
-            Ok(LaunchOutcome::Process(pid))
+            let backend_ctx = resolve_backend_for_app(&app_handle, path, app_config)?;
+            if let Some(vm) = &backend_ctx.vm {
+                let ports = collect_app_ports(app_config);
+                backend::ensure_vm_port_forwards(Some(&app_handle), vm, &ports)
+                    .map_err(|e| e.to_string())?;
+            }
+            let process = launch_app(path, &config, app_config, &backend_ctx)
+                .map_err(|e| e.to_string())?;
+            Ok(LaunchOutcome::Process(process))
         }
     })
     .await?;
 
     match outcome {
-        LaunchOutcome::Process(pid) => {
-            register_running_app(&state, RunningFalckApp { pid });
+        LaunchOutcome::Process(process) => {
+            let pid = backend_process_pid(&process);
+            register_running_app(&state, RunningFalckApp { process });
             Ok(LaunchResult {
                 kind: "process".to_string(),
                 pid: Some(pid),
@@ -1858,17 +2210,22 @@ pub async fn launch_falck_app(
 }
 
 #[tauri::command]
-pub async fn run_falck_cleanup(repo_path: String, app_id: String) -> Result<String, String> {
+pub async fn run_falck_cleanup(
+    app: AppHandle,
+    repo_path: String,
+    app_id: String,
+) -> Result<String, String> {
     run_blocking(move || {
         let path = Path::new(&repo_path);
         let config = load_config(path).map_err(|e| e.to_string())?;
-        let app = config
+        let app_config = config
             .applications
             .iter()
             .find(|app| app.id == app_id)
             .ok_or_else(|| "Application not found".to_string())?;
+        let backend = resolve_backend_for_app(&app, path, app_config)?;
 
-        run_cleanup(path, &config, app).map_err(|e| e.to_string())
+        run_cleanup(path, &config, app_config, &backend).map_err(|e| e.to_string())
     })
     .await
 }
@@ -1896,8 +2253,15 @@ pub async fn upload_falck_assets(
 
 #[tauri::command]
 pub async fn kill_falck_app(state: State<'_, FalckProcessState>, pid: u32) -> Result<(), String> {
-    let _ = unregister_running_app(&state, pid);
-    run_blocking(move || kill_app(pid).map_err(|e| e.to_string())).await
+    let handle = unregister_running_app(&state, pid);
+    run_blocking(move || {
+        if let Some(app) = handle {
+            kill_backend_process(app.process).map_err(|e| e.to_string())
+        } else {
+            kill_app(pid).map_err(|e| e.to_string())
+        }
+    })
+    .await
 }
 
 #[tauri::command]
