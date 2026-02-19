@@ -59,7 +59,13 @@ type SetupStatus =
 
 type RunningAppHandle =
   | { kind: "process"; pid: number }
-  | { kind: "container"; id: string; name: string; vm: string; repoPath: string };
+  | {
+      kind: "container";
+      id: string;
+      name: string;
+      vm: string;
+      repoPath: string;
+    };
 
 interface ContainerStatusEvent {
   status: string;
@@ -116,6 +122,7 @@ export function FalckDashboard({
   >({});
   const runningAppsRef = useRef<Record<string, RunningAppHandle>>({});
   const [setupDialogOpen, setSetupDialogOpen] = useState(false);
+  const [containerLogsOpen, setContainerLogsOpen] = useState(false);
   const [secretsSatisfied, setSecretsSatisfied] = useState<
     Record<string, boolean>
   >({});
@@ -150,7 +157,12 @@ export function FalckDashboard({
     setLaunchingApps({});
     setContainerStatusByApp({});
     setContainerLogsByApp({});
+    setContainerLogsOpen(false);
   }, [repoPath]);
+
+  useEffect(() => {
+    setContainerLogsOpen(false);
+  }, [activeAppId]);
 
   useEffect(() => {
     return () => {
@@ -162,7 +174,11 @@ export function FalckDashboard({
         if (handle.kind === "process") {
           void falckService.killApp(handle.pid);
         } else {
-          void containerService.stopContainer(handle.id, handle.vm, handle.name);
+          void containerService.stopContainer(
+            handle.id,
+            handle.vm,
+            handle.name,
+          );
         }
       });
     };
@@ -190,14 +206,6 @@ export function FalckDashboard({
               message: payload.message,
             },
           }));
-          setContainerLogsByApp((prev) => {
-            const existing = prev[payload.app_id!] ?? [];
-            const next = [
-              ...existing,
-              `[${payload.status}] ${payload.message}`,
-            ].slice(-200);
-            return { ...prev, [payload.app_id!]: next };
-          });
         },
       );
 
@@ -452,6 +460,10 @@ export function FalckDashboard({
         await falckService.killApp(handle.pid);
       } else {
         await containerService.stopContainer(handle.id, handle.vm, handle.name);
+        setContainerStatusByApp((prev) => ({
+          ...prev,
+          [app.id]: { status: "stopped", message: "Container stopped" },
+        }));
       }
       setRunningApps((prev) => {
         const next = { ...prev };
@@ -553,8 +565,101 @@ export function FalckDashboard({
     ? containerStatusByApp[activeApp.id]
     : undefined;
   const activeContainerLogs = activeApp
-    ? containerLogsByApp[activeApp.id] ?? []
+    ? (containerLogsByApp[activeApp.id] ?? [])
     : [];
+  const formatContainerMessage = (status?: string, message?: string) => {
+    const trimmed = (message ?? "").trim();
+    if (trimmed) {
+      return trimmed
+        .replace(/Lima VM/gi, "virtual machine")
+        .replace(/Building image/gi, "Building container image")
+        .replace(/Container '([^']+)' running/gi, "Container '$1' is running")
+        .replace(/Container running/gi, "Container is running");
+    }
+
+    switch ((status ?? "").toLowerCase()) {
+      case "creating":
+        return "Creating the virtual machine that hosts your container.";
+      case "starting":
+        return "Starting the container and preparing services.";
+      case "stopping":
+        return "Stopping the container safely.";
+      case "restarting":
+        return "Restarting the virtual machine to enable file writes.";
+      case "building":
+        return "Building the container image from your Dockerfile.";
+      case "running":
+        return "Container is running and ready for use.";
+      case "stopped":
+        return "The container is currently stopped.";
+      case "removed":
+        return "The container has been removed.";
+      case "error":
+      case "failed":
+        return "Something went wrong while starting the container.";
+      default:
+        return "No container activity yet.";
+    }
+  };
+  const containerActivityStatus = (
+    activeContainerStatus?.status ?? (isLaunching ? "starting" : "idle")
+  ).toLowerCase();
+  const containerActivityMessage = formatContainerMessage(
+    containerActivityStatus,
+    activeContainerStatus?.message,
+  );
+  const containerActivityMeta: Record<
+    string,
+    { title: string; dotClass: string }
+  > = {
+    idle: {
+      title: "Container idle",
+      dotClass: "bg-muted-foreground/40",
+    },
+    creating: {
+      title: "Preparing container",
+      dotClass: "bg-sky-500 animate-pulse",
+    },
+    starting: {
+      title: "Starting container",
+      dotClass: "bg-sky-500 animate-pulse",
+    },
+    stopping: {
+      title: "Stopping container",
+      dotClass: "bg-amber-500 animate-pulse",
+    },
+    restarting: {
+      title: "Restarting container host",
+      dotClass: "bg-sky-500 animate-pulse",
+    },
+    building: {
+      title: "Building container",
+      dotClass: "bg-sky-500 animate-pulse",
+    },
+    running: {
+      title: "Container running",
+      dotClass: "bg-emerald-500",
+    },
+    stopped: {
+      title: "Container stopped",
+      dotClass: "bg-amber-500",
+    },
+    removed: {
+      title: "Container removed",
+      dotClass: "bg-amber-500",
+    },
+    error: {
+      title: "Container error",
+      dotClass: "bg-destructive",
+    },
+    failed: {
+      title: "Container error",
+      dotClass: "bg-destructive",
+    },
+  };
+  const containerActivity =
+    containerActivityMeta[containerActivityStatus] ??
+    containerActivityMeta.idle;
   const setupStatus: SetupStatus = activeApp
     ? (setupStatusByApp[activeApp.id] ??
       (activeApp.setup?.check?.command ? "checking" : "not_configured"))
@@ -597,7 +702,7 @@ export function FalckDashboard({
       )}
 
       {activeApp ? (
-        <div className="space-y-4">
+        <div>
           <div className="border px-2 py-1 rounded bg-background">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap items-center gap-1">
@@ -633,6 +738,22 @@ export function FalckDashboard({
                 </Button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {activeApp.launch.container ? (
+                  <div className="flex items-center gap-1.5 text-[11px]">
+                    <button
+                      type="button"
+                      className="font-medium text-muted-foreground underline decoration-dotted underline-offset-2 transition-colors hover:text-foreground"
+                      onClick={() => setContainerLogsOpen(true)}
+                    >
+                      {containerActivityMessage}
+                    </button>
+                    <span
+                      className={`inline-flex h-2 w-2 rounded-full ${containerActivity.dotClass}`}
+                      title={containerActivity.title}
+                      aria-hidden="true"
+                    />
+                  </div>
+                ) : null}
                 {isRunning && activeApp.launch.access?.url ? (
                   <Button
                     size="sm"
@@ -715,32 +836,25 @@ export function FalckDashboard({
                   </AlertDescription>
                 </Alert>
               )}
-              {activeApp.launch.container ? (
-                <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-semibold">Container activity</span>
-                    <Badge variant="outline">
-                      {activeContainerStatus?.status ??
-                        (isLaunching ? "starting" : "idle")}
-                    </Badge>
-                  </div>
-                  <p className="text-muted-foreground">
-                    {activeContainerStatus?.message ??
-                      (isLaunching
-                        ? "Preparing container build..."
-                        : "No container activity yet.")}
-                  </p>
-                  {activeContainerLogs.length > 0 ? (
-                    <ScrollArea className="mt-2 h-[180px] rounded border border-border/60 bg-background/80 p-2">
-                      <pre className="text-xs font-mono whitespace-pre-wrap">
-                        {activeContainerLogs.slice(-200).join("\n")}
-                      </pre>
-                    </ScrollArea>
-                  ) : null}
-                </div>
-              ) : null}
             </div>
           </div>
+          <Dialog open={containerLogsOpen} onOpenChange={setContainerLogsOpen}>
+            <DialogContent className="max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>Container logs</DialogTitle>
+                <DialogDescription>
+                  Live output from the dev container build and run steps.
+                </DialogDescription>
+              </DialogHeader>
+              <ScrollArea className="max-h-[70vh] rounded-md border border-border/60 bg-muted/20">
+                <pre className="p-4 text-xs font-mono leading-relaxed whitespace-pre-wrap">
+                  {activeContainerLogs.length > 0
+                    ? activeContainerLogs.slice(-400).join("\n")
+                    : "No logs yet."}
+                </pre>
+              </ScrollArea>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={setupDialogOpen} onOpenChange={setSetupDialogOpen}>
             <DialogContent className="max-w-3xl">
@@ -982,7 +1096,10 @@ export function FalckDashboard({
                   >
                     Not now
                   </Button>
-                  <Button onClick={() => void handleInstallLima()} disabled={limaInstalling}>
+                  <Button
+                    onClick={() => void handleInstallLima()}
+                    disabled={limaInstalling}
+                  >
                     {limaInstalling ? "Installing..." : "Install Lima"}
                   </Button>
                 </div>

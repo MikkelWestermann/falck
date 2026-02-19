@@ -971,9 +971,12 @@ pub async fn start_container(
 ) -> Result<String, String> {
     run_blocking(move || {
         let limactl = find_limactl_path(&app).ok_or_else(|| "Lima is not installed".to_string())?;
+        let record = storage::list_containers(&app, None)
+            .ok()
+            .and_then(|records| records.into_iter().find(|record| record.id == id));
         let ctx = EventContext {
-            repo_path: None,
-            app_id: None,
+            repo_path: record.as_ref().map(|record| record.repo_path.clone()),
+            app_id: record.as_ref().and_then(|record| record.app_id.clone()),
             vm: Some(vm.clone()),
             container: Some(name.clone()),
         };
@@ -993,14 +996,12 @@ pub async fn start_container(
             return Err(format!("Failed to start container '{}'", name));
         }
 
-        if let Ok(records) = storage::list_containers(&app, None) {
-            if let Some(existing) = records.into_iter().find(|record| record.id == id) {
-                let record = StoredContainer {
-                    last_used: now_timestamp(),
-                    ..existing
-                };
-                let _ = storage::upsert_container(&app, &record);
-            }
+        if let Some(existing) = record {
+            let record = StoredContainer {
+                last_used: now_timestamp(),
+                ..existing
+            };
+            let _ = storage::upsert_container(&app, &record);
         }
 
         emit_container_status(&app, "running", "Container running", &ctx);
@@ -1018,9 +1019,12 @@ pub async fn stop_container(
 ) -> Result<String, String> {
     run_blocking(move || {
         let limactl = find_limactl_path(&app).ok_or_else(|| "Lima is not installed".to_string())?;
+        let record = storage::list_containers(&app, None)
+            .ok()
+            .and_then(|records| records.into_iter().find(|record| record.id == id));
         let ctx = EventContext {
-            repo_path: None,
-            app_id: None,
+            repo_path: record.as_ref().map(|record| record.repo_path.clone()),
+            app_id: record.as_ref().and_then(|record| record.app_id.clone()),
             vm: Some(vm.clone()),
             container: Some(name.clone()),
         };
@@ -1040,14 +1044,12 @@ pub async fn stop_container(
             return Err(format!("Failed to stop container '{}'", name));
         }
 
-        if let Ok(records) = storage::list_containers(&app, None) {
-            if let Some(existing) = records.into_iter().find(|record| record.id == id) {
-                let record = StoredContainer {
-                    last_used: now_timestamp(),
-                    ..existing
-                };
-                let _ = storage::upsert_container(&app, &record);
-            }
+        if let Some(existing) = record {
+            let record = StoredContainer {
+                last_used: now_timestamp(),
+                ..existing
+            };
+            let _ = storage::upsert_container(&app, &record);
         }
 
         emit_container_status(&app, "stopped", "Container stopped", &ctx);
@@ -1065,9 +1067,12 @@ pub async fn delete_container(
 ) -> Result<String, String> {
     run_blocking(move || {
         let limactl = find_limactl_path(&app).ok_or_else(|| "Lima is not installed".to_string())?;
+        let record = storage::list_containers(&app, None)
+            .ok()
+            .and_then(|records| records.into_iter().find(|record| record.id == id));
         let ctx = EventContext {
-            repo_path: None,
-            app_id: None,
+            repo_path: record.as_ref().map(|record| record.repo_path.clone()),
+            app_id: record.as_ref().and_then(|record| record.app_id.clone()),
             vm: Some(vm.clone()),
             container: Some(name.clone()),
         };
