@@ -527,7 +527,11 @@ async fn download_to_file(client: &Client, url: &str, path: &Path) -> AnyhowResu
         .await
         .context("Failed to request download")?;
     if !response.status().is_success() {
-        bail!("Download failed with status {}", response.status());
+        bail!(
+            "Download failed with status {} for {}",
+            response.status(),
+            url
+        );
     }
     let bytes = response.bytes().await.context("Failed to read download")?;
     tokio::fs::write(path, &bytes)
@@ -562,10 +566,11 @@ fn platform_tuple() -> AnyhowResult<(&'static str, &'static str)> {
         bail!("Lima install only supported on macOS and Linux")
     };
 
-    let arch = match env::consts::ARCH {
-        "aarch64" | "arm64" => "aarch64",
-        "x86_64" => "x86_64",
-        other => bail!("Unsupported CPU architecture: {}", other),
+    let arch = match (os, env::consts::ARCH) {
+        ("Darwin", "aarch64") | ("Darwin", "arm64") => "arm64",
+        ("Linux", "aarch64") | ("Linux", "arm64") => "aarch64",
+        (_, "x86_64") => "x86_64",
+        (_, other) => bail!("Unsupported CPU architecture: {}", other),
     };
 
     Ok((os, arch))
