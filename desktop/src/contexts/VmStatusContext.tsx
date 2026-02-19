@@ -124,8 +124,8 @@ export function VmStatusProvider({ children }: { children: ReactNode }) {
       repoPath,
       vmName: null,
       provider: null,
-      phase: "idle",
-      message: "Waiting for VM activity...",
+      phase: "starting",
+      message: "Starting virtualized backend...",
       logs: [],
     });
     setExpanded(false);

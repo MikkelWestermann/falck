@@ -9,7 +9,7 @@ use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::sync::atomic::{AtomicU32, Ordering};
-use tauri::{AppHandle, State};
+use tauri::State;
 
 use crate::blocking::{run_blocking, run_blocking_value};
 use crate::backend::{self, BackendContext, BackendMode, BackendProcess, VmProcessHandle};
@@ -166,7 +166,6 @@ pub struct Secret {
 pub struct SetupConfig {
     pub steps: Option<Vec<SetupStep>>,
     pub check: Option<SetupCheck>,
-    pub env: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -178,7 +177,6 @@ pub struct SetupStep {
     pub silent: Option<bool>,
     pub optional: Option<bool>,
     pub only_if: Option<String>,
-    pub env: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -205,8 +203,7 @@ pub struct SetupCheckResult {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LaunchConfig {
-    pub command: Option<String>,
-    pub dockerfile: Option<String>,
+    pub command: String,
     pub description: Option<String>,
     pub timeout: Option<u32>,
     pub access: Option<AccessConfig>,
@@ -283,21 +280,6 @@ pub fn get_app_root(repo_path: &Path, app: &Application) -> PathBuf {
     } else {
         repo_path.join(&app.root)
     }
-}
-
-fn resolve_dockerfile_path(repo_path: &Path, dockerfile: &str) -> Result<PathBuf> {
-    let normalized = normalize_relative_path(dockerfile)?;
-    if normalized.is_empty() {
-        bail!("Dockerfile path is empty.");
-    }
-    let dockerfile_path = repo_path.join(normalized);
-    if !dockerfile_path.exists() {
-        bail!("Dockerfile not found at {}", dockerfile_path.display());
-    }
-    if !dockerfile_path.is_file() {
-        bail!("Dockerfile path must point to a file.");
-    }
-    Ok(dockerfile_path)
 }
 
 // ============================================================================
@@ -621,13 +603,11 @@ pub fn run_setup(
         bail!("Required secrets not configured for this application");
     }
 
+    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
+
     if let Some(setup) = &app.setup {
         if let Some(steps) = &setup.steps {
             for step in steps {
-                let (app_root, ctx, mut env_map) =
-                    prepare_runtime_context(repo_path, config, app, backend)?;
-                apply_env_overrides(&setup.env, &ctx, &mut env_map)?;
-                apply_env_overrides(&step.env, &ctx, &mut env_map)?;
                 if let Some(condition) = &step.only_if {
                     if !evaluate_condition(condition, &ctx)? {
                         continue;
@@ -681,8 +661,7 @@ pub fn check_setup_status(
         });
     };
 
-    let (app_root, ctx, mut env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
-    apply_env_overrides(&setup.env, &ctx, &mut env_map)?;
+    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
 
     if let Some(condition) = &check.only_if {
         if !evaluate_condition(condition, &ctx)? {
@@ -793,7 +772,6 @@ pub fn check_setup_status(
 }
 
 pub fn launch_app(
-    app_handle: Option<&AppHandle>,
     repo_path: &Path,
     config: &FalckConfig,
     app: &Application,
@@ -804,31 +782,10 @@ pub fn launch_app(
     }
 
     let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
-    let dockerfile = match &app.launch.dockerfile {
-        Some(value) => {
-            let resolved = resolve_template(value, &ctx)?;
-            let trimmed = resolved.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            }
-        }
-        None => None,
-    };
+    let command = resolve_template(&app.launch.command, &ctx)?;
 
     match backend.mode {
         BackendMode::Host => {
-            let command = match app.launch.command.as_ref() {
-                Some(value) => value,
-                None => {
-                    if dockerfile.is_some() {
-                        bail!("Dockerfile launches require the virtualized backend. Switch the backend or add launch.command.");
-                    }
-                    bail!("No launch command configured for this application");
-                }
-            };
-            let command = resolve_template(command, &ctx)?;
             let mut cmd = build_shell_command(&command);
             cmd.current_dir(&app_root)
                 .envs(&env_map)
@@ -843,40 +800,6 @@ pub fn launch_app(
                 .vm
                 .as_ref()
                 .context("Virtualized backend not initialized")?;
-            if let Some(dockerfile) = dockerfile {
-                let dockerfile_path = resolve_dockerfile_path(repo_path, &dockerfile)?;
-                let dockerfile_vm = backend::vm_app_root(vm, &dockerfile_path)
-                    .map_err(|e| anyhow::anyhow!(e))?;
-                let context_vm = backend::vm_app_root(vm, &app_root)
-                    .map_err(|e| anyhow::anyhow!(e))?;
-                let container_env = build_container_env_map(config, app, &ctx)?;
-                let container_name = backend::run_dockerfile_container(
-                    app_handle,
-                    vm,
-                    &app.id,
-                    &dockerfile_vm,
-                    &context_vm,
-                    &container_env,
-                )
-                .map_err(|e| anyhow::anyhow!(e))?;
-                return Ok(BackendProcess::VirtualizedContainer {
-                    name: container_name,
-                    vm: VmProcessHandle {
-                        provider: vm.provider,
-                        name: vm.name.clone(),
-                        container_name: vm.container_name.clone(),
-                        vm_uid: vm.vm_uid,
-                        vm_gid: vm.vm_gid,
-                    },
-                });
-            }
-
-            let command = app
-                .launch
-                .command
-                .as_ref()
-                .context("No launch command configured for this application")?;
-            let command = resolve_template(command, &ctx)?;
             let app_root = backend::vm_app_root(vm, &app_root).map_err(|e| anyhow::anyhow!(e))?;
             let script = format!(
                 "{}cd {} && {}",
@@ -884,23 +807,12 @@ pub fn launch_app(
                 backend::shell_escape(&app_root),
                 backend::background_launch_script(&command)
             );
-            let cmd = if let Some(container_name) = vm.container_name.as_deref() {
-                let user = backend::container_user_spec(vm);
-                backend::build_container_exec_command(vm, container_name, user.as_deref(), &script)
-            } else {
-                backend::build_vm_command(vm, &script)
-            };
+            let cmd = backend::build_vm_command(vm, &script);
             let (status, stdout, stderr) =
                 backend::spawn_capture_with_timeout(cmd, None).map_err(|e| anyhow::anyhow!(e))?;
             if !status.success() {
-                let target = if vm.container_name.is_some() {
-                    "container"
-                } else {
-                    "VM"
-                };
                 bail!(
-                    "Failed to launch application in {}: {}",
-                    target,
+                    "Failed to launch application in VM: {}",
                     stderr.trim()
                 );
             }
@@ -910,9 +822,6 @@ pub fn launch_app(
                 vm: VmProcessHandle {
                     provider: vm.provider,
                     name: vm.name.clone(),
-                    container_name: vm.container_name.clone(),
-                    vm_uid: vm.vm_uid,
-                    vm_gid: vm.vm_gid,
                 },
             })
         }
@@ -993,13 +902,7 @@ fn load_backend_env(backend: &BackendContext) -> HashMap<String, String> {
         BackendMode::Virtualized => backend
             .vm
             .as_ref()
-            .and_then(|vm| {
-                if let Some(container_name) = vm.container_name.as_deref() {
-                    load_container_shell_env(vm, container_name)
-                } else {
-                    load_vm_shell_env(vm)
-                }
-            })
+            .and_then(load_vm_shell_env)
             .unwrap_or_default(),
     }
 }
@@ -1034,58 +937,6 @@ emit_env
     );
 
     let cmd = backend::build_vm_command(vm, &script);
-    let (status, stdout, _stderr) =
-        backend::spawn_capture_with_timeout(cmd, Some(VM_ENV_TIMEOUT_SECS)).ok()?;
-    if !status.success() {
-        return None;
-    }
-
-    let stdout_bytes = stdout.into_bytes();
-    let start_marker = format!("{}\0", marker_start).into_bytes();
-    let end_marker = format!("{}\0", marker_end).into_bytes();
-    let start = find_subsequence(&stdout_bytes, &start_marker)?;
-    let env_start = start + start_marker.len();
-    let end =
-        find_subsequence(&stdout_bytes[env_start..], &end_marker).map(|offset| env_start + offset)?;
-    let env_bytes = &stdout_bytes[env_start..end];
-    Some(parse_env_null(env_bytes))
-}
-
-fn load_container_shell_env(
-    vm: &backend::VmContext,
-    container_name: &str,
-) -> Option<HashMap<String, String>> {
-    let marker_start = "__FALCK_ENV_BEGIN__";
-    let marker_end = "__FALCK_ENV_END__";
-    let script = format!(
-        r#"
-marker_start='{start}'
-marker_end='{end}'
-shell=""
-if [ -n "${{SHELL:-}}" ] && command -v "$SHELL" >/dev/null 2>&1; then
-  shell="$SHELL"
-elif command -v bash >/dev/null 2>&1; then
-  shell="$(command -v bash)"
-elif command -v zsh >/dev/null 2>&1; then
-  shell="$(command -v zsh)"
-else
-  shell="/bin/sh"
-fi
-emit_env() {{
-  "$shell" "$@" -c "printf '%s\\0' \"$marker_start\"; env -0; printf '%s\\0' \"$marker_end\""
-}}
-emit_env -l -i && exit 0
-emit_env -l && exit 0
-emit_env -i && exit 0
-emit_env
-"#,
-        start = marker_start,
-        end = marker_end
-    );
-
-    let user = backend::container_user_spec(vm);
-    let cmd =
-        backend::build_container_exec_command(vm, container_name, user.as_deref(), &script);
     let (status, stdout, _stderr) =
         backend::spawn_capture_with_timeout(cmd, Some(VM_ENV_TIMEOUT_SECS)).ok()?;
     if !status.success() {
@@ -1164,42 +1015,6 @@ fn build_env_map(
     Ok(env_map)
 }
 
-fn build_container_env_map(
-    config: &FalckConfig,
-    app: &Application,
-    ctx: &TemplateContext,
-) -> Result<HashMap<String, String>> {
-    let mut env_map: HashMap<String, String> = HashMap::new();
-
-    if let Some(global_env) = &config.global_env {
-        for (key, value) in global_env {
-            env_map.insert(key.clone(), resolve_template(value, ctx)?);
-        }
-    }
-
-    if let Some(launch_env) = &app.launch.env {
-        for (key, value) in launch_env {
-            env_map.insert(key.clone(), resolve_template(value, ctx)?);
-        }
-    }
-
-    env_map.extend(get_all_secrets());
-    Ok(env_map)
-}
-
-fn apply_env_overrides(
-    overrides: &Option<HashMap<String, String>>,
-    ctx: &TemplateContext,
-    env_map: &mut HashMap<String, String>,
-) -> Result<()> {
-    if let Some(overrides) = overrides {
-        for (key, value) in overrides {
-            env_map.insert(key.clone(), resolve_template(value, ctx)?);
-        }
-    }
-    Ok(())
-}
-
 fn run_command(
     command: &str,
     cwd: &Path,
@@ -1227,12 +1042,7 @@ fn run_command(
                 backend::shell_escape(&app_root),
                 command
             );
-            let cmd = if let Some(container_name) = vm.container_name.as_deref() {
-                let user = backend::container_user_spec(vm);
-                backend::build_container_exec_command(vm, container_name, user.as_deref(), &script)
-            } else {
-                backend::build_vm_command(vm, &script)
-            };
+            let cmd = backend::build_vm_command(vm, &script);
             backend::spawn_with_timeout(cmd, timeout_secs, silent)
                 .map_err(|e| anyhow::anyhow!(e))
         }
@@ -1265,12 +1075,7 @@ fn run_command_capture(
                 backend::shell_escape(&app_root),
                 command
             );
-            let cmd = if let Some(container_name) = vm.container_name.as_deref() {
-                let user = backend::container_user_spec(vm);
-                backend::build_container_exec_command(vm, container_name, user.as_deref(), &script)
-            } else {
-                backend::build_vm_command(vm, &script)
-            };
+            let cmd = backend::build_vm_command(vm, &script);
             backend::spawn_capture_with_timeout(cmd, timeout_secs)
                 .map_err(|e| anyhow::anyhow!(e))
         }
@@ -1287,9 +1092,6 @@ fn kill_backend_process(process: BackendProcess) -> Result<()> {
         BackendProcess::Host { pid } => kill_app(pid),
         BackendProcess::Virtualized { pid, vm } => {
             backend::kill_vm_process(&vm, pid).map_err(|e| anyhow::anyhow!(e))
-        }
-        BackendProcess::VirtualizedContainer { name, vm } => {
-            backend::stop_vm_container(&vm, &name).map_err(|e| anyhow::anyhow!(e))
         }
     }
 }
@@ -2023,7 +1825,7 @@ pub async fn launch_falck_app(
             }
         }
 
-        launch_app(Some(&app), path, &config, app_config, &backend).map_err(|e| e.to_string())
+        launch_app(path, &config, app_config, &backend).map_err(|e| e.to_string())
     })
     .await?;
     let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);

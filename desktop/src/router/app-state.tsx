@@ -65,6 +65,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    void backendService.ensureRepoBackend(repoPath).catch((err) => {
+      console.error("Failed to start virtualized backend:", err);
+    });
+
     return () => {
       void falckService.clearSecrets();
       void backendService.stopRepoBackend(repoPath).catch((err) => {

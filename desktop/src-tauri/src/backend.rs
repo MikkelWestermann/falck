@@ -17,8 +17,6 @@ const VM_SHELL_TIMEOUT_SECS: u32 = 20;
 const VM_START_TIMEOUT_SECS: u32 = 120;
 const VM_CREATE_TIMEOUT_SECS: u32 = 180;
 const VM_BOOTSTRAP_TIMEOUT_SECS: u32 = 240;
-const CONTAINER_BUILD_TIMEOUT_SECS: u32 = 600;
-const DOCKERFILE_IMAGE_VERSION: u8 = 1;
 
 #[derive(Debug, Serialize, Clone)]
 struct VmStatusEvent {
@@ -121,26 +119,18 @@ pub struct VmContext {
     pub name: String,
     pub repo_path: PathBuf,
     pub repo_root: String,
-    pub vm_repo_root: String,
-    pub container_name: Option<String>,
-    pub vm_uid: Option<u32>,
-    pub vm_gid: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
 pub struct VmProcessHandle {
     pub provider: VmProvider,
     pub name: String,
-    pub container_name: Option<String>,
-    pub vm_uid: Option<u32>,
-    pub vm_gid: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
 pub enum BackendProcess {
     Host { pid: u32 },
     Virtualized { pid: u32, vm: VmProcessHandle },
-    VirtualizedContainer { name: String, vm: VmProcessHandle },
 }
 
 #[derive(Debug, Clone)]
@@ -272,18 +262,11 @@ fn ensure_prereq(provider: VmProvider) -> Result<(), String> {
 }
 
 fn ensure_vm_bootstrap(provider: VmProvider, name: &str) -> Result<(), String> {
-    if provider == VmProvider::Lima {
-        return Ok(());
-    }
     let vm = VmContext {
         provider,
         name: name.to_string(),
         repo_path: PathBuf::new(),
         repo_root: "/".to_string(),
-        vm_repo_root: "/".to_string(),
-        container_name: None,
-        vm_uid: None,
-        vm_gid: None,
     };
     let script = format!(
         r#"
@@ -355,297 +338,6 @@ $SUDO touch /var/lib/falck/bootstrap_v1
         }
     }
 }
-
-fn dockerfile_hash(repo_path: &Path, app_id: &str) -> String {
-    let key = format!("{}:{}", repo_path.to_string_lossy(), app_id);
-    let hash = fnv1a_hash(&key);
-    format!("{:08x}", (hash & 0xffff_ffff) as u32)
-}
-
-fn docker_container_name_for_app(repo_path: &Path, app_id: &str) -> String {
-    let base = repo_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("repo");
-    let suffix = dockerfile_hash(repo_path, app_id);
-    format!(
-        "falck-{}-{}-{}",
-        sanitize_name(base),
-        sanitize_name(app_id),
-        suffix
-    )
-}
-
-fn docker_image_name_for_app(repo_path: &Path, app_id: &str) -> String {
-    let base = repo_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("repo");
-    let suffix = dockerfile_hash(repo_path, app_id);
-    format!(
-        "falck-app-{}-{}-{}-v{}",
-        sanitize_name(base),
-        sanitize_name(app_id),
-        suffix,
-        DOCKERFILE_IMAGE_VERSION
-    )
-}
-
-fn nerdctl_exists(vm: &VmContext) -> bool {
-    let script = "command -v nerdctl >/dev/null 2>&1";
-    let cmd = build_vm_command(vm, script);
-    spawn_with_timeout(cmd, Some(VM_SHELL_TIMEOUT_SECS), true)
-        .map(|status| status.success())
-        .unwrap_or(false)
-}
-
-fn ensure_vm_sudo(vm: &VmContext) -> Result<(), String> {
-    let check = build_vm_command(vm, "command -v sudo >/dev/null 2>&1");
-    if !spawn_with_timeout(check, Some(VM_SHELL_TIMEOUT_SECS), true)
-        .map(|status| status.success())
-        .unwrap_or(false)
-    {
-        return Err("sudo is required inside the VM to run containers.".to_string());
-    }
-    let cmd = build_vm_command(vm, "sudo -n true");
-    let status = spawn_with_timeout(cmd, Some(VM_SHELL_TIMEOUT_SECS), true)
-        .map_err(|e| format!("Failed to check sudo: {e}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "sudo requires a password. Run: limactl shell {} -- sudo -v",
-            vm.name
-        ))
-    }
-}
-
-fn vm_user_ids(vm: &VmContext) -> Result<(u32, u32), String> {
-    let script = "printf '%s:%s' \"$(id -u)\" \"$(id -g)\"";
-    let cmd = build_vm_command(vm, script);
-    let (status, stdout, stderr) =
-        spawn_capture_with_timeout(cmd, Some(VM_SHELL_TIMEOUT_SECS))
-            .map_err(|e| format!("Failed to read VM user ids: {e}"))?;
-    if !status.success() {
-        let combined = format!("{}\n{}", stdout.trim(), stderr.trim()).trim().to_string();
-        if combined.is_empty() {
-            return Err("Failed to read VM user ids.".to_string());
-        }
-        return Err(combined);
-    }
-    let raw = stdout.trim();
-    let mut parts = raw.split(':');
-    let uid = parts
-        .next()
-        .and_then(|value| value.parse::<u32>().ok())
-        .ok_or_else(|| "Failed to parse VM uid.".to_string())?;
-    let gid = parts
-        .next()
-        .and_then(|value| value.parse::<u32>().ok())
-        .ok_or_else(|| "Failed to parse VM gid.".to_string())?;
-    Ok((uid, gid))
-}
-
-pub fn container_user_spec(vm: &VmContext) -> Option<String> {
-    match (vm.vm_uid, vm.vm_gid) {
-        (Some(uid), Some(gid)) => Some(format!("{}:{}", uid, gid)),
-        _ => None,
-    }
-}
-
-fn build_nerdctl_command(vm: &VmContext) -> Command {
-    let mut cmd = Command::new("limactl");
-    cmd.args([
-        "shell",
-        "--tty=false",
-        &vm.name,
-        "--",
-        "sudo",
-        "-n",
-        "nerdctl",
-    ]);
-    apply_shell_env(&mut cmd);
-    cmd
-}
-
-pub fn build_container_exec_command(
-    vm: &VmContext,
-    container_name: &str,
-    user: Option<&str>,
-    script: &str,
-) -> Command {
-    let mut cmd = build_nerdctl_command(vm);
-    cmd.arg("exec");
-    if let Some(user) = user {
-        cmd.args(["--user", user]);
-    }
-    cmd.arg(container_name);
-    cmd.args(["sh", "-c", script]);
-    cmd
-}
-
-fn container_names(vm: &VmContext, all: bool) -> Result<HashSet<String>, String> {
-    let mut cmd = build_nerdctl_command(vm);
-    if all {
-        cmd.args(["ps", "-a", "--format", "{{.Names}}"]);
-    } else {
-        cmd.args(["ps", "--format", "{{.Names}}"]);
-    }
-    let (status, stdout, stderr) =
-        spawn_capture_with_timeout(cmd, Some(VM_SHELL_TIMEOUT_SECS))
-            .map_err(|e| format!("Failed to list containers: {e}"))?;
-    if !status.success() {
-        let combined = format!("{}\n{}", stdout.trim(), stderr.trim()).trim().to_string();
-        if combined.is_empty() {
-            return Err("Failed to list containers.".to_string());
-        }
-        return Err(combined);
-    }
-    Ok(stdout
-        .lines()
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .map(|line| line.to_string())
-        .collect())
-}
-
-fn container_exists(vm: &VmContext, name: &str) -> Result<bool, String> {
-    Ok(container_names(vm, true)?.contains(name))
-}
-
-fn remove_container(vm: &VmContext, name: &str) -> Result<(), String> {
-    let mut cmd = build_nerdctl_command(vm);
-    cmd.args(["rm", "-f", name]);
-    let status = spawn_with_timeout(cmd, Some(VM_SHELL_TIMEOUT_SECS), true)
-        .map_err(|e| format!("Failed to remove container: {e}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err("Failed to remove container.".to_string())
-    }
-}
-
-pub fn run_dockerfile_container(
-    app: Option<&AppHandle>,
-    vm: &VmContext,
-    app_id: &str,
-    dockerfile_path: &str,
-    context_path: &str,
-    env_map: &HashMap<String, String>,
-) -> Result<String, String> {
-    if vm.provider != VmProvider::Lima {
-        return Err("Dockerfile launches are only supported on Lima.".to_string());
-    }
-    if dockerfile_path.trim().is_empty() {
-        return Err("Dockerfile path is empty.".to_string());
-    }
-    if context_path.trim().is_empty() {
-        return Err("Docker build context is empty.".to_string());
-    }
-    ensure_vm_sudo(vm)?;
-    if !nerdctl_exists(vm) {
-        return Err(format!(
-            "nerdctl is not available in this Lima VM. Use Settings > Reset VM (or `limactl delete {}`) and try again.",
-            vm.name
-        ));
-    }
-
-    let image = docker_image_name_for_app(&vm.repo_path, app_id);
-    let container_name = docker_container_name_for_app(&vm.repo_path, app_id);
-
-    if container_exists(vm, &container_name)? {
-        emit_vm_status(
-            app,
-            &vm.repo_path,
-            Some(&vm.name),
-            Some(vm.provider),
-            "deleting",
-            "Removing existing container",
-        );
-        remove_container(vm, &container_name)?;
-    }
-
-    emit_vm_status(
-        app,
-        &vm.repo_path,
-        Some(&vm.name),
-        Some(vm.provider),
-        "bootstrapping",
-        "Building Docker image",
-    );
-    let mut build_cmd = build_nerdctl_command(vm);
-    build_cmd.args(["build", "-t", &image, "-f", dockerfile_path, context_path]);
-    let (build_status, build_stdout, build_stderr) =
-        spawn_capture_with_timeout(build_cmd, Some(CONTAINER_BUILD_TIMEOUT_SECS))
-            .map_err(|e| format!("Failed to build Docker image: {e}"))?;
-    if !build_status.success() {
-        let combined = format!("{}\n{}", build_stdout.trim(), build_stderr.trim())
-            .trim()
-            .to_string();
-        let message = if combined.is_empty() {
-            "Docker build failed.".to_string()
-        } else {
-            combined
-        };
-        emit_vm_status(
-            app,
-            &vm.repo_path,
-            Some(&vm.name),
-            Some(vm.provider),
-            "error",
-            &format!("Docker build failed: {}", message),
-        );
-        return Err(message);
-    }
-
-    emit_vm_status(
-        app,
-        &vm.repo_path,
-        Some(&vm.name),
-        Some(vm.provider),
-        "starting",
-        "Starting Docker container",
-    );
-    let mut run_cmd = build_nerdctl_command(vm);
-    run_cmd.args(["run", "-d", "--name", &container_name, "--net=host"]);
-    for (key, value) in env_map {
-        run_cmd.args(["--env", &format!("{}={}", key, value)]);
-    }
-    run_cmd.arg(&image);
-    let (run_status, run_stdout, run_stderr) =
-        spawn_capture_with_timeout(run_cmd, Some(VM_START_TIMEOUT_SECS))
-            .map_err(|e| format!("Failed to start Docker container: {e}"))?;
-    if !run_status.success() {
-        let combined = format!("{}\n{}", run_stdout.trim(), run_stderr.trim())
-            .trim()
-            .to_string();
-        let message = if combined.is_empty() {
-            "Failed to start Docker container.".to_string()
-        } else {
-            combined
-        };
-        emit_vm_status(
-            app,
-            &vm.repo_path,
-            Some(&vm.name),
-            Some(vm.provider),
-            "error",
-            &format!("Docker run failed: {}", message),
-        );
-        return Err(message);
-    }
-
-    emit_vm_status(
-        app,
-        &vm.repo_path,
-        Some(&vm.name),
-        Some(vm.provider),
-        "ready",
-        "Docker container is running",
-    );
-    Ok(container_name)
-}
-
 
 fn install_prereq(provider: VmProvider) -> Result<String, String> {
     match provider {
@@ -733,10 +425,6 @@ fn lima_mount_target(repo_path: &Path) -> String {
     format!("/mnt/falck-{}-{}", sanitize_name(base), suffix)
 }
 
-fn lima_containerd_yq() -> &'static str {
-    ".containerd.system = true | .containerd.user = false"
-}
-
 fn yq_quote(value: &str) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| format!("\"{}\"", value.replace('\"', "\\\"")))
 }
@@ -748,7 +436,7 @@ fn lima_mounts_yq(repo_path: &Path) -> String {
     let repo_location = yq_quote(&repo_location);
     let repo_mount = yq_quote(&repo_mount);
     format!(
-        ".mountInotify = true | .mounts = [{{\"location\": {home}}}, {{\"location\": {repo}, \"mountPoint\": {mount}, \"writable\": true}}]",
+        ".mounts = [{{\"location\": {home}}}, {{\"location\": {repo}, \"mountPoint\": {mount}, \"writable\": true}}]",
         home = home_location,
         repo = repo_location,
         mount = repo_mount
@@ -905,21 +593,6 @@ fn lima_instance_registered(name: &str) -> bool {
     parse_lima_list_entries(&output.stdout)
         .map(|items| items.iter().any(|item| item.name == name))
         .unwrap_or(false)
-}
-
-fn wsl_instance_registered(name: &str) -> bool {
-    if !command_exists("wsl") {
-        return false;
-    }
-    let output = Command::new("wsl").args(["-l", "-q"]).output();
-    let Ok(output) = output else {
-        return false;
-    };
-    if !output.status.success() {
-        return false;
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout.lines().any(|line| line.trim() == name)
 }
 
 fn lima_config_path(name: &str) -> Option<PathBuf> {
@@ -1207,27 +880,25 @@ pub fn ensure_vm_port_forwards(
         );
         err
     })?;
-    if vm.provider != VmProvider::Lima {
+    emit_vm_status(
+        app,
+        &vm.repo_path,
+        Some(&vm.name),
+        Some(vm.provider),
+        "bootstrapping",
+        "Ensuring VM packages are installed",
+    );
+    ensure_vm_bootstrap(vm.provider, &vm.name).map_err(|err| {
         emit_vm_status(
             app,
             &vm.repo_path,
             Some(&vm.name),
             Some(vm.provider),
-            "bootstrapping",
-            "Ensuring base dependencies are installed",
+            "error",
+            &format!("VM bootstrap failed: {err}"),
         );
-        ensure_vm_bootstrap(vm.provider, &vm.name).map_err(|err| {
-            emit_vm_status(
-                app,
-                &vm.repo_path,
-                Some(&vm.name),
-                Some(vm.provider),
-                "error",
-                &format!("VM bootstrap failed: {err}"),
-            );
-            err
-        })?;
-    }
+        err
+    })?;
     emit_vm_status(
         app,
         &vm.repo_path,
@@ -1313,10 +984,6 @@ fn path_exists_in_vm(provider: VmProvider, name: &str, path: &str) -> bool {
         name: name.to_string(),
         repo_path: PathBuf::new(),
         repo_root: "/".to_string(),
-        vm_repo_root: "/".to_string(),
-        container_name: None,
-        vm_uid: None,
-        vm_gid: None,
     };
     let script = format!("test -d {} && echo ok", shell_escape(path));
     let output = spawn_capture_with_timeout(build_vm_command(&vm, &script), Some(VM_SHELL_TIMEOUT_SECS));
@@ -1347,10 +1014,6 @@ fn path_writable_in_vm(provider: VmProvider, name: &str, path: &str) -> bool {
         name: name.to_string(),
         repo_path: PathBuf::new(),
         repo_root: "/".to_string(),
-        vm_repo_root: "/".to_string(),
-        container_name: None,
-        vm_uid: None,
-        vm_gid: None,
     };
     let script = format!(
         "p={}; test -d \"$p\" && tmp=\"$p/.falck_write_test_$$\" && (echo test > \"$tmp\") >/dev/null 2>&1 && rm -f \"$tmp\"",
@@ -1444,7 +1107,6 @@ fn limactl_start(
     let cmd = {
         let mut cmd = Command::new("limactl");
         cmd.args(["start", "--tty=false"]);
-        cmd.args(["--set", lima_containerd_yq()]);
         if let Some(repo_path) = repo_path {
             let mounts_expr = lima_mounts_yq(repo_path);
             cmd.args(["--set", &mounts_expr]);
@@ -1492,9 +1154,8 @@ fn limactl_create(
             name,
             "--set",
             &mounts_expr,
+            "template:default",
         ]);
-        cmd.args(["--set", lima_containerd_yq()]);
-        cmd.arg("template://2.0/containerd");
         if let Some(port_forwards) = port_forwards {
             if let Some(expr) = lima_port_forwards_yq(port_forwards) {
                 cmd.args(["--set", &expr]);
@@ -1569,17 +1230,6 @@ fn ensure_vm_running(
     };
 
     if !leader {
-        if let Some(app) = app {
-            let name = vm_name_for_repo(repo_path);
-            emit_vm_status(
-                Some(app),
-                repo_path,
-                Some(&name),
-                Some(provider),
-                "waiting",
-                "Waiting for VM startup",
-            );
-        }
         return entry.wait();
     }
 
@@ -1600,6 +1250,22 @@ fn ensure_vm_running_inner(
     app: Option<&AppHandle>,
 ) -> Result<String, String> {
     let name = vm_name_for_repo(repo_path);
+    emit_vm_status(
+        app,
+        repo_path,
+        Some(&name),
+        Some(provider),
+        "starting",
+        "Preparing virtualized backend",
+    );
+    emit_vm_status(
+        app,
+        repo_path,
+        Some(&name),
+        Some(provider),
+        "checking",
+        "Checking virtualization prerequisite",
+    );
     if let Err(err) = ensure_prereq(provider) {
         emit_vm_status(
             app,
@@ -1611,6 +1277,14 @@ fn ensure_vm_running_inner(
         );
         return Err(err);
     }
+    emit_vm_status(
+        app,
+        repo_path,
+        Some(&name),
+        Some(provider),
+        "starting",
+        "Waiting for VM lock",
+    );
     let _guard = vm_lock().map_err(|err| {
         emit_vm_status(
             app,
@@ -1622,6 +1296,14 @@ fn ensure_vm_running_inner(
         );
         err
     })?;
+    emit_vm_status(
+        app,
+        repo_path,
+        Some(&name),
+        Some(provider),
+        "starting",
+        "VM lock acquired",
+    );
 
     match provider {
         VmProvider::Lima => {
@@ -1650,6 +1332,25 @@ fn ensure_vm_running_inner(
                         Some(provider),
                         "error",
                         &format!("VM did not become ready: {err}"),
+                    );
+                    err
+                })?;
+                emit_vm_status(
+                    app,
+                    repo_path,
+                    Some(&name),
+                    Some(provider),
+                    "bootstrapping",
+                    "Installing base VM packages",
+                );
+                ensure_vm_bootstrap(provider, &name).map_err(|err| {
+                    emit_vm_status(
+                        app,
+                        repo_path,
+                        Some(&name),
+                        Some(provider),
+                        "error",
+                        &format!("VM bootstrap failed: {err}"),
                     );
                     err
                 })?;
@@ -1696,6 +1397,25 @@ fn ensure_vm_running_inner(
                         Some(provider),
                         "error",
                         &format!("VM did not become ready: {err}"),
+                    );
+                    err
+                })?;
+                emit_vm_status(
+                    app,
+                    repo_path,
+                    Some(&name),
+                    Some(provider),
+                    "bootstrapping",
+                    "Installing base VM packages",
+                );
+                ensure_vm_bootstrap(provider, &name).map_err(|err| {
+                    emit_vm_status(
+                        app,
+                        repo_path,
+                        Some(&name),
+                        Some(provider),
+                        "error",
+                        &format!("VM bootstrap failed: {err}"),
                     );
                     err
                 })?;
@@ -1783,6 +1503,25 @@ fn ensure_vm_running_inner(
                 );
                 err
             })?;
+            emit_vm_status(
+                app,
+                repo_path,
+                Some(&name),
+                Some(provider),
+                "bootstrapping",
+                "Installing base VM packages",
+            );
+            ensure_vm_bootstrap(provider, &name).map_err(|err| {
+                emit_vm_status(
+                    app,
+                    repo_path,
+                    Some(&name),
+                    Some(provider),
+                    "error",
+                    &format!("VM bootstrap failed: {err}"),
+                );
+                err
+            })?;
             Ok(name)
         }
         VmProvider::Wsl => {
@@ -1826,7 +1565,7 @@ fn ensure_vm_running_inner(
                     Some(&name),
                     Some(provider),
                     "bootstrapping",
-                    "Ensuring base dependencies are installed",
+                    "Installing base VM packages",
                 );
                 ensure_vm_bootstrap(provider, &name).map_err(|err| {
                     emit_vm_status(
@@ -1892,7 +1631,7 @@ fn ensure_vm_running_inner(
                     Some(&name),
                     Some(provider),
                     "bootstrapping",
-                "Ensuring base dependencies are installed",
+                    "Installing base VM packages",
                 );
                 ensure_vm_bootstrap(provider, &name).map_err(|err| {
                     emit_vm_status(
@@ -2165,7 +1904,7 @@ pub fn resolve_backend(app: &AppHandle, repo_path: &Path) -> Result<BackendConte
 
     let provider = vm_provider()?;
     let vm_name = ensure_vm_running(provider, repo_path, Some(app))?;
-    let vm_repo_root = match resolve_repo_root(provider, &vm_name, repo_path) {
+    let repo_root = match resolve_repo_root(provider, &vm_name, repo_path) {
         Ok(value) => value,
         Err(err) => {
             emit_vm_status(
@@ -2179,17 +1918,14 @@ pub fn resolve_backend(app: &AppHandle, repo_path: &Path) -> Result<BackendConte
             return Err(err);
         }
     };
+
     Ok(BackendContext {
         mode,
         vm: Some(VmContext {
             provider,
             name: vm_name,
             repo_path: repo_path.to_path_buf(),
-            repo_root: vm_repo_root.clone(),
-            vm_repo_root,
-            container_name: None,
-            vm_uid: None,
-            vm_gid: None,
+            repo_root,
         }),
     })
 }
@@ -2214,20 +1950,17 @@ pub fn ensure_backend_for_repo(app: &AppHandle, repo_path: &Path) -> Result<Back
         "checking",
         "Validating repo mount",
     );
-    let vm_repo_root = match resolve_repo_root(provider, &vm_name, repo_path) {
-        Ok(value) => value,
-        Err(err) => {
-            emit_vm_status(
-                Some(app),
-                repo_path,
-                Some(&vm_name),
-                Some(provider),
-                "error",
-                &format!("Repo mount error: {err}"),
-            );
-            return Err(err);
-        }
-    };
+    if let Err(err) = resolve_repo_root(provider, &vm_name, repo_path) {
+        emit_vm_status(
+            Some(app),
+            repo_path,
+            Some(&vm_name),
+            Some(provider),
+            "error",
+            &format!("Repo mount error: {err}"),
+        );
+        return Err(err);
+    }
     emit_vm_status(
         Some(app),
         repo_path,
@@ -2253,13 +1986,6 @@ pub fn stop_backend_for_repo(app: &AppHandle, repo_path: &Path) -> Result<(), St
     }
     let provider = vm_provider()?;
     let name = vm_name_for_repo(repo_path);
-    let exists = match provider {
-        VmProvider::Lima => lima_instance_registered(&name),
-        VmProvider::Wsl => wsl_instance_registered(&name),
-    };
-    if !exists {
-        return Ok(());
-    }
     emit_vm_status(
         Some(app),
         repo_path,
@@ -2332,57 +2058,15 @@ pub fn kill_vm_process(handle: &VmProcessHandle, pid: u32) -> Result<(), String>
         name: handle.name.clone(),
         repo_path: PathBuf::new(),
         repo_root: "/".to_string(),
-        vm_repo_root: "/".to_string(),
-        container_name: handle.container_name.clone(),
-        vm_uid: handle.vm_uid,
-        vm_gid: handle.vm_gid,
     };
-    let status = if let Some(container_name) = handle.container_name.as_deref() {
-        let user = container_user_spec(&vm);
-        let mut cmd = build_container_exec_command(&vm, container_name, user.as_deref(), &script);
-        cmd.status()
-            .map_err(|e| format!("Failed to kill container process: {e}"))?
-    } else {
-        let mut cmd = build_vm_command(&vm, &script);
-        cmd.status()
-            .map_err(|e| format!("Failed to kill VM process: {e}"))?
-    };
+    let mut cmd = build_vm_command(&vm, &script);
+    let status = cmd
+        .status()
+        .map_err(|e| format!("Failed to kill VM process: {e}"))?;
     if status.success() {
         Ok(())
-    } else if handle.container_name.is_some() {
-        Err("Failed to stop process inside container.".to_string())
     } else {
         Err("Failed to stop process inside VM.".to_string())
-    }
-}
-
-pub fn stop_vm_container(handle: &VmProcessHandle, container_name: &str) -> Result<(), String> {
-    if handle.provider != VmProvider::Lima {
-        return Err("Docker containers are only supported on Lima.".to_string());
-    }
-    if container_name.trim().is_empty() {
-        return Err("Container name is empty.".to_string());
-    }
-    let mut cmd = Command::new("limactl");
-    cmd.args([
-        "shell",
-        "--tty=false",
-        &handle.name,
-        "--",
-        "sudo",
-        "-n",
-        "nerdctl",
-        "rm",
-        "-f",
-        container_name,
-    ]);
-    apply_shell_env(&mut cmd);
-    let status = spawn_with_timeout(cmd, Some(VM_SHELL_TIMEOUT_SECS), true)
-        .map_err(|e| format!("Failed to stop container: {e}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err("Failed to stop container.".to_string())
     }
 }
 
@@ -2433,10 +2117,6 @@ pub async fn install_virtualized_backend_prereq() -> Result<String, String> {
 
 #[tauri::command]
 pub async fn ensure_repo_backend(app: AppHandle, repo_path: String) -> Result<BackendEnsureResult, String> {
-    eprintln!(
-        "[falck][backend] ensure_repo_backend request for {}",
-        repo_path
-    );
     run_blocking(move || {
         let path = Path::new(&repo_path);
         ensure_backend_for_repo(&app, path)

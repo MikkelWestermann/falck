@@ -37,7 +37,6 @@ import {
   FalckConfig,
   PrerequisiteCheckResult,
 } from "@/services/falckService";
-import { backendService, type BackendMode } from "@/services/backendService";
 import { PrerequisiteStatus } from "@/components/falck/PrerequisiteStatus";
 import { SecretsDialog } from "@/components/falck/SecretsDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -79,7 +78,6 @@ export function FalckDashboard({
     Record<string, string>
   >({});
   const [launchError, setLaunchError] = useState<Record<string, string>>({});
-  const [backendMode, setBackendMode] = useState<BackendMode | null>(null);
   const [runningApps, setRunningApps] = useState<Record<string, number>>({});
   const runningAppsRef = useRef<Record<string, number>>({});
   const [setupDialogOpen, setSetupDialogOpen] = useState(false);
@@ -149,42 +147,16 @@ export function FalckDashboard({
     if (!config) {
       return;
     }
-    if (!backendMode) {
-      return;
-    }
     config.applications.forEach((app) => {
-      const skipChecks =
-        backendMode === "virtualized" && Boolean(app.launch.dockerfile);
-      if (!skipChecks) {
-        void checkPrereqs(app.id);
-        void checkSetupStatus(app.id);
-      }
+      void checkPrereqs(app.id);
+      void checkSetupStatus(app.id);
       if (app.secrets && app.secrets.length > 0) {
         void checkSecrets(app.id);
       } else {
         setSecretsSatisfied((prev) => ({ ...prev, [app.id]: true }));
       }
     });
-  }, [config, backendMode]);
-
-  useEffect(() => {
-    let active = true;
-    backendService
-      .getMode()
-      .then((mode) => {
-        if (active) {
-          setBackendMode(mode);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setBackendMode("host");
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [repoPath]);
+  }, [config]);
 
   const activeApp = useMemo(
     () =>
@@ -307,32 +279,10 @@ export function FalckDashboard({
   const handleLaunch = async (app: FalckApplication) => {
     setLaunchError((prev) => ({ ...prev, [app.id]: "" }));
     try {
-      if (app.launch.dockerfile) {
-        const mode = await backendService.getMode();
-        setBackendMode(mode);
-        if (mode === "virtualized") {
-          const prereq = await backendService.checkPrereq();
-          if (!prereq.installed) {
-            const tool = prereq.tool || "Lima";
-            const message =
-              prereq.message ||
-              `${tool} is required to run this Dockerfile. Install it now?`;
-            const confirmed = window.confirm(`${message}\n\nInstall ${tool}?`);
-            if (!confirmed) {
-              setLaunchError((prev) => ({
-                ...prev,
-                [app.id]: `${tool} is required to run this Dockerfile.`,
-              }));
-              return;
-            }
-            await backendService.installPrereq();
-          }
-        }
-      }
       const pid = await falckService.launchApp(repoPath, app.id);
       setRunningApps((prev) => ({ ...prev, [app.id]: pid }));
       if (app.launch.access?.open_browser && app.launch.access.url) {
-      await falckService.openInBrowser(app.launch.access.url);
+        await falckService.openInBrowser(app.launch.access.url);
       }
     } catch (err) {
       setLaunchError((prev) => ({ ...prev, [app.id]: String(err) }));
@@ -411,25 +361,21 @@ export function FalckDashboard({
     label: app.name,
   }));
 
-  const dockerfileMode =
-    Boolean(activeApp?.launch.dockerfile) && backendMode === "virtualized";
   const activeResults = activeApp ? prereqResults[activeApp.id] : [];
   const activePrereqs = activeApp?.prerequisites ?? [];
-  const prereqsMissing = dockerfileMode
-    ? false
-    : activeResults?.some((result) => !result.installed && !result.optional);
+  const prereqsMissing = activeResults?.some(
+    (result) => !result.installed && !result.optional,
+  );
   const secretsOk = activeApp
     ? activeApp.secrets && activeApp.secrets.length > 0
       ? Boolean(secretsSatisfied[activeApp.id])
       : true
     : true;
   const isRunning = activeApp ? Boolean(runningApps[activeApp.id]) : false;
-  const setupStatus: SetupStatus = dockerfileMode
-    ? "not_configured"
-    : activeApp
-      ? (setupStatusByApp[activeApp.id] ??
-        (activeApp.setup?.check?.command ? "checking" : "not_configured"))
-      : "unknown";
+  const setupStatus: SetupStatus = activeApp
+    ? (setupStatusByApp[activeApp.id] ??
+      (activeApp.setup?.check?.command ? "checking" : "not_configured"))
+    : "unknown";
   const setupStatusMeta: Record<
     SetupStatus,
     { label: string; className: string }
@@ -451,14 +397,12 @@ export function FalckDashboard({
     },
   };
   const setupIndicator = setupStatusMeta[setupStatus];
-  const setupCheckConfigured = dockerfileMode
-    ? false
-    : activeApp
-      ? Boolean(activeApp.setup?.check?.command)
-      : false;
-  const setupBlocked = !dockerfileMode && setupCheckConfigured && setupStatus !== "complete";
+  const setupCheckConfigured = activeApp
+    ? Boolean(activeApp.setup?.check?.command)
+    : false;
+  const setupBlocked = setupCheckConfigured && setupStatus !== "complete";
   const setupNeedsAttention =
-    !dockerfileMode && (setupStatus === "incomplete" || setupStatus === "error");
+    setupStatus === "incomplete" || setupStatus === "error";
 
   return (
     <div className="space-y-4">
