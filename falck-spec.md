@@ -296,12 +296,44 @@ If configured, Falck uses the setup check during setup validation to determine w
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `command` | string | ✓ | Shell command to launch the application |
+| `command` | string | ✓ (unless `container` is set) | Shell command to launch the application on the host |
 | `description` | string | ✗ | What launching this application does |
 | `timeout` | integer | ✗ | Seconds to wait for app to start (default: 30) |
 | `env` | object | ✗ | Environment variables specific to this app |
 | `ports` | array | ✗ | Ports the application will use |
 | `access` | object | ✗ | How to access the running application |
+| `container` | object | ✗ | Containerized launch configuration (Dockerfile + Lima) |
+
+If `launch.container` is provided, Falck builds and runs the app inside a Lima VM using containerd/nerdctl. Otherwise it uses `launch.command` on the host.
+
+### Container Launch Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `dockerfile` | string | ✓ | Path to the Dockerfile (relative to `applications[].root`) |
+| `context` | string | ✗ | Build context path (relative to `applications[].root`, default: `"."`) |
+| `image` | string | ✗ | Image name/tag (default: derived from repo + app ID) |
+| `name` | string | ✗ | Container name (default: derived from repo + app ID) |
+| `vm` | string | ✗ | Lima VM name to use (default: `"falck-dev"`) |
+| `workdir` | string | ✗ | Working directory inside the container (default: `"/app"`) |
+| `ports` | array | ✗ | Port mappings (strings like `"3000:3000"`) |
+| `mounts` | array | ✗ | Bind mounts or container volumes |
+
+If `ports` is omitted, Falck maps each `launch.ports` value (or `launch.access.port`) as `host:container`.
+Falck injects `global_env`, `launch.env`, and configured secrets as container environment variables.
+If `mounts` is omitted, Falck mounts `{{ app_root }}` to `/app` with mode `delegated`.
+
+### Container Mount Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `source` | string | ✗ | Host path to mount (supports template variables) |
+| `volume` | string | ✗ | Named container volume (stored inside the VM) |
+| `target` | string | ✓ | Container path to mount to |
+| `mode` | string | ✗ | Mount mode (for example `delegated`, `cached`, `ro`, `rw`) |
+
+Exactly one of `source` or `volume` must be provided.
+Use a `volume` mount (for example `/app/node_modules`) when you want dependencies stored inside the VM instead of the host.
 
 ### Access Object
 
@@ -668,6 +700,45 @@ launch_order:
   - "api-go"
   - "worker-python"
   - "web-rust"
+```
+
+### Example 4: Containerized Dev Server (Lima + Dockerfile)
+
+```yaml
+version: "1.0"
+
+metadata:
+  name: "Containerized Frontend"
+  description: "Run a dev server inside Lima with hot reload."
+
+applications:
+  - id: "frontend"
+    name: "Frontend (container)"
+    type: "web"
+    root: "."
+
+    launch:
+      env:
+        NODE_ENV: "development"
+      access:
+        type: "http"
+        url: "http://localhost:3000"
+        port: 3000
+        open_browser: true
+      container:
+        dockerfile: "./Dockerfile.dev"
+        context: "."
+        name: "frontend-dev"
+        vm: "falck-dev"
+        workdir: "/app"
+        ports:
+          - "3000:3000"
+        mounts:
+          - source: "{{ app_root }}"
+            target: "/app"
+            mode: "delegated"
+          - volume: "falck-frontend-node_modules"
+            target: "/app/node_modules"
 ```
 
 ---

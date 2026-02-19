@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { OpenCodeInstallPanel } from "@/components/OpenCodeManager";
 import { OpenCodeSettingsPanel } from "@/components/OpenCodeSettings";
+import { LimaContainersPanel } from "@/components/LimaContainersPanel";
 import { falckService } from "@/services/falckService";
 import {
   GithubDeviceResponse,
@@ -410,6 +411,7 @@ export function SettingsPage({
           </div>
 
           <div className="flex flex-col gap-6">
+            <LimaContainersPanel className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4" />
             {openCodeReady ? (
               <>
                 <OpenCodeInstallPanel className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4" />
