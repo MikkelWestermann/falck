@@ -169,10 +169,6 @@ pub fn get_backend_mode_raw<R: Runtime>(
     Ok(None)
 }
 
-pub fn get_backend_mode<R: Runtime>(app: &AppHandle<R>) -> Result<BackendMode, String> {
-    Ok(get_backend_mode_raw(app)?.unwrap_or(BackendMode::Host))
-}
-
 pub fn set_backend_mode<R: Runtime>(
     app: &AppHandle<R>,
     mode: BackendMode,
