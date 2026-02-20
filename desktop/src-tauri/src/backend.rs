@@ -604,6 +604,9 @@ fn entries_from_value(value: serde_json::Value) -> Result<Option<Vec<LimaListEnt
 }
 
 fn parse_lima_list_entries(raw: &[u8]) -> Result<Vec<LimaListEntry>, String> {
+    if raw.iter().all(|byte| byte.is_ascii_whitespace()) {
+        return Ok(Vec::new());
+    }
     let mut slices = vec![raw];
     if let Some(start) = raw.iter().position(|b| *b == b'{' || *b == b'[') {
         slices.push(&raw[start..]);
@@ -611,20 +614,24 @@ fn parse_lima_list_entries(raw: &[u8]) -> Result<Vec<LimaListEntry>, String> {
 
     let mut last_error = None;
     let mut entries = Vec::new();
+    let mut parsed_any = false;
     for slice in slices {
         let mut stream =
             serde_json::Deserializer::from_slice(slice).into_iter::<serde_json::Value>();
         while let Some(result) = stream.next() {
             match result {
-                Ok(value) => match entries_from_value(value) {
-                    Ok(Some(mut next)) => {
-                        entries.append(&mut next);
+                Ok(value) => {
+                    parsed_any = true;
+                    match entries_from_value(value) {
+                        Ok(Some(mut next)) => {
+                            entries.append(&mut next);
+                        }
+                        Ok(None) => {}
+                        Err(err) => {
+                            last_error = Some(err);
+                        }
                     }
-                    Ok(None) => {}
-                    Err(err) => {
-                        last_error = Some(err);
-                    }
-                },
+                }
                 Err(err) => {
                     last_error = Some(format!("Failed to parse Lima VM list: {err}"));
                     break;
@@ -634,6 +641,9 @@ fn parse_lima_list_entries(raw: &[u8]) -> Result<Vec<LimaListEntry>, String> {
         if !entries.is_empty() {
             return Ok(entries);
         }
+    }
+    if entries.is_empty() && parsed_any && last_error.is_none() {
+        return Ok(Vec::new());
     }
     Err(last_error.unwrap_or_else(|| {
         "Failed to parse Lima VM list: unexpected JSON format.".to_string()

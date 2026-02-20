@@ -291,6 +291,10 @@ export const falckService = {
     return invoke<void>("clear_all_secrets");
   },
 
+  async resetApp(): Promise<string> {
+    return invoke<string>("reset_app_state");
+  },
+
   async uploadAssetFiles(
     repoPath: string,
     appId: string,

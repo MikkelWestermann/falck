@@ -284,6 +284,17 @@ pub fn list_repos<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<SavedRepo>, Stri
     Ok(repos)
 }
 
+pub fn reset_storage<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let conn = open_db(app)?;
+    conn.execute("DELETE FROM repos", [])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM settings", [])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM containers", [])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn upsert_container<R: Runtime>(
     app: &AppHandle<R>,
     container: &StoredContainer,

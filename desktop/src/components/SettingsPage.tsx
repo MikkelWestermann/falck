@@ -10,10 +10,20 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { OpenCodeInstallPanel } from "@/components/OpenCodeManager";
 import { OpenCodeSettingsPanel } from "@/components/OpenCodeSettings";
 import { LimaContainersPanel } from "@/components/LimaContainersPanel";
 import { VirtualizedBackendPanel } from "@/components/VirtualizedBackendPanel";
+import { configService } from "@/services/configService";
 import { falckService } from "@/services/falckService";
 import {
   GithubDeviceResponse,
@@ -24,6 +34,7 @@ import { settingsService } from "@/services/settingsService";
 import { SSHKey } from "@/services/sshService";
 import { cn } from "@/lib/utils";
 import { ArrowLeft } from "lucide-react";
+import { useAppState } from "@/router/app-state";
 
 interface SettingsPageProps {
   sshKey: SSHKey;
@@ -42,6 +53,7 @@ export function SettingsPage({
   onManageSSHKey,
   onClose,
 }: SettingsPageProps) {
+  const { setRepoPath, setSshKey } = useAppState();
   const [defaultRepoDir, setDefaultRepoDir] = useState<string | null>(null);
   const [repoDirLoading, setRepoDirLoading] = useState(true);
   const [repoDirError, setRepoDirError] = useState<string | null>(null);
@@ -55,6 +67,10 @@ export function SettingsPage({
   const [githubChecking, setGithubChecking] = useState(true);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [openCodeReady, setOpenCodeReady] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState("");
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -213,6 +229,34 @@ export function SettingsPage({
       setRepoDirError(`Failed to update folder: ${String(err)}`);
     } finally {
       setRepoDirSaving(false);
+    }
+  };
+
+  const resetReady = resetConfirm.trim().toLowerCase() === "reset";
+
+  const handleResetOpenChange = (open: boolean) => {
+    setResetOpen(open);
+    if (!open) {
+      setResetConfirm("");
+      setResetError(null);
+      setResetting(false);
+    }
+  };
+
+  const handleResetApp = async () => {
+    setResetError(null);
+    setResetting(true);
+    try {
+      await falckService.resetApp();
+      setRepoPath(null);
+      setSshKey(null);
+      window.localStorage.clear();
+      configService.setSelectedSSHKey(null);
+      configService.setSetupCompleted(false);
+      window.location.assign("/");
+    } catch (err) {
+      setResetError(`Reset failed: ${String(err)}`);
+      setResetting(false);
     }
   };
 
@@ -411,6 +455,36 @@ export function SettingsPage({
                 </Button>
               </CardContent>
             </Card>
+
+            <Card className="border-destructive/40 bg-destructive/5 shadow-[0_20px_60px_rgba(127,29,29,0.18)] backdrop-blur animate-in fade-in slide-in-from-bottom-4">
+              <CardHeader className="border-b border-destructive/30 pb-5">
+                <CardTitle className="text-xl text-destructive">
+                  Danger zone
+                </CardTitle>
+                <CardDescription>
+                  Reset Falck and start fresh from the setup wizard.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-6">
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  <p>
+                    This wipes local app data, removes managed VMs and containers,
+                    and signs you out of GitHub.
+                  </p>
+                  <p>
+                    Your repositories and SSH keys stay on disk. You can onboard
+                    again from scratch.
+                  </p>
+                </div>
+                <Button
+                  variant="destructive"
+                  onClick={() => setResetOpen(true)}
+                  className="normal-case tracking-normal"
+                >
+                  Reset app
+                </Button>
+              </CardContent>
+            </Card>
           </div>
 
           <div className="flex flex-col gap-6">
@@ -448,6 +522,54 @@ export function SettingsPage({
           </div>
         </div>
       </div>
+
+      <Dialog open={resetOpen} onOpenChange={handleResetOpenChange}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Reset Falck</DialogTitle>
+            <DialogDescription>
+              This deletes local app data, VMs, and containers. You will be
+              returned to the setup wizard.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+              This action cannot be undone.
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="reset-confirm">Type RESET to confirm</Label>
+              <Input
+                id="reset-confirm"
+                value={resetConfirm}
+                onChange={(event) => setResetConfirm(event.target.value)}
+                placeholder="RESET"
+                disabled={resetting}
+              />
+            </div>
+            {resetError && (
+              <Alert variant="destructive">
+                <AlertDescription>{resetError}</AlertDescription>
+              </Alert>
+            )}
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => handleResetOpenChange(false)}
+                disabled={resetting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => void handleResetApp()}
+                disabled={!resetReady || resetting}
+              >
+                {resetting ? "Resetting..." : "Reset app"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

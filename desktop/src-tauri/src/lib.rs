@@ -22,7 +22,7 @@ use reqwest::Client;
 use storage::{
     get_default_repo_dir, list_repos, remove_repo, save_repo, set_default_repo_dir, SavedRepo,
 };
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use blocking::run_blocking;
@@ -98,6 +98,57 @@ async fn discard_changes(path: String) -> Result<String, String> {
         discard_git_changes(&path).map_err(|e| e.to_string())?;
         Ok("Discarded changes".to_string())
     }).await
+}
+
+#[tauri::command]
+async fn reset_app_state(app: AppHandle) -> Result<String, String> {
+    let mut errors: Vec<String> = Vec::new();
+
+    match containers::list_containers(app.clone(), None).await {
+        Ok(list) => {
+            for container in list {
+                let name = container.name.clone();
+                let vm = container.vm.clone();
+                if let Err(err) = containers::delete_container(
+                    app.clone(),
+                    container.id,
+                    container.vm,
+                    container.name,
+                )
+                .await
+                {
+                    errors.push(format!(
+                        "Container '{name}' on VM '{vm}' cleanup failed: {err}"
+                    ));
+                }
+            }
+        }
+        Err(err) => errors.push(format!("Failed to list containers: {err}")),
+    }
+
+    match backend::list_backend_vms(app.clone()).await {
+        Ok(vms) => {
+            for vm in vms {
+                let name = vm.name.clone();
+                if let Err(err) = backend::delete_backend_vm(app.clone(), vm.name).await {
+                    errors.push(format!("VM '{name}' cleanup failed: {err}"));
+                }
+            }
+        }
+        Err(err) => errors.push(format!("Failed to list virtual machines: {err}")),
+    }
+
+    if !errors.is_empty() {
+        return Err(errors.join("\n"));
+    }
+
+    github::github_clear_token(app.clone()).await?;
+    falck::clear_all_secrets().await?;
+
+    let app_handle = app.clone();
+    run_blocking(move || storage::reset_storage(&app_handle)).await?;
+
+    Ok("Reset complete".to_string())
 }
 
 #[tauri::command]
@@ -270,6 +321,7 @@ pub fn run() {
             falck::check_port_available,
             falck::open_browser_to_url,
             falck::clear_all_secrets,
+            reset_app_state,
             containers::check_lima_installed,
             containers::list_containers,
             containers::start_container,
