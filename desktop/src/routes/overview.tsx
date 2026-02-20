@@ -8,6 +8,7 @@ import { AIChat } from "@/components/AIChat";
 import { ChatHeaderActions } from "@/components/ChatHeaderActions";
 import { FinishProjectDialog } from "@/components/FinishProjectDialog";
 import { FalckDashboard } from "@/components/falck/FalckDashboard";
+import { VmStatusIndicator } from "@/components/VmStatusIndicator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -414,7 +415,10 @@ function OverviewRoute() {
                   )
                 }
               </div>
-              <ChatHeaderActions />
+              <div className="flex items-center gap-2">
+                <VmStatusIndicator />
+                <ChatHeaderActions />
+              </div>
               {/* <Button
                 variant="ghost"
                 size="sm"
