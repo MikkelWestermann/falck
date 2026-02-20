@@ -1,26 +1,47 @@
 ---
 import logo from '../assets/logo.png';
+
+const { variant = 'default' } = Astro.props;
+
+const navClass =
+  variant === 'tech'
+    ? 'sticky top-0 z-50 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/70 text-slate-100'
+    : 'sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-900/5';
+const linkClass = variant === 'tech' ? 'text-slate-200 hover:text-white' : 'text-slate-700 hover:text-slate-950';
+const ctaClass =
+  variant === 'tech'
+    ? 'hidden sm:inline-flex items-center gap-2 rounded-full border border-slate-700/80 px-4 py-2 text-sm font-medium text-slate-100'
+    : 'hidden sm:inline-flex items-center gap-2 rounded-full border border-slate-200/80 px-4 py-2 text-sm font-medium';
 ---
 
-<nav class="sticky top-0 z-50 bg-white/75 dark:bg-slate-950/85 backdrop-blur-md border-b border-slate-900/5 dark:border-slate-100/10">
+<nav class={navClass}>
   <div class="container mx-auto px-6">
     <div class="flex items-center justify-between py-4">
-      <a href="/" class="flex items-center gap-3 font-semibold tracking-wide">
+      <a href={variant === 'tech' ? '/tech' : '/'} class="flex items-center gap-3 font-semibold tracking-wide">
         <img src={logo.src} alt="Falck logo" class="h-11 w-auto" />
         <span class="text-lg">Falck</span>
       </a>
-      <div class="hidden md:flex items-center gap-8 text-sm">
-        <a href="/download">Download</a>
-        <a href="/modes">Modes</a>
-        <a href="/workflow">Workflow</a>
-        <a href="/features">Feature pages</a>
-        <a href="/#open-source">Local build</a>
+      <div class={`hidden md:flex items-center gap-8 text-sm ${linkClass}`}>
+        {variant === 'tech' ? (
+          <>
+            <a href="/tech">Overview</a>
+            <a href="/tech/config">Falck config</a>
+            <a href="/tech/runtime">Runtime</a>
+            <a href="/tech/workflow">Git flow</a>
+            <a href="/tech/download">Download</a>
+          </>
+        ) : (
+          <>
+            <a href="/download">Download</a>
+            <a href="/modes">Ways to build</a>
+            <a href="/workflow">How it feels</a>
+            <a href="/features">Feature tour</a>
+            <a href="/tech" class="font-semibold">For developers</a>
+          </>
+        )}
       </div>
-      <a
-        href="/download"
-        class="hidden sm:inline-flex items-center gap-2 rounded-full border border-slate-200/80 dark:border-slate-700/80 px-4 py-2 text-sm font-medium"
-      >
-        Getting started
+      <a href={variant === 'tech' ? '/tech/download' : '/download'} class={ctaClass}>
+        {variant === 'tech' ? 'Get the desktop app' : 'Getting started'}
         <span aria-hidden="true">-&gt;</span>
       </a>
     </div>

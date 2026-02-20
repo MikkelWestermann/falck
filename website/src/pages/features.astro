@@ -4,8 +4,9 @@ import Button from '../components/Button.astro';
 ---
 
 <Layout
-  title="Falck | Feature Pages"
-  description="Setup concierge, project branches, save queue, and sync tools that make Falck feel like home for non-technical builders."
+  title="Falck | Feature tour"
+  description="See the pages that make Falck feel safe, friendly, and easy to ship from."
+  theme="light"
 >
   <section class="relative overflow-hidden pt-24 pb-20">
     <div class="absolute inset-0 -z-10">
@@ -15,19 +16,17 @@ import Button from '../components/Button.astro';
     </div>
     <div class="container mx-auto px-6">
       <div class="max-w-3xl space-y-6 reveal">
-        <span class="inline-flex items-center gap-2 rounded-full bg-white/70 dark:bg-slate-900/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-600 dark:text-slate-300 border border-white/80 dark:border-slate-800/80">
-          Feature pages
+        <span class="inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-600 border border-white/80">
+          Feature tour
         </span>
-        <h1 class="text-4xl sm:text-5xl font-semibold text-slate-950 dark:text-white">
-          The friendly UX layer on top of real developer workflows
-        </h1>
-        <p class="text-lg text-slate-600 dark:text-slate-300">
-          Falck wraps powerful tools in approachable pages. Non-technical teammates stay confident, technical teams keep
-          their standards, and everyone ships faster.
+        <h1 class="text-4xl sm:text-5xl font-semibold text-slate-950">The pages that make shipping feel easy</h1>
+        <p class="text-lg text-slate-600">
+          Falck wraps the powerful stuff in friendly, explainer-first pages. You stay confident, teams stay calm, and
+          everyone ships faster.
         </p>
         <div class="flex flex-col sm:flex-row gap-4">
           <Button href="/download">Download Falck</Button>
-          <Button href="/download" variant="secondary">See download options</Button>
+          <Button href="/workflow" variant="secondary">See how it feels</Button>
         </div>
       </div>
     </div>
@@ -35,164 +34,165 @@ import Button from '../components/Button.astro';
 
   <section class="container mx-auto px-6 py-20">
     <div class="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] items-center">
-      <div class="space-y-4 reveal">
-        <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Setup concierge</p>
-        <h2 class="text-2xl font-semibold">Prerequisites, secrets, and setup that just work</h2>
-        <p class="text-slate-600 dark:text-slate-300">
-          Falck checks prerequisites, guides installs, and prompts for secrets so contributors never break the build.
-        </p>
-        <div class="grid gap-3 text-sm text-slate-600 dark:text-slate-300">
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            Guided setup steps with clear language
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            Secret prompts to keep credentials safe
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            Launch checks before anything runs
-          </div>
-        </div>
-      </div>
-      <div class="surface p-6 reveal-delay-1">
-        <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
-          <span>Setup status</span>
-          <span class="text-emerald-500">Ready</span>
-        </div>
-        <div class="mt-5 grid gap-3">
-          <div class="surface-muted px-4 py-3 text-sm">
-            <div class="flex items-center justify-between">
-              <span class="font-semibold">Prerequisites</span>
-              <span class="text-emerald-600">3/3 complete</span>
+        <div class="space-y-4 reveal">
+          <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Setup concierge</p>
+          <h2 class="text-2xl font-semibold">Setup that explains itself</h2>
+          <p class="text-slate-600">
+            Falck checks what it needs, guides installs, and politely asks for the missing bits. You always know what is
+            happening.
+          </p>
+          <div class="grid gap-3 text-sm text-slate-600">
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+              Clear steps with human language
             </div>
-            <p class="mt-1 text-xs text-slate-500">Node 18, Postgres, Docker</p>
-          </div>
-          <div class="surface-muted px-4 py-3 text-sm">
-            <div class="flex items-center justify-between">
-              <span class="font-semibold">Secrets</span>
-              <span class="text-amber-600">1 missing</span>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+              Safe prompts for credentials and keys
             </div>
-            <p class="mt-1 text-xs text-slate-500">DATABASE_URL required</p>
-          </div>
-          <div class="surface-dark px-4 py-3 text-sm">
-            <p class="font-semibold">Launch ready</p>
-            <p class="mt-1 text-xs text-emerald-100/70">Auto-open on localhost:3000</p>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+              Friendly checks before anything runs
+            </div>
           </div>
         </div>
-      </div>
+        <div class="surface accent-card p-6 reveal-delay-1">
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+            <span>Setup status</span>
+            <span class="text-emerald-500">Ready</span>
+          </div>
+          <div class="mt-5 grid gap-3">
+            <div class="surface-muted px-4 py-3 text-sm">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold">Checklist</span>
+                <span class="text-emerald-600">3/3 complete</span>
+              </div>
+              <p class="mt-1 text-xs text-slate-500">Everything you need, already handled</p>
+            </div>
+            <div class="surface-muted px-4 py-3 text-sm">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold">Secrets</span>
+                <span class="text-amber-600">1 missing</span>
+              </div>
+              <p class="mt-1 text-xs text-slate-500">Falck tells you exactly what to add</p>
+            </div>
+            <div class="surface-dark px-4 py-3 text-sm">
+              <p class="font-semibold">Launch ready</p>
+              <p class="mt-1 text-xs text-emerald-100/70">Auto-open when you are ready</p>
+            </div>
+          </div>
+        </div>
     </div>
   </section>
 
   <section class="container mx-auto px-6 py-20">
     <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
-      <div class="order-2 lg:order-1 surface p-6 reveal">
-        <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
-          <span>Project tools</span>
-          <span class="text-slate-500">Active: launch-idea</span>
-        </div>
-        <div class="mt-5 grid gap-3">
-          <div class="surface-muted px-4 py-3 text-sm">
-            <div class="flex items-center justify-between">
-              <span class="font-semibold">Save queue</span>
-              <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-200">3 files</span>
+        <div class="order-2 lg:order-1 surface accent-card p-6 reveal">
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+            <span>Project tools</span>
+            <span class="text-slate-500">Active: launch-idea</span>
+          </div>
+          <div class="mt-5 grid gap-3">
+            <div class="surface-muted px-4 py-3 text-sm">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold">Save queue</span>
+                <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">3 updates</span>
+              </div>
+              <p class="mt-1 text-xs text-slate-500">Your notes become ready-to-share changes</p>
             </div>
-            <p class="mt-1 text-xs text-slate-500">Save notes translate into commits</p>
-          </div>
-          <div class="surface-muted px-4 py-3 text-sm">
-            <p class="font-semibold">Version history</p>
-            <p class="mt-1 text-xs text-slate-500">Restore in one click if things go weird</p>
-          </div>
-          <div class="surface-dark px-4 py-3 text-sm">
-            <p class="font-semibold">Branch guardrails</p>
-            <p class="mt-1 text-xs text-emerald-100/70">projects/launch-idea</p>
-          </div>
-        </div>
-      </div>
-      <div class="order-1 lg:order-2 space-y-4 reveal-delay-1">
-        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Projects</p>
-        <h2 class="text-2xl font-semibold">Branches, save notes, and version history</h2>
-        <p class="text-slate-600 dark:text-slate-300">
-          Falck makes git feel approachable while keeping real commit history. Technical teams get clean logs, non-technical
-          teammates get confidence.
-        </p>
-        <div class="grid gap-3 text-sm text-slate-600 dark:text-slate-300">
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-slate-900"></span>
-            Guided project creation and branch naming
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-slate-900"></span>
-            Save notes that double as commit messages
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-slate-900"></span>
-            Rollbacks without scary commands
+            <div class="surface-muted px-4 py-3 text-sm">
+              <p class="font-semibold">Version history</p>
+              <p class="mt-1 text-xs text-slate-500">Restore in one click if things get weird</p>
+            </div>
+            <div class="surface-dark px-4 py-3 text-sm">
+              <p class="font-semibold">Team ready</p>
+              <p class="mt-1 text-xs text-emerald-100/70">Clear summary of what changed</p>
+            </div>
           </div>
         </div>
-      </div>
+        <div class="order-1 lg:order-2 space-y-4 reveal-delay-1">
+          <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Projects</p>
+          <h2 class="text-2xl font-semibold">Projects that stay tidy</h2>
+          <p class="text-slate-600">
+            Falck keeps changes organized and easy to share. Your team gets clear updates, you get confidence.
+          </p>
+          <div class="grid gap-3 text-sm text-slate-600">
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-slate-900"></span>
+              Guided project creation and naming
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-slate-900"></span>
+              Save notes that feel like plain English
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-slate-900"></span>
+              Undo and retry without the scary commands
+            </div>
+          </div>
+        </div>
     </div>
   </section>
 
   <section class="container mx-auto px-6 py-20">
     <div class="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] items-center">
-      <div class="space-y-4 reveal">
-        <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Sync + review</p>
-        <h2 class="text-2xl font-semibold">Push, pull, and review without leaving Falck</h2>
-        <p class="text-slate-600 dark:text-slate-300">
-          Falck respects protected branches and CI/CD pipelines. Share work, open reviews, and keep teams aligned.
-        </p>
-        <div class="grid gap-3 text-sm text-slate-600 dark:text-slate-300">
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            Sync from within the app
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            Protected branch safeguards
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            CI/CD status stays visible
+        <div class="space-y-4 reveal">
+          <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Share + celebrate</p>
+          <h2 class="text-2xl font-semibold">Share work without the drama</h2>
+          <p class="text-slate-600">
+            Falck makes sharing updates feel simple and safe. Your team sees exactly what changed.
+          </p>
+          <div class="grid gap-3 text-sm text-slate-600">
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+              Share updates without the scary steps
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+              Guardrails included by default
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+              Status stays visible
+            </div>
           </div>
         </div>
-      </div>
-      <div class="surface p-6 reveal-delay-1">
-        <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
-          <span>Sync</span>
-          <span class="text-emerald-500">origin/main</span>
-        </div>
-        <div class="mt-5 grid gap-3">
+        <div class="surface accent-card p-6 reveal-delay-1">
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+            <span>Share</span>
+            <span class="text-emerald-500">In progress</span>
+          </div>
+          <div class="mt-5 grid gap-3">
           <div class="surface-muted px-4 py-3 text-sm">
             <div class="flex items-center justify-between">
               <span class="font-semibold">Share changes</span>
-              <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-200">Ready</span>
+              <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">Ready</span>
             </div>
-            <p class="mt-1 text-xs text-slate-500">Push to origin/launch-idea</p>
+            <p class="mt-1 text-xs text-slate-500">One click to share with your team</p>
           </div>
-          <div class="surface-muted px-4 py-3 text-sm">
-            <p class="font-semibold">Get updates</p>
-            <p class="mt-1 text-xs text-slate-500">No conflicts</p>
-          </div>
+        <div class="surface-muted px-4 py-3 text-sm">
+          <p class="font-semibold">Get updates</p>
+          <p class="mt-1 text-xs text-slate-500">Everything stays tidy</p>
+        </div>
           <div class="surface-dark px-4 py-3 text-sm">
-            <p class="font-semibold">Pull request ready</p>
-            <p class="mt-1 text-xs text-emerald-100/70">Checks green</p>
+          <p class="font-semibold">Ready to share</p>
+          <p class="mt-1 text-xs text-emerald-100/70">Everything looks good</p>
+          </div>
           </div>
         </div>
-      </div>
     </div>
   </section>
 
   <section class="container mx-auto px-6 pb-28">
     <div class="surface p-10 md:p-12 text-center reveal">
       <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Want the tour?</p>
-      <h2 class="mt-4 text-3xl font-semibold text-slate-950 dark:text-white">See the feature pages in action</h2>
-      <p class="mt-4 text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
+      <h2 class="mt-4 text-3xl font-semibold text-slate-950">See the feature pages in action</h2>
+      <p class="mt-4 text-slate-600 max-w-2xl mx-auto">
         Falck looks and feels like a modern desktop app, with everything you need to ship in one place.
       </p>
       <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
         <Button href="/download">Go to downloads</Button>
+        <Button href="/tech" variant="secondary">Developer deep dive</Button>
       </div>
     </div>
   </section>

@@ -1,0 +1,131 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Button from '../../components/Button.astro';
+---
+
+<Layout
+  title="Falck | Git workflow"
+  description="Configurable branch guardrails, save queues, and clean PRs that keep your workflow intact."
+  theme="dark"
+  navVariant="tech"
+>
+  <section class="relative overflow-hidden pt-24 pb-20">
+    <div class="absolute inset-0 -z-10">
+      <div class="absolute inset-0 backdrop-grid opacity-50"></div>
+      <div class="absolute -top-20 left-[15%] h-[320px] w-[320px] rounded-full bg-cyan-400/30 blur-[140px] glow-pulse"></div>
+      <div class="absolute bottom-[-25%] right-[5%] h-[420px] w-[420px] rounded-full bg-sky-400/30 blur-[160px] float-soft"></div>
+    </div>
+
+    <div class="container mx-auto px-6">
+      <div class="max-w-3xl space-y-6 reveal">
+        <span class="inline-flex items-center gap-2 rounded-full bg-slate-950/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-300 border border-slate-800/80">
+          Git workflow
+        </span>
+        <h1 class="text-4xl sm:text-5xl font-semibold text-white">Guardrails without handcuffs</h1>
+        <p class="text-lg text-slate-300">
+          Falck keeps git workflows boring: scoped branches, save queues, clean commits, and PR-ready changes. Your team
+          gets contributions without the "what branch is this?" mysteries.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4">
+          <Button href="/tech/config">See the config</Button>
+          <Button href="/tech/download" variant="secondary">Download Falck</Button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-20">
+    <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div class="surface p-6 reveal">
+        <div class="h-10 w-10 rounded-2xl bg-cyan-500 text-white flex items-center justify-center font-semibold">01</div>
+        <h2 class="mt-4 text-lg font-semibold text-white">Branch guardrails</h2>
+        <p class="mt-2 text-sm text-slate-300">
+          `branch_prefix` keeps changes scoped (e.g. `projects/*`) while protecting default branches.
+        </p>
+      </div>
+      <div class="surface p-6 reveal-delay-1">
+        <div class="h-10 w-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-semibold">02</div>
+        <h2 class="mt-4 text-lg font-semibold text-white">Save queue</h2>
+        <p class="mt-2 text-sm text-slate-300">
+          Falck stages changes and lets teammates describe intent before anything becomes a commit.
+        </p>
+      </div>
+      <div class="surface p-6 reveal-delay-2">
+        <div class="h-10 w-10 rounded-2xl bg-slate-800 text-white flex items-center justify-center font-semibold">03</div>
+        <h2 class="mt-4 text-lg font-semibold text-white">Clean commits</h2>
+        <p class="mt-2 text-sm text-slate-300">
+          Commit messages are drafted from save notes. Reviews read like normal work, not AI chaos.
+        </p>
+      </div>
+      <div class="surface p-6 reveal-delay-3">
+        <div class="h-10 w-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-semibold">04</div>
+        <h2 class="mt-4 text-lg font-semibold text-white">PR-ready output</h2>
+        <p class="mt-2 text-sm text-slate-300">
+          Falck respects protected branches and CI, so engineers can review with confidence.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-20">
+    <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
+      <div class="space-y-4 reveal">
+        <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Workflow map</p>
+        <h2 class="text-3xl sm:text-4xl font-semibold text-white">Normal git, less drama</h2>
+        <p class="text-slate-300">
+          Falck is explicit about how it creates branches, tracks changes, and prepares PRs. That means you can keep your
+          existing review and CI/CD flow without rewriting policies.
+        </p>
+        <div class="grid gap-3 text-sm text-slate-300">
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            Default branch stays protected
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            Save queues become commits when you approve
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            PRs are opened with real diffs
+          </div>
+        </div>
+      </div>
+      <div class="surface accent-card p-6 reveal-delay-1">
+        <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+          <span>Falck in action</span>
+          <span class="text-cyan-300">projects/launch-idea</span>
+        </div>
+        <div class="mt-6 grid gap-3">
+          <div class="surface-muted px-4 py-3 text-sm">
+            <p class="font-semibold text-white">Save queue</p>
+            <p class="mt-1 text-xs text-slate-400">3 files staged, 1 note pending</p>
+          </div>
+          <div class="surface-muted px-4 py-3 text-sm">
+            <p class="font-semibold text-white">Commit preview</p>
+            <p class="mt-1 text-xs text-slate-400">"Improve onboarding copy and CTA"</p>
+          </div>
+          <div class="surface-dark px-4 py-3 text-sm">
+            <p class="font-semibold">PR ready</p>
+            <p class="mt-1 text-xs text-cyan-100/70">Checks green, reviewers assigned</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 pb-28">
+    <div class="surface p-10 md:p-12 text-center reveal">
+      <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Ready to ship?</p>
+      <h2 class="mt-4 text-3xl font-semibold text-white">Let non-tech teammates contribute safely</h2>
+      <p class="mt-4 text-slate-300 max-w-2xl mx-auto">
+        Falck keeps your workflow intact while giving your teammates a guided path to real changes. Less babysitting, more
+        shipping.
+      </p>
+      <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+        <Button href="/tech/download">Download Falck</Button>
+        <Button href="/tech/config" variant="secondary">Config details</Button>
+      </div>
+    </div>
+  </section>
+</Layout>

@@ -1,31 +1,30 @@
 ---
-import Layout from '../layouts/Layout.astro';
-import Button from '../components/Button.astro';
+import Layout from '../../layouts/Layout.astro';
+import Button from '../../components/Button.astro';
 ---
 
 <Layout
-  title="Falck | Download"
-  description="Download the Falck desktop app for Windows, macOS, or Linux."
-  theme="light"
+  title="Falck | Developer download"
+  description="Grab the Falck desktop app and start configuring your repos with .falck/config.yaml."
+  theme="dark"
+  navVariant="tech"
 >
   <section class="relative overflow-hidden pt-24 pb-20">
     <div class="absolute inset-0 -z-10">
-      <div class="absolute inset-0 backdrop-grid opacity-60"></div>
-      <div class="absolute -top-20 left-[12%] h-[320px] w-[320px] rounded-full bg-emerald-300/40 blur-[140px] glow-pulse"></div>
-      <div class="absolute bottom-[-25%] right-[5%] h-[440px] w-[440px] rounded-full bg-sky-300/40 blur-[160px] float-soft"></div>
+      <div class="absolute inset-0 backdrop-grid opacity-50"></div>
+      <div class="absolute -top-20 left-[12%] h-[320px] w-[320px] rounded-full bg-cyan-400/30 blur-[140px] glow-pulse"></div>
+      <div class="absolute bottom-[-25%] right-[5%] h-[440px] w-[440px] rounded-full bg-sky-400/30 blur-[160px] float-soft"></div>
     </div>
 
     <div class="container mx-auto px-6">
       <div class="grid gap-12 lg:grid-cols-[1.1fr_0.9fr] items-center">
         <div class="space-y-6 reveal">
-          <span class="inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-600 border border-white/80">
+          <span class="inline-flex items-center gap-2 rounded-full bg-slate-950/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-300 border border-slate-800/80">
             Download
           </span>
-          <h1 class="text-4xl sm:text-5xl font-semibold text-slate-950">
-            Download Falck in one click
-          </h1>
-          <p class="text-lg text-slate-600">
-            Click download. Falck figures out the rest and picks the right file for you.
+          <h1 class="text-4xl sm:text-5xl font-semibold text-white">Get the Falck desktop app</h1>
+          <p class="text-lg text-slate-300">
+            Same auto-detection as the main download page, but in the dark room with the cool keyboards.
           </p>
           <div class="flex flex-col sm:flex-row gap-4">
             <Button id="hero-download" href="#all-assets" class="pointer-events-none opacity-60" aria-disabled="true">
@@ -38,39 +37,33 @@ import Button from '../components/Button.astro';
               class="pointer-events-none opacity-60"
               aria-disabled="true"
             >
-              Updates
+              Release notes
             </Button>
           </div>
-          <div class="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.3em] text-slate-500">
-            <span class="rounded-full border border-emerald-200/80 bg-emerald-100/70 px-3 py-1 text-emerald-700">
-              Windows
-            </span>
-            <span class="rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-slate-600">
-              macOS
-            </span>
-            <span class="rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-slate-600">
-              Linux
-            </span>
+          <div class="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.3em] text-slate-400">
+            <span class="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-cyan-200">Windows</span>
+            <span class="rounded-full border border-slate-700/70 bg-slate-900/70 px-3 py-1 text-slate-300">macOS</span>
+            <span class="rounded-full border border-slate-700/70 bg-slate-900/70 px-3 py-1 text-slate-300">Linux</span>
           </div>
         </div>
 
         <div class="surface accent-card p-6 reveal-delay-2">
           <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
-            <span>Latest download</span>
-              <span id="release-version" class="text-emerald-600">Ready</span>
+            <span>Latest release</span>
+            <span id="release-version" class="text-cyan-300">v--</span>
           </div>
           <div class="mt-6 grid gap-4">
             <div class="surface-muted p-4">
               <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Status</p>
-              <p id="release-status" class="mt-2 text-sm font-semibold text-slate-900">
-                Getting the latest download
+              <p id="release-status" class="mt-2 text-sm font-semibold text-white">
+                Fetching release data
               </p>
-              <p id="release-date" class="mt-1 text-xs text-slate-500">--</p>
+              <p id="release-date" class="mt-1 text-xs text-slate-400">--</p>
             </div>
             <div class="surface-dark p-4">
-              <p class="text-xs uppercase tracking-[0.3em] text-emerald-200">We are on</p>
+              <p class="text-xs uppercase tracking-[0.3em] text-cyan-200">Device detected</p>
               <p id="detected-os" class="mt-2 text-sm font-semibold">Detecting</p>
-              <p id="detected-arch" class="mt-1 text-xs text-emerald-100/70">Right device</p>
+              <p id="detected-arch" class="mt-1 text-xs text-cyan-100/70">--</p>
             </div>
           </div>
         </div>
@@ -81,90 +74,80 @@ import Button from '../components/Button.astro';
   <section class="container mx-auto px-6 py-20 pb-28">
     <div id="loader" class="surface p-8 text-center reveal">
       <p id="loader-message" class="text-xs uppercase tracking-[0.3em] text-slate-400">
-        Finding the right download for you
+        Detecting your device and fetching the latest release
       </p>
-      <p class="mt-3 text-sm text-slate-600">
-        Give it a second. We are getting the latest Falck download.
+      <p class="mt-3 text-sm text-slate-300">
+        This page pulls public release assets from GitHub and matches them to your operating system.
       </p>
       <Button id="loader-link" href="#" target="_blank" rel="noreferrer" variant="secondary" class="mt-6 hidden">
-        See downloads on GitHub
+        View releases on GitHub
       </Button>
     </div>
 
     <div id="content" class="hidden space-y-16">
       <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-start">
         <div class="surface accent-card p-8">
-          <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Best pick for you</p>
-          <h2 id="recommended-title" class="mt-3 text-2xl font-semibold text-slate-900">
-            Loading your download
-          </h2>
-          <p id="recommended-subtitle" class="mt-2 text-slate-600">
-            We are picking the right one for your device.
-          </p>
+          <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Recommended download</p>
+          <h2 id="recommended-title" class="mt-3 text-2xl font-semibold text-white">Loading your installer</h2>
+          <p id="recommended-subtitle" class="mt-2 text-slate-300">We will match the right build to your device.</p>
           <div class="mt-6 flex flex-col sm:flex-row gap-4">
-            <Button
-              id="recommended-download"
-              href="#all-assets"
-              class="pointer-events-none opacity-60"
-              aria-disabled="true"
-            >
+            <Button id="recommended-download" href="#all-assets" class="pointer-events-none opacity-60" aria-disabled="true">
               Download
             </Button>
             <Button id="recommended-release" href="#" target="_blank" rel="noreferrer" variant="secondary">
-              Updates
+              Release notes
             </Button>
           </div>
-          <p id="recommended-fallback" class="mt-4 text-xs text-slate-500 hidden">
-            We could not find a perfect match. Pick one from the list below.
+          <p id="recommended-fallback" class="mt-4 text-xs text-slate-400 hidden">
+            No matching asset was found. Pick one from the full list below.
           </p>
         </div>
 
         <div class="surface-muted p-6">
-          <p class="text-xs uppercase tracking-[0.3em] text-slate-400">What happens next</p>
-          <h3 class="mt-3 text-lg font-semibold text-slate-900">Install, open, build the real thing</h3>
-          <p class="mt-2 text-sm text-slate-600">
-            Download the app, open it, and follow the friendly steps. Falck will keep you on track.
+          <p class="text-xs uppercase tracking-[0.3em] text-slate-400">What you get</p>
+          <h3 class="mt-3 text-lg font-semibold text-white">Signed builds straight from GitHub Releases</h3>
+          <p class="mt-2 text-sm text-slate-300">
+            Falck ships installers for Windows, macOS, and Linux. If the recommended download does not match, choose the
+            right format in the list below.
           </p>
-          <div class="mt-6 grid gap-3 text-sm text-slate-600">
+          <div class="mt-6 grid gap-3 text-sm text-slate-300">
             <div class="flex items-center gap-2">
-              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-              No scary setup
+              <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+              Windows installers: .msi or .exe
             </div>
             <div class="flex items-center gap-2">
-              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-              Works with your team's projects
+              <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+              macOS builds: .dmg or .zip
             </div>
             <div class="flex items-center gap-2">
-              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-              You can always ask for help inside the app
+              <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+              Linux builds: .AppImage, .deb, .rpm, or .tar.gz
             </div>
           </div>
         </div>
       </div>
 
-        <div id="all-assets" class="space-y-6">
-          <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-            <div class="space-y-2">
-              <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Need a different download?</p>
-              <h2 class="text-2xl font-semibold text-slate-900">
-                Pick another download
-              </h2>
-            </div>
-            <div class="text-sm text-slate-500">
-              <span id="assets-version">Latest download</span>
-              <span class="mx-2 text-slate-400">|</span>
-              Updated <span id="assets-updated">--</span>
-            </div>
+      <div id="all-assets" class="space-y-6">
+        <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div class="space-y-2">
+            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">All assets</p>
+            <h2 class="text-2xl font-semibold text-white">Download any installer or archive</h2>
           </div>
+          <div class="text-sm text-slate-400">
+            <span id="assets-version">Latest release</span>
+            <span class="mx-2 text-slate-500">|</span>
+            Updated <span id="assets-updated">--</span>
+          </div>
+        </div>
 
         <div id="assets-grid" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"></div>
-        <div id="assets-empty" class="surface-muted p-6 text-sm text-slate-500 hidden">
-          No downloads were found. Check GitHub for more options.
+        <div id="assets-empty" class="surface-muted p-6 text-sm text-slate-400 hidden">
+          No downloadable assets were found. Check GitHub releases for more options.
         </div>
-        <div class="text-sm text-slate-500">
-          Looking for older downloads?
-          <a id="all-releases" class="font-semibold text-emerald-600" href="#" target="_blank" rel="noreferrer">
-            See all downloads ->
+        <div class="text-sm text-slate-400">
+          Looking for older versions?
+          <a id="all-releases" class="font-semibold text-cyan-300" href="#" target="_blank" rel="noreferrer">
+            Browse all releases ->
           </a>
         </div>
       </div>
@@ -173,10 +156,10 @@ import Button from '../components/Button.astro';
 
   <script is:inline>
     const REPO = 'MikkelWestermann/falck';
-      const API_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
-      const RELEASE_URL = `https://github.com/${REPO}/releases/latest`;
-      const ALL_RELEASES_URL = `https://github.com/${REPO}/releases`;
-      const CACHE_KEY = `falck-release-cache-${REPO}`;
+    const API_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
+    const RELEASE_URL = `https://github.com/${REPO}/releases/latest`;
+    const ALL_RELEASES_URL = `https://github.com/${REPO}/releases`;
+    const CACHE_KEY = `falck-release-cache-${REPO}`;
     const CACHE_TTL_MS = 60 * 60 * 1000;
 
     const loader = document.getElementById('loader');
@@ -217,6 +200,8 @@ import Button from '../components/Button.astro';
 
     const formatDate = (value) =>
       value ? new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '--';
+
+    const formatSize = (bytes) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
     const enableButton = (element) => {
       if (!element) return;
@@ -287,8 +272,8 @@ import Button from '../components/Button.astro';
         setCachedRelease(data);
         return data;
       } catch (error) {
-        setLoaderError(`Unable to fetch the latest download. ${error.message}`);
-        if (releaseStatus) releaseStatus.textContent = 'Download info unavailable';
+        setLoaderError(`Unable to fetch the latest release. ${error.message}`);
+        if (releaseStatus) releaseStatus.textContent = 'Release data unavailable';
         if (releaseDate) releaseDate.textContent = '--';
         return null;
       }
@@ -330,14 +315,27 @@ import Button from '../components/Button.astro';
     const buildAssetCard = (asset) => {
       const card = document.createElement('a');
       card.href = asset.browser_download_url;
-      card.className = 'surface-muted p-5 text-sm text-slate-700 transition flex flex-col gap-3';
+      card.className = 'surface-muted p-5 text-sm text-slate-300 transition flex flex-col gap-3';
       card.setAttribute('download', '');
 
       const name = document.createElement('p');
       name.textContent = asset.name;
-      name.className = 'font-semibold text-slate-900 break-all';
+      name.className = 'font-semibold text-white break-all';
+
+      const meta = document.createElement('div');
+      meta.className = 'flex items-center justify-between text-xs text-slate-400';
+
+      const left = document.createElement('span');
+      left.textContent = `${formatSize(asset.size)} | ${asset.download_count} downloads`;
+
+      const right = document.createElement('span');
+      right.textContent = formatDate(asset.updated_at);
+
+      meta.appendChild(left);
+      meta.appendChild(right);
 
       card.appendChild(name);
+      card.appendChild(meta);
       return card;
     };
 
@@ -348,8 +346,8 @@ import Button from '../components/Button.astro';
       if (allReleases) allReleases.href = ALL_RELEASES_URL;
 
       if (REPO === 'OWNER/REPO') {
-        setLoaderError('We could not find the download yet. Try again or check the downloads page.');
-        if (releaseStatus) releaseStatus.textContent = 'Download not ready';
+        setLoaderError('Set your GitHub repo in src/pages/tech/download.astro to enable downloads.');
+        if (releaseStatus) releaseStatus.textContent = 'Repo not configured';
         return;
       }
 
@@ -360,10 +358,13 @@ import Button from '../components/Button.astro';
       if (loader) loader.classList.add('hidden');
 
       const rawVersion = release.tag_name || '';
-      if (releaseVersion) releaseVersion.textContent = 'Ready';
-      if (releaseStatus) releaseStatus.textContent = 'Latest download ready';
-      if (releaseDate) releaseDate.textContent = `Updated ${formatDate(release.published_at)}`;
-      if (assetsVersion) assetsVersion.textContent = 'Latest download';
+      const version = rawVersion ? rawVersion.replace(/^v/i, '') : 'latest';
+
+      if (releaseVersion) releaseVersion.textContent = rawVersion ? `v${version}` : 'Latest';
+      if (releaseStatus)
+        releaseStatus.textContent = release.prerelease ? 'Pre-release available' : 'Latest release ready';
+      if (releaseDate) releaseDate.textContent = `Published ${formatDate(release.published_at)}`;
+      if (assetsVersion) assetsVersion.textContent = rawVersion ? `Release ${rawVersion}` : 'Latest release';
       if (assetsUpdated) assetsUpdated.textContent = formatDate(release.published_at);
 
       if (heroReleaseNotes) {
@@ -374,14 +375,15 @@ import Button from '../components/Button.astro';
       if (recommendedRelease) recommendedRelease.href = release.html_url || RELEASE_URL;
 
       const recommendedUrl = getAssetUrl(release, detected.os, detected.arch);
-      if (recommendedTitle) recommendedTitle.textContent = `Recommended for ${detected.label}`;
+      if (recommendedTitle)
+        recommendedTitle.textContent = `Recommended for ${detected.label} (${detected.arch})`;
       if (recommendedSubtitle)
-        recommendedSubtitle.textContent = `Latest version ready to go.`;
+        recommendedSubtitle.textContent = `Release ${rawVersion || 'latest'} with the best match for your device.`;
 
       if (heroDownload) {
         if (recommendedUrl) {
           heroDownload.href = recommendedUrl;
-          heroDownload.textContent = `Download now`;
+          heroDownload.textContent = `Download v${version}`;
           heroDownload.setAttribute('download', '');
         } else {
           heroDownload.href = '#all-assets';

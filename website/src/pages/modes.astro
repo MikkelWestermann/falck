@@ -5,8 +5,9 @@ import whichWay from '../assets/which-way.jpg';
 ---
 
 <Layout
-  title="Falck | Modes"
-  description="Two ways to use Falck: a local greenfield studio or a team-ready workflow for existing applications."
+  title="Falck | Ways to build"
+  description="Pick the Falck mode that fits your idea, your team, and your appetite for shipping."
+  theme="light"
 >
   <section class="relative overflow-hidden pt-24 pb-20">
     <div class="absolute inset-0 -z-10">
@@ -18,19 +19,19 @@ import whichWay from '../assets/which-way.jpg';
     <div class="container mx-auto px-6">
       <div class="grid gap-14 lg:grid-cols-[1.1fr_0.9fr] items-center">
         <div class="space-y-6 reveal">
-          <span class="inline-flex items-center gap-2 rounded-full bg-white/70 dark:bg-slate-900/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-600 dark:text-slate-300 border border-white/80 dark:border-slate-800/80">
+          <span class="inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-600 border border-white/80">
             Choose your adventure
           </span>
-          <h1 class="text-4xl sm:text-5xl font-semibold text-slate-950 dark:text-white">
-            Two modes. One calm, confident IDE.
+          <h1 class="text-4xl sm:text-5xl font-semibold text-slate-950">
+            Two modes. One calm, confident builder.
           </h1>
-          <p class="text-lg text-slate-600 dark:text-slate-300 max-w-2xl">
-            Falck works for greenfield idea sprints and serious production applications. Pick the mode that matches your
-            team, and Falck handles the rails.
+          <p class="text-lg text-slate-600 max-w-2xl">
+            Falck works for brand new ideas and serious apps. Pick the vibe that fits your team, and Falck handles the
+            "please do not break things" part for you.
           </p>
           <div class="flex flex-col sm:flex-row gap-4">
             <Button href="/download">Download Falck</Button>
-            <Button href="/download" variant="secondary">See download options</Button>
+            <Button href="/workflow" variant="secondary">See how it feels</Button>
           </div>
         </div>
         <div class="relative reveal-delay-2">
@@ -50,70 +51,70 @@ import whichWay from '../assets/which-way.jpg';
 
   <section class="container mx-auto px-6 py-20">
     <div class="grid gap-8 lg:grid-cols-2">
-      <div class="surface p-8 reveal">
-        <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Mode 01</p>
-        <h2 class="mt-4 text-2xl font-semibold">Local studio for greenfield ideas</h2>
-          <p class="mt-3 text-slate-600 dark:text-slate-300">
-            A local, open source alternative to Lovable. Bring your own model, describe the idea, and Falck builds the full
-            project with structure, setup, and previews.
+        <div class="surface p-8 reveal">
+          <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Mode 01</p>
+          <h2 class="mt-4 text-2xl font-semibold">Local studio for bold ideas</h2>
+          <p class="mt-3 text-slate-600">
+            Describe the idea, Falck builds the project, and you start testing it immediately. Skip the mockups and build
+            the real thing with a friendly studio that never forgets your notes.
           </p>
-        <div class="mt-6 grid gap-3 text-sm text-slate-600 dark:text-slate-300">
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            Works offline with your chosen LLM
+          <div class="mt-6 grid gap-3 text-sm text-slate-600">
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+              Builds the structure so you can focus on the story
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+              Preview as you go, no ceremony required
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+              Friendly guardrails that keep you confident
+            </div>
           </div>
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            Generates new projects with clean scaffolding
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            Includes previews, setup, and guidance
+          <div class="mt-6 rounded-2xl border border-emerald-100/60 bg-emerald-50/70 px-4 py-3 text-xs text-emerald-800">
+            Best for: solo builders, hack days, and "we need this yesterday" moments.
           </div>
         </div>
-        <div class="mt-6 rounded-2xl border border-emerald-100/60 bg-emerald-50/70 px-4 py-3 text-xs text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200">
-          Best for: solo builders, hack days, and "we need this yesterday" moments.
-        </div>
-      </div>
 
-      <div class="surface p-8 reveal-delay-1">
-        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Mode 02</p>
-        <h2 class="mt-4 text-2xl font-semibold">Team mode for real applications</h2>
-        <p class="mt-3 text-slate-600 dark:text-slate-300">
-          Technical teams configure Falck once, then invite non-technical collaborators to contribute safely with the same
-          workflows engineers already trust.
-        </p>
-        <div class="mt-6 grid gap-3 text-sm text-slate-600 dark:text-slate-300">
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-slate-900"></span>
-            Git branching, save notes, version history
+        <div class="surface p-8 reveal-delay-1">
+          <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Mode 02</p>
+          <h2 class="mt-4 text-2xl font-semibold">Team mode for real apps</h2>
+          <p class="mt-3 text-slate-600">
+            Your team sets it up once. Then PMs, designers, and ops can build without breaking anything. It is
+            collaboration without the chaos.
+          </p>
+          <div class="mt-6 grid gap-3 text-sm text-slate-600">
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-slate-900"></span>
+              Safe changes that still feel exciting
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-slate-900"></span>
+              Your team sees clear updates
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-slate-900"></span>
+              Your ideas arrive as real product, not slides
+            </div>
           </div>
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-slate-900"></span>
-            Respects PRs, reviews, and CI/CD
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-slate-900"></span>
-            Perfect for PMs, designers, and ops teams
+          <div class="mt-6 rounded-2xl border border-slate-200/70 bg-slate-50/70 px-4 py-3 text-xs text-slate-700">
+            Best for: real apps, real stakes, real teamwork.
           </div>
         </div>
-        <div class="mt-6 rounded-2xl border border-slate-200/70 bg-slate-50/70 px-4 py-3 text-xs text-slate-700 dark:border-slate-700/60 dark:bg-slate-900/60 dark:text-slate-200">
-          Best for: real apps, real stakes, real teamwork.
-        </div>
-      </div>
     </div>
   </section>
 
   <section class="container mx-auto px-6 pb-28">
     <div class="surface p-10 md:p-12 text-center reveal">
       <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Not sure?</p>
-      <h2 class="mt-4 text-3xl font-semibold text-slate-950 dark:text-white">Start local, scale into team mode</h2>
-      <p class="mt-4 text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
-        Falck lets you start with a greenfield prototype and move into a real repo when the idea sticks. No rewrites, no
-        awkward handoffs.
+      <h2 class="mt-4 text-3xl font-semibold text-slate-950">Start small, ship big</h2>
+      <p class="mt-4 text-slate-600 max-w-2xl mx-auto">
+        Start with a prototype and grow it into the real thing when the idea sticks. No awkward handoffs.
       </p>
       <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
         <Button href="/download">Download Falck</Button>
+        <Button href="/features" variant="secondary">See the feature tour</Button>
       </div>
     </div>
   </section>

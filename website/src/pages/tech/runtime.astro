@@ -1,0 +1,140 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Button from '../../components/Button.astro';
+import opencodeLogo from '../../assets/opencode.svg';
+---
+
+<Layout
+  title="Falck | Runtime"
+  description="Local-first architecture with OpenCode orchestration, optional Lima containers, and BYO models."
+  theme="dark"
+  navVariant="tech"
+>
+  <section class="relative overflow-hidden pt-24 pb-20">
+    <div class="absolute inset-0 -z-10">
+      <div class="absolute inset-0 backdrop-grid opacity-50"></div>
+      <div class="absolute -top-20 left-[10%] h-[320px] w-[320px] rounded-full bg-cyan-400/30 blur-[140px] glow-pulse"></div>
+      <div class="absolute bottom-[-25%] right-[5%] h-[420px] w-[420px] rounded-full bg-sky-400/30 blur-[160px] float-soft"></div>
+    </div>
+
+    <div class="container mx-auto px-6">
+      <div class="max-w-3xl space-y-6 reveal">
+        <span class="inline-flex items-center gap-2 rounded-full bg-slate-950/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-300 border border-slate-800/80">
+          Runtime
+        </span>
+        <h1 class="text-4xl sm:text-5xl font-semibold text-white">Local-first by default</h1>
+        <p class="text-lg text-slate-300">
+          Falck runs on your machine, uses OpenCode to orchestrate tools and models, and can run apps inside Lima containers
+          when you want parity with production. No surprise clouds, no mystery costs.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4">
+          <Button href="/tech/download">Download Falck</Button>
+          <Button href="/tech/config" variant="secondary">See the config</Button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-20">
+    <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
+      <div class="space-y-4 reveal">
+        <p class="text-xs uppercase tracking-[0.4em] text-cyan-400">OpenCode</p>
+        <h2 class="text-2xl font-semibold text-white">Tool orchestration without lock-in</h2>
+        <p class="text-slate-300">
+          Falck uses OpenCode to orchestrate models, tools, and workflows locally. You pick the model provider, and Falck
+          keeps the experience consistent for every teammate.
+        </p>
+        <div class="grid gap-3 text-sm text-slate-300">
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            Bring your own model and API keys
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            Local orchestration, no surprise latency
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            Open source tooling, no black boxes
+          </div>
+        </div>
+      </div>
+      <div class="surface accent-card p-6 reveal-delay-1">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Built on</p>
+            <p class="mt-2 text-lg font-semibold text-white">OpenCode</p>
+          </div>
+          <div class="h-16 w-28 rounded-2xl bg-slate-900 flex items-center justify-center">
+            <img src={opencodeLogo.src} alt="OpenCode logo" class="h-12 w-auto" />
+          </div>
+        </div>
+        <p class="mt-4 text-sm text-slate-300">
+          Falck is built on OpenCode for reliable local orchestration. They are not affiliated, just excellent humans.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-20">
+    <div class="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] items-center">
+      <div class="order-2 lg:order-1 surface accent-card p-6 reveal">
+        <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+          <span>Container mode</span>
+          <span class="text-cyan-300">Lima + containerd</span>
+        </div>
+        <div class="mt-5 grid gap-3">
+          <div class="surface-muted px-4 py-3 text-sm">
+            <p class="font-semibold text-white">VM name</p>
+            <p class="mt-1 text-xs text-slate-400">falck-dev (default)</p>
+          </div>
+          <div class="surface-muted px-4 py-3 text-sm">
+            <p class="font-semibold text-white">Launch strategy</p>
+            <p class="mt-1 text-xs text-slate-400">Dockerfile + dev command</p>
+          </div>
+          <div class="surface-dark px-4 py-3 text-sm">
+            <p class="font-semibold">Access</p>
+            <p class="mt-1 text-xs text-cyan-100/70">http://localhost:3000</p>
+          </div>
+        </div>
+      </div>
+      <div class="order-1 lg:order-2 space-y-4 reveal-delay-1">
+        <p class="text-xs uppercase tracking-[0.4em] text-sky-400">Lima containers</p>
+        <h2 class="text-2xl font-semibold text-white">Production parity when you want it</h2>
+        <p class="text-slate-300">
+          If your repo uses containerized dev servers, Falck can spin them up inside a Lima VM with containerd/nerdctl. The
+          `.falck/config.yaml` declares it, Falck runs it.
+        </p>
+        <div class="grid gap-3 text-sm text-slate-300">
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            Optional `launch.container` block
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            Lima VM + containerd / nerdctl
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            Same access URLs, same workflow
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 pb-28">
+    <div class="surface p-10 md:p-12 text-center reveal">
+      <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Want the spec?</p>
+      <h2 class="mt-4 text-3xl font-semibold text-white">The runtime is in the config</h2>
+      <p class="mt-4 text-slate-300 max-w-2xl mx-auto">
+        The Falck config describes prerequisites, secrets, setup, and launch. It is versioned with your repo so everyone
+        gets the same runtime story.
+      </p>
+      <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+        <Button href="/tech/config">See the config</Button>
+        <Button href="/tech/workflow" variant="secondary">Workflow safety</Button>
+      </div>
+    </div>
+  </section>
+</Layout>

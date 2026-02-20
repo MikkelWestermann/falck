@@ -1,13 +1,13 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Button from '../components/Button.astro';
-import logo from '../assets/logo.png';
 import opencodeLogo from '../assets/opencode.svg';
 ---
 
 <Layout
-  title="Falck | AI IDE for non-technical teams"
-  description="Falck is the AI IDE that lets non-technical teammates contribute to real codebases with guardrails, git flows, and a friendly workflow."
+  title="Falck | Build without the sharp edges"
+  description="Falck helps non-technical teammates turn ideas into real product changes, with calm guidance, safe guardrails, and a little encouragement."
+  theme="light"
 >
   <section id="hero" class="relative overflow-hidden pt-28 pb-32">
     <div class="absolute inset-0 -z-10">
@@ -19,103 +19,74 @@ import opencodeLogo from '../assets/opencode.svg';
     <div class="container mx-auto px-6">
       <div class="grid gap-16 lg:grid-cols-[1.15fr_0.85fr] items-center">
         <div class="space-y-10 reveal">
-          <span class="inline-flex items-center gap-2 rounded-full bg-white/70 dark:bg-slate-900/70 px-4 py-2 text-xs uppercase tracking-[0.24em] text-slate-600 dark:text-slate-300 border border-white/80 dark:border-slate-800/80">
-            Open source. Bring your own LLM.
+          <span class="inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-xs uppercase tracking-[0.24em] text-slate-600 border border-white/80">
+            Skip the slides. Build the real thing.
           </span>
-          <h1 class="text-4xl sm:text-5xl lg:text-6xl font-semibold leading-[1.1] text-slate-950 dark:text-white">
+          <h1 class="text-4xl sm:text-5xl lg:text-6xl font-semibold leading-[1.1] text-slate-950">
             The AI IDE that lets non-technical teammates ship real code
             <span class="bg-gradient-to-r from-emerald-500 via-teal-400 to-sky-400 bg-clip-text text-transparent">
               without the sharp edges.
             </span>
           </h1>
-          <p class="text-lg text-slate-600 dark:text-slate-300 max-w-2xl">
-            Falck makes technical teams look like heroes and non-technical builders feel like pros. Set the guardrails once,
-            invite your collaborators, and watch ideas turn into pull requests instead of PowerPoint.
+          <p class="text-lg text-slate-600 max-w-2xl">
+            Falck turns brave ideas into real product changes. Skip the slide decks, mockups, and Figma demos. You work on
+            the real thing with calm guidance, gentle nudges, and a little celebration when it ships.
           </p>
           <div class="flex flex-col sm:flex-row gap-4">
             <Button href="/download">Download the desktop app</Button>
-            <Button variant="secondary" href="/download">See the download options</Button>
+            <Button variant="secondary" href="/modes">See how it works</Button>
           </div>
-          <div class="flex flex-wrap items-center gap-6 text-sm text-slate-500 dark:text-slate-400">
+          <div class="flex flex-wrap items-center gap-6 text-sm text-slate-500">
             <div class="flex items-center gap-2">
               <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-              Runs locally with your LLM
+              You build, Falck guides
             </div>
             <div class="flex items-center gap-2">
               <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-              Fits existing repositories
+              Real product, not a demo
             </div>
             <div class="flex items-center gap-2">
               <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-              Git flows included, panic excluded
+              Clear steps, no jargon
             </div>
           </div>
         </div>
 
         <div class="relative reveal-delay-2">
-          <div class="absolute -top-8 left-8 h-24 w-24 rounded-2xl bg-white/70 dark:bg-slate-900/70 backdrop-blur float-slower"></div>
-          <div class="absolute -bottom-10 right-0 h-32 w-32 rounded-full bg-white/70 dark:bg-slate-900/70 backdrop-blur float-soft"></div>
-          <div class="relative surface p-7 sm:p-8">
-            <div class="flex flex-col gap-4">
-              <div class="flex items-center gap-3">
-                <div class="h-12 w-12 rounded-2xl flex items-center justify-center">
-                  <img src={logo.src} alt="Falck logo" class="h-8 w-auto" />
-                </div>
-                <div>
-                  <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Falck Desktop</p>
-                  <p class="text-lg font-semibold text-slate-900 dark:text-white">Project: moonshot</p>
-                </div>
+          <div class="absolute -top-8 left-8 h-24 w-24 rounded-2xl bg-white/70 backdrop-blur float-slower"></div>
+          <div class="absolute -bottom-10 right-0 h-32 w-32 rounded-full bg-white/70 backdrop-blur float-soft"></div>
+          <div class="relative surface accent-card p-7 sm:p-8">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Your idea, now shipping</p>
+                <p class="text-lg font-semibold text-slate-900">Idea: launch-day</p>
               </div>
-              <span class="inline-flex rounded-full border border-emerald-200/80 bg-emerald-100/80 px-3 py-1 text-xs font-mono text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-400/15 dark:text-emerald-200 max-w-full break-all">
-                branch: projects/launch-idea
-              </span>
+              <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs text-emerald-700">In progress</span>
             </div>
-            <div class="mt-7 grid gap-5">
+            <div class="mt-6 grid gap-4">
               <div class="surface-muted p-4">
-                <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
-                  <span>Prerequisites</span>
-                  <span class="text-emerald-600">All good</span>
-                </div>
-                <div class="mt-3 grid gap-2 text-sm text-slate-700 dark:text-slate-200">
-                  <div class="flex items-center justify-between">
-                    <span>Node 18</span>
-                    <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-200">Ready</span>
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <span>Postgres</span>
-                    <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-200">Ready</span>
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <span>Env secrets</span>
-                    <span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-400/20 dark:text-amber-200">Needs 1</span>
-                  </div>
-                </div>
+                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Today you shipped</p>
+                <p class="mt-2 text-lg font-semibold text-slate-900">3 big wins</p>
+                <p class="mt-1 text-sm text-slate-600">Pricing tweak, onboarding copy, and a shiny new FAQ page.</p>
               </div>
-              <div class="grid gap-4 md:grid-cols-2">
+              <div class="grid gap-4 sm:grid-cols-2">
                 <div class="surface-muted p-4">
-                  <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Setup</p>
-                  <p class="mt-2 text-sm font-semibold text-slate-900 dark:text-white">Install dependencies</p>
-                  <p class="mt-1 text-xs text-slate-500">2 steps, no terminal gymnastics</p>
-                  <div class="mt-3 flex items-center gap-2 text-xs text-emerald-600">
-                    <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-                    Running now
-                  </div>
+                  <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Confidence</p>
+                  <p class="mt-2 text-sm font-semibold text-slate-900">Every step explained</p>
+                  <p class="mt-1 text-xs text-slate-500">No scary setup. No weird errors. Just progress.</p>
                 </div>
                 <div class="surface-dark p-4">
-                  <p class="text-xs uppercase tracking-[0.3em] text-emerald-200">Launch</p>
-                  <p class="mt-2 text-sm font-semibold">Preview ready</p>
-                  <p class="mt-1 text-xs text-emerald-100/70">Open app in browser</p>
-                  <div class="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-400/20 px-3 py-1 text-xs">
-                    localhost:3000
-                  </div>
+                  <p class="text-xs uppercase tracking-[0.3em] text-emerald-200">Team check-in</p>
+                  <p class="mt-2 text-sm font-semibold">Ready to share</p>
+                  <p class="mt-1 text-xs text-emerald-100/70">Your team sees exactly what changed.</p>
                 </div>
               </div>
               <div class="surface-muted p-4">
                 <div class="flex items-center justify-between">
-                  <p class="text-sm font-semibold text-slate-900 dark:text-white">Save queue</p>
-                  <span class="rounded-full bg-slate-900 px-2 py-0.5 text-xs text-white">3 files</span>
+                  <p class="text-sm font-semibold text-slate-900">Next up</p>
+                  <span class="rounded-full bg-slate-900 px-2 py-0.5 text-xs text-white">2 mins</span>
                 </div>
-                <p class="mt-2 text-xs text-slate-500">Falck keeps the git flow tidy while you ship the idea.</p>
+                <p class="mt-2 text-xs text-slate-500">Falck suggests tiny changes that make you look brilliant.</p>
               </div>
             </div>
           </div>
@@ -127,42 +98,42 @@ import opencodeLogo from '../assets/opencode.svg';
   <section id="explore" class="container mx-auto px-6 py-28">
     <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
       <div class="space-y-4 reveal">
-        <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Explore Falck</p>
-        <h2 class="text-3xl sm:text-4xl font-semibold text-slate-950 dark:text-white">
-          Pick a path. Go deeper on the pages that matter to you.
+        <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Pick your adventure</p>
+        <h2 class="text-3xl sm:text-4xl font-semibold text-slate-950">
+          Big ideas deserve a path that feels doable.
         </h2>
       </div>
-      <p class="max-w-xl text-slate-600 dark:text-slate-300 reveal-delay-1">
-        Falck keeps the main story light and the details just a click away. Dive into how modes work, how the workflow
-        stays safe, and which feature pages your team will use every day.
+      <p class="max-w-xl text-slate-600 reveal-delay-1">
+        Falck is here for the idea people, the people people, and the "please do not make me touch the tech stuff" people.
+        Choose the page that sounds like you.
       </p>
     </div>
     <div class="mt-12 grid gap-6 md:grid-cols-3">
       <a href="/modes" class="surface p-6 reveal">
-        <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Modes</p>
-        <h3 class="mt-3 text-xl font-semibold text-slate-950 dark:text-white">Greenfield or team mode</h3>
-        <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
-          Learn how Falck handles brand new ideas and existing production apps.
+        <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Ways to build</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">Pick a mode, start shipping</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          New idea or existing project, Falck makes the next step feel friendly.
         </p>
         <span class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600">
           Explore modes ->
         </span>
       </a>
       <a href="/workflow" class="surface p-6 reveal-delay-1">
-        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Workflow</p>
-        <h3 class="mt-3 text-xl font-semibold text-slate-950 dark:text-white">A calm, safe git flow</h3>
-        <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
-          See how non-technical teammates contribute without derailing reviews or CI.
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">How it feels</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">Guided, calm, and very real</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          Calm steps that help you ship real changes.
         </p>
         <span class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600">
           See the workflow ->
         </span>
       </a>
       <a href="/features" class="surface p-6 reveal-delay-2">
-        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Feature pages</p>
-        <h3 class="mt-3 text-xl font-semibold text-slate-950 dark:text-white">Setup, projects, sync</h3>
-        <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
-          Tour the pages that make Falck feel like a true desktop app.
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Feature tour</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">The pages that help you win</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          Friendly pages for getting started, staying organized, and sharing progress.
         </p>
         <span class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600">
           Browse feature pages ->
@@ -175,53 +146,48 @@ import opencodeLogo from '../assets/opencode.svg';
     <div class="surface p-10 md:p-14 shadow-[0_40px_90px_-70px_rgba(15,23,42,0.45)] reveal">
       <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
         <div class="space-y-4">
-          <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Open source</p>
-          <h2 class="text-3xl sm:text-4xl font-semibold text-slate-950 dark:text-white">
-            Your stack, your models, your call
+          <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Built on real stuff</p>
+          <h2 class="text-3xl sm:text-4xl font-semibold text-slate-950">
+            Open source, local, and yours
           </h2>
-          <p class="text-slate-600 dark:text-slate-300">
-            Falck is open source and built to run locally. Keep data on your machine, plug in the LLM you trust, and tweak
-            the experience to match your team. You can fork it, self-host it, or just open it and build.
+          <p class="text-slate-600">
+            Falck runs on your computer and stays transparent. It is built on stable open tools, so your data stays yours
+            and your team stays in control.
           </p>
-          <div class="grid gap-3 text-sm text-slate-600 dark:text-slate-300">
+          <div class="grid gap-3 text-sm text-slate-600">
             <div class="flex items-center gap-2">
               <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-              Runs fully offline with your preferred models
+              Open source by default
             </div>
             <div class="flex items-center gap-2">
               <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-              Built on OpenCode (not affiliated), the open tooling behind the magic
+              Local by design
             </div>
             <div class="flex items-center gap-2">
               <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-              Transparent configs for prerequisites, secrets, and launch steps
+              Built on trusted open tech
             </div>
           </div>
           <div class="mt-6 flex flex-col sm:flex-row gap-4">
-            <Button href="https://github.com/MikkelWestermann/falck" target="_blank" rel="noreferrer">Star on GitHub</Button>
+            <Button href="https://github.com/MikkelWestermann/falck" target="_blank" rel="noreferrer">
+              See the open source
+            </Button>
+            <Button href="/tech" variant="secondary">See the developer view</Button>
           </div>
         </div>
-        <div class="rounded-[28px] bg-white/70 dark:bg-slate-950/60 p-6">
+        <div class="rounded-[28px] bg-white/70 p-6">
           <div class="flex items-center justify-between gap-4">
             <div>
-              <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Built on</p>
-              <p class="mt-2 text-lg font-semibold text-slate-900 dark:text-white">OpenCode</p>
+              <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Open source stack</p>
+              <p class="mt-2 text-lg font-semibold text-slate-900">OpenCode + Lima</p>
             </div>
             <div class="h-16 w-28 rounded-2xl bg-slate-950 flex items-center justify-center">
               <img src={opencodeLogo.src} alt="OpenCode logo" class="h-12 w-auto" />
             </div>
           </div>
-          <p class="mt-4 text-sm text-slate-600 dark:text-slate-300">
-            Falck uses OpenCode to orchestrate models, tools, and workflows. We love it. They are not affiliated, just
-            excellent humans building great tooling.
+          <p class="mt-4 text-sm text-slate-600">
+            Built on trusted open source tools. You do not need to learn them.
           </p>
-          <a
-            href="https://opencode.ai/"
-            class="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600"
-          >
-            Visit opencode.ai
-            <span aria-hidden="true">-&gt;</span>
-          </a>
         </div>
       </div>
     </div>
@@ -229,15 +195,14 @@ import opencodeLogo from '../assets/opencode.svg';
 
   <section id="cta" class="container mx-auto px-6 pb-28">
     <div class="surface p-10 md:p-14 text-center shadow-[0_30px_70px_-55px_rgba(16,185,129,0.45)] reveal">
-      <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Launch</p>
-      <h2 class="mt-4 text-3xl sm:text-4xl font-semibold text-slate-950 dark:text-white">
-        Start with the Falck desktop app
-      </h2>
-      <p class="mt-4 text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
-        Download the desktop app and bring your collaborators into a workflow that feels clean, calm, and ready to ship.
+      <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Ready to build?</p>
+      <h2 class="mt-4 text-3xl sm:text-4xl font-semibold text-slate-950">Download Falck and ship your first win</h2>
+      <p class="mt-4 text-slate-600 max-w-2xl mx-auto">
+        The desktop app gets you set up in minutes. Skip the slides and ship the real thing.
       </p>
       <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
         <Button href="/download">Go to downloads</Button>
+        <Button href="/tech" variant="secondary">Peek at the dev view</Button>
       </div>
     </div>
   </section>

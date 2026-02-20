@@ -1,0 +1,124 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Button from '../../components/Button.astro';
+---
+
+<Layout
+  title="Falck | Falck config"
+  description="Define prerequisites, secrets, setup steps, and launch commands once in .falck/config.yaml. Falck does the rest."
+  theme="dark"
+  navVariant="tech"
+>
+  <section class="relative overflow-hidden pt-24 pb-20">
+    <div class="absolute inset-0 -z-10">
+      <div class="absolute inset-0 backdrop-grid opacity-50"></div>
+      <div class="absolute -top-20 left-[12%] h-[320px] w-[320px] rounded-full bg-cyan-400/30 blur-[140px] glow-pulse"></div>
+      <div class="absolute bottom-[-25%] right-[8%] h-[420px] w-[420px] rounded-full bg-sky-400/30 blur-[160px] float-soft"></div>
+    </div>
+
+    <div class="container mx-auto px-6">
+      <div class="max-w-3xl space-y-6 reveal">
+        <span class="inline-flex items-center gap-2 rounded-full bg-slate-950/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-300 border border-slate-800/80">
+          Falck config
+        </span>
+        <h1 class="text-4xl sm:text-5xl font-semibold text-white">One file to rule the workflow</h1>
+        <p class="text-lg text-slate-300">
+          Falck reads a `.falck/config.yaml` file in your repo. Define prerequisites, secrets, setup steps, launch
+          commands, and access URLs once. Falck handles the rest.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4">
+          <Button href="https://github.com/MikkelWestermann/falck/blob/main/falck-spec.md" target="_blank" rel="noreferrer">
+            Read the spec
+          </Button>
+          <Button href="/tech/workflow" variant="secondary">See the workflow</Button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-20">
+    <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
+      <div class="space-y-4 reveal">
+        <p class="text-xs uppercase tracking-[0.4em] text-cyan-400">Core idea</p>
+        <h2 class="text-2xl font-semibold text-white">Config describes the repo, Falck drives the rest</h2>
+        <p class="text-slate-300">
+          The config defines how to install, configure, and launch each app in the repo. Falck turns it into a guided UI
+          flow that non-technical teammates can follow without breaking anything.
+        </p>
+        <div class="grid gap-3 text-sm text-slate-300">
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            `applications` list each app and its root path
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            `prerequisites` + `secrets` keep setup safe
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            `setup` and `launch` steps define commands
+          </div>
+        </div>
+      </div>
+
+      <div class="surface accent-card p-6 reveal-delay-1">
+        <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+          <span>.falck/config.yaml</span>
+          <span class="text-cyan-300">version 1.0</span>
+        </div>
+        <pre class="mt-6 text-xs text-slate-200 overflow-auto font-mono leading-relaxed">
+version: "1.0"
+
+metadata:
+  name: "Falck Demo"
+  description: "Demo project"
+
+repository:
+  default_branch: "main"
+  protect_default_branch: true
+  branch_prefix: "projects/"
+
+applications:
+  - id: "web"
+    name: "Web App"
+    type: "web"
+    root: "."
+    prerequisites:
+      - type: "runtime"
+        name: "Node.js"
+        command: "node --version"
+        version: "18.0.0"
+    secrets:
+      - name: "DATABASE_URL"
+        required: true
+    setup:
+      steps:
+        - name: "Install dependencies"
+          command: "bun install"
+    launch:
+      command: "bun run dev"
+      access:
+        type: "http"
+        url: "http://localhost:3000"
+        port: 3000
+        open_browser: true
+        </pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 pb-28">
+    <div class="surface p-10 md:p-12 text-center reveal">
+      <p class="text-sm uppercase tracking-[0.3em] text-slate-400">TL;DR</p>
+      <h2 class="mt-4 text-3xl font-semibold text-white">Configure once, onboard forever</h2>
+      <p class="mt-4 text-slate-300 max-w-2xl mx-auto">
+        The config lives next to your code and stays versioned. Everyone gets the same setup, the same guardrails, and the
+        same happy reviews.
+      </p>
+      <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+        <Button href="/tech/workflow">See workflow safety</Button>
+        <Button href="/tech/runtime" variant="secondary">Runtime details</Button>
+      </div>
+    </div>
+  </section>
+</Layout>

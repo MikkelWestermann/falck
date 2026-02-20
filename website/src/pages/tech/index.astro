@@ -1,0 +1,187 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Button from '../../components/Button.astro';
+import opencodeLogo from '../../assets/opencode.svg';
+---
+
+<Layout
+  title="Falck | Developer overview"
+  description="Falck is the local-first AI IDE for teams. Configure once with .falck/config.yaml, keep git clean, and ship with real guardrails."
+  theme="dark"
+  navVariant="tech"
+>
+  <section class="relative overflow-hidden pt-28 pb-32">
+    <div class="absolute inset-0 -z-10">
+      <div class="absolute inset-0 backdrop-grid opacity-50"></div>
+      <div class="absolute -top-24 left-[8%] h-[420px] w-[420px] rounded-full bg-cyan-400/30 blur-[160px] glow-pulse"></div>
+      <div class="absolute bottom-[-30%] right-[0%] h-[520px] w-[520px] rounded-full bg-sky-400/30 blur-[180px] float-soft"></div>
+    </div>
+
+    <div class="container mx-auto px-6">
+      <div class="grid gap-16 lg:grid-cols-[1.1fr_0.9fr] items-center">
+        <div class="space-y-10 reveal">
+          <span class="inline-flex items-center gap-2 rounded-full bg-slate-950/70 px-4 py-2 text-xs uppercase tracking-[0.24em] text-slate-300 border border-slate-800/80">
+            For developers
+          </span>
+          <h1 class="text-4xl sm:text-5xl lg:text-6xl font-semibold leading-[1.1] text-white">
+            Falck keeps the guardrails.
+            <span class="bg-gradient-to-r from-cyan-400 via-sky-400 to-emerald-400 bg-clip-text text-transparent">
+              Your team ships the ideas.
+            </span>
+          </h1>
+          <p class="text-lg text-slate-300 max-w-2xl">
+            Falck is a local-first AI IDE that reads a simple `.falck/config.yaml` in your repo. You define prerequisites,
+            secrets, setup steps, and launch commands once. Non-tech teammates ship real changes without torching CI.
+          </p>
+          <div class="flex flex-col sm:flex-row gap-4">
+            <Button href="/tech/config">See the Falck config</Button>
+            <Button variant="secondary" href="/tech/download">Get the desktop app</Button>
+          </div>
+          <div class="flex flex-wrap items-center gap-6 text-sm text-slate-400">
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+              Local-first, BYO models
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+              Real git branches + PRs
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+              Config-driven setup + launch
+            </div>
+          </div>
+        </div>
+
+        <div class="relative reveal-delay-2">
+          <div class="absolute -top-6 left-8 h-20 w-20 rounded-2xl bg-slate-900/80 backdrop-blur float-slower"></div>
+          <div class="absolute -bottom-8 right-0 h-28 w-28 rounded-full bg-slate-900/80 backdrop-blur float-soft"></div>
+          <div class="relative surface accent-card p-7 sm:p-8">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Repository profile</p>
+                <p class="text-lg font-semibold text-white">falck/config.yaml</p>
+              </div>
+              <span class="rounded-full bg-cyan-400/20 px-3 py-1 text-xs text-cyan-200">Validated</span>
+            </div>
+            <div class="mt-6 grid gap-4">
+              <div class="surface-muted p-4">
+                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Prerequisites</p>
+                <p class="mt-2 text-sm font-semibold text-white">Node 18, Postgres, Docker</p>
+                <p class="mt-1 text-xs text-slate-400">Checks are run before setup so nobody trips CI.</p>
+              </div>
+              <div class="grid gap-4 sm:grid-cols-2">
+                <div class="surface-muted p-4">
+                  <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Setup</p>
+                  <p class="mt-2 text-sm font-semibold text-white">bun install</p>
+                  <p class="mt-1 text-xs text-slate-400">Step 1 of 2, no copy-paste required.</p>
+                </div>
+                <div class="surface-dark p-4">
+                  <p class="text-xs uppercase tracking-[0.3em] text-cyan-200">Launch</p>
+                  <p class="mt-2 text-sm font-semibold">bun run dev</p>
+                  <p class="mt-1 text-xs text-cyan-100/70">http://localhost:3000</p>
+                </div>
+              </div>
+              <div class="surface-muted p-4">
+                <div class="flex items-center justify-between">
+                  <p class="text-sm font-semibold text-white">Branch guardrails</p>
+                  <span class="rounded-full bg-slate-900 px-2 py-0.5 text-xs text-white">projects/*</span>
+                </div>
+                <p class="mt-2 text-xs text-slate-400">Default branch stays protected. Your sanity stays intact.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-24">
+    <div class="grid gap-8 lg:grid-cols-3">
+      <div class="surface p-6 reveal">
+        <p class="text-xs uppercase tracking-[0.4em] text-cyan-400">Config-first</p>
+        <h2 class="mt-3 text-2xl font-semibold text-white">Describe the repo once</h2>
+        <p class="mt-3 text-sm text-slate-300">
+          The `.falck/config.yaml` defines prerequisites, setup steps, launch commands, and access URLs. Falck reads it and
+          drives the whole workflow.
+        </p>
+        <a href="/tech/config" class="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-cyan-300">
+          See config details ->
+        </a>
+      </div>
+      <div class="surface p-6 reveal-delay-1">
+        <p class="text-xs uppercase tracking-[0.4em] text-sky-400">Workflow-safe</p>
+        <h2 class="mt-3 text-2xl font-semibold text-white">Git stays boring</h2>
+        <p class="mt-3 text-sm text-slate-300">
+          Falck keeps branches scoped, tracks save queues, and produces clean commits. Your PRs look normal. Your review
+          flow stays normal. Your blood pressure stays normal.
+        </p>
+        <a href="/tech/workflow" class="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-cyan-300">
+          See workflow ->
+        </a>
+      </div>
+      <div class="surface p-6 reveal-delay-2">
+        <p class="text-xs uppercase tracking-[0.4em] text-emerald-400">Local-first</p>
+        <h2 class="mt-3 text-2xl font-semibold text-white">Runs on open tech</h2>
+        <p class="mt-3 text-sm text-slate-300">
+          Falck runs locally, uses OpenCode to orchestrate tools, and can spin containers with Lima when you need isolation.
+        </p>
+        <a href="/tech/runtime" class="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-cyan-300">
+          See runtime ->
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 pb-28">
+    <div class="surface p-10 md:p-14 reveal">
+      <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
+        <div class="space-y-4">
+          <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Built on open source</p>
+          <h2 class="text-3xl sm:text-4xl font-semibold text-white">OpenCode + Lima, no secrets</h2>
+          <p class="text-slate-300">
+            Falck is open source and transparent. It uses OpenCode to orchestrate models and tools, and Lima to run
+            containerized dev servers when you need parity with production. You control the stack, not the other way around.
+          </p>
+          <div class="grid gap-3 text-sm text-slate-300">
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+              Local data, local models, local control
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+              Transparent config spec in `falck-spec.md`
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+              Optional containers via Lima + containerd
+            </div>
+          </div>
+          <div class="mt-6 flex flex-col sm:flex-row gap-4">
+            <Button href="https://github.com/MikkelWestermann/falck" target="_blank" rel="noreferrer">Star on GitHub</Button>
+            <Button href="/tech/download" variant="secondary">Download Falck</Button>
+          </div>
+        </div>
+        <div class="rounded-[28px] bg-slate-950/70 p-6">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Built on</p>
+              <p class="mt-2 text-lg font-semibold text-white">OpenCode + Lima</p>
+            </div>
+            <div class="h-16 w-28 rounded-2xl bg-slate-900 flex items-center justify-center">
+              <img src={opencodeLogo.src} alt="OpenCode logo" class="h-12 w-auto" />
+            </div>
+          </div>
+          <p class="mt-4 text-sm text-slate-300">
+            Falck uses OpenCode to orchestrate models, tools, and workflows, and Lima to run containerized dev servers. They
+            are not affiliated, just excellent humans building great tooling.
+          </p>
+          <a href="https://opencode.ai/" class="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-cyan-300">
+            Visit opencode.ai
+            <span aria-hidden="true">-&gt;</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+</Layout>
