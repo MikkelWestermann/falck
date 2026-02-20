@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -80,6 +81,8 @@ export function VmStatusProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<BackendMode>("host");
   const [state, setState] = useState<VmStatusState>(idleState);
   const [expanded, setExpanded] = useState(false);
+  const previousRepoRef = useRef<string | null>(null);
+  const previousModeRef = useRef<BackendMode>("host");
 
   useEffect(() => {
     let active = true;
@@ -107,6 +110,34 @@ export function VmStatusProvider({ children }: { children: ReactNode }) {
       active = false;
     };
   }, [repoPath]);
+
+  useEffect(() => {
+    const previousRepo = previousRepoRef.current;
+    const previousMode = previousModeRef.current;
+    if (
+      previousRepo &&
+      previousMode === "virtualized" &&
+      (repoPath !== previousRepo || mode !== "virtualized")
+    ) {
+      backendService.stopRepoBackend(previousRepo).catch(() => {
+        // ignore stop errors on navigation/teardown
+      });
+    }
+    previousRepoRef.current = repoPath;
+    previousModeRef.current = mode;
+  }, [repoPath, mode]);
+
+  useEffect(() => {
+    return () => {
+      const previousRepo = previousRepoRef.current;
+      const previousMode = previousModeRef.current;
+      if (previousRepo && previousMode === "virtualized") {
+        backendService.stopRepoBackend(previousRepo).catch(() => {
+          // ignore stop errors on unmount
+        });
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;

@@ -23,6 +23,8 @@ use storage::{
     get_default_repo_dir, list_repos, remove_repo, save_repo, set_default_repo_dir, SavedRepo,
 };
 use tauri::Manager;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use blocking::run_blocking;
 
 // ============================================================================
@@ -198,7 +200,7 @@ async fn set_default_repo_directory(app: tauri::AppHandle, path: String) -> Resu
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_stronghold::Builder::new(|_pass| todo!()).build())
         .plugin(tauri_plugin_dialog::init())
         .manage(Client::new())
@@ -208,6 +210,7 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let state = window.app_handle().state::<falck::FalckProcessState>();
                 falck::stop_all_running_apps(&state);
+                backend::stop_all_repo_backends(&window.app_handle());
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -284,6 +287,28 @@ pub fn run() {
             backend::stop_backend_vm,
             backend::delete_backend_vm,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    let shutdown_guard = Arc::new(AtomicBool::new(false));
+    let shutdown_flag = shutdown_guard.clone();
+    app.run(move |app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { api, .. } = event {
+            if shutdown_flag.swap(true, Ordering::SeqCst) {
+                return;
+            }
+            api.prevent_exit();
+            let state = app_handle.state::<falck::FalckProcessState>();
+            falck::stop_all_running_apps(&state);
+            backend::stop_all_repo_backends(app_handle);
+            app_handle.exit(0);
+        } else if let tauri::RunEvent::Exit { .. } = event {
+            if shutdown_guard.swap(true, Ordering::SeqCst) {
+                return;
+            }
+            let state = app_handle.state::<falck::FalckProcessState>();
+            falck::stop_all_running_apps(&state);
+            backend::stop_all_repo_backends(app_handle);
+        }
+    });
 }

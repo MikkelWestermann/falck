@@ -657,6 +657,10 @@ fn parse_lima_list_entries(raw: &[u8]) -> Result<Vec<LimaListEntry>, String> {
 }
 
 fn lima_instance_registered(name: &str, limactl: Option<&Path>) -> bool {
+    lima_instance_info(name, limactl).is_some()
+}
+
+fn lima_instance_info(name: &str, limactl: Option<&Path>) -> Option<LimaListEntry> {
     let output = {
         let mut cmd = limactl_command(limactl);
         cmd.args(["list", "--json", "--tty=false"]);
@@ -664,13 +668,24 @@ fn lima_instance_registered(name: &str, limactl: Option<&Path>) -> bool {
         cmd.output()
     };
     let Ok(output) = output else {
-        return false;
+        return None;
     };
     if !output.status.success() {
-        return false;
+        return None;
     }
     parse_lima_list_entries(&output.stdout)
-        .map(|items| items.iter().any(|item| item.name == name))
+        .ok()
+        .and_then(|items| items.into_iter().find(|item| item.name == name))
+}
+
+fn lima_instance_status(name: &str, limactl: Option<&Path>) -> Option<String> {
+    lima_instance_info(name, limactl).and_then(|item| item.status)
+}
+
+fn lima_instance_running(name: &str, limactl: Option<&Path>) -> bool {
+    lima_instance_status(name, limactl)
+        .as_deref()
+        .map(|value| normalize_vm_status(Some(value)) == "running")
         .unwrap_or(false)
 }
 
@@ -773,6 +788,23 @@ fn normalize_vm_status(value: Option<&str>) -> String {
     }
 }
 
+fn canonicalize_path(path: &Path) -> Option<PathBuf> {
+    fs::canonicalize(path).ok()
+}
+
+fn paths_equivalent(target: &Path, candidate: &str) -> bool {
+    if candidate == target.to_string_lossy() {
+        return true;
+    }
+    let target_canon = canonicalize_path(target);
+    let candidate_path = Path::new(candidate);
+    let candidate_canon = canonicalize_path(candidate_path);
+    match (target_canon, candidate_canon) {
+        (Some(left), Some(right)) => left == right,
+        _ => false,
+    }
+}
+
 fn build_repo_vm_map(app: &AppHandle) -> Result<HashMap<String, String>, String> {
     let repos = storage::list_repos(app)?;
     let mut map = HashMap::new();
@@ -840,6 +872,25 @@ fn parse_wsl_list(output: &str) -> Vec<(String, String)> {
         vms.push((name, state.to_string()));
     }
     vms
+}
+
+fn wsl_instance_running(name: &str) -> bool {
+    let output = {
+        let mut cmd = Command::new("wsl");
+        cmd.args(["-l", "-v"]);
+        apply_shell_env(&mut cmd);
+        cmd.output()
+    };
+    let Ok(output) = output else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_wsl_list(&stdout)
+        .iter()
+        .any(|(vm_name, state)| vm_name == name && normalize_vm_status(Some(state)) == "running")
 }
 
 fn list_wsl_vms(app: &AppHandle) -> Result<Vec<BackendVmInfo>, String> {
@@ -968,25 +1019,6 @@ pub fn ensure_vm_port_forwards(
             err
         },
     )?;
-    emit_vm_status(
-        app,
-        &vm.repo_path,
-        Some(&vm.name),
-        Some(vm.provider),
-        "bootstrapping",
-        "Ensuring VM packages are installed",
-    );
-    ensure_vm_bootstrap(vm.provider, &vm.name, vm.limactl_path.as_deref()).map_err(|err| {
-        emit_vm_status(
-            app,
-            &vm.repo_path,
-            Some(&vm.name),
-            Some(vm.provider),
-            "error",
-            &format!("VM bootstrap failed: {err}"),
-        );
-        err
-    })?;
     emit_vm_status(
         app,
         &vm.repo_path,
@@ -1428,6 +1460,17 @@ fn ensure_vm_running_inner(
 
     match provider {
         VmProvider::Lima => {
+            if lima_instance_running(&name, limactl) {
+                emit_vm_status(
+                    app,
+                    repo_path,
+                    Some(&name),
+                    Some(provider),
+                    "ready",
+                    "VM already running",
+                );
+                return Ok(name);
+            }
             emit_vm_status(
                 app,
                 repo_path,
@@ -1646,6 +1689,17 @@ fn ensure_vm_running_inner(
             Ok(name)
         }
         VmProvider::Wsl => {
+            if wsl_instance_running(&name) {
+                emit_vm_status(
+                    app,
+                    repo_path,
+                    Some(&name),
+                    Some(provider),
+                    "ready",
+                    "VM already running",
+                );
+                return Ok(name);
+            }
             emit_vm_status(
                 app,
                 repo_path,
@@ -2119,44 +2173,122 @@ pub fn ensure_backend_for_repo(
 }
 
 pub fn stop_backend_for_repo(app: &AppHandle, repo_path: &Path) -> Result<(), String> {
-    let mode = effective_backend_mode(app)?;
-    if mode == BackendMode::Host {
-        return Ok(());
-    }
     let provider = vm_provider()?;
     let limactl = limactl_path(Some(app));
-    let name = vm_name_for_repo(repo_path);
-    emit_vm_status(
-        Some(app),
-        repo_path,
-        Some(&name),
-        Some(provider),
-        "stopping",
-        "Stopping virtual machine",
-    );
-    match stop_vm(provider, &name, limactl.as_deref()) {
-        Ok(()) => {
+    let installed = match provider {
+        VmProvider::Lima => limactl.is_some() || command_exists("limactl"),
+        VmProvider::Wsl => check_wsl_available(),
+    };
+    if !installed {
+        return Ok(());
+    }
+    let mut names = Vec::new();
+    let primary = vm_name_for_repo(repo_path);
+    names.push(primary.clone());
+    if let Ok(vms) = list_backend_vms_inner(app) {
+        for vm in vms {
+            if let Some(vm_repo) = &vm.repo_path {
+                if paths_equivalent(repo_path, vm_repo) {
+                    names.push(vm.name);
+                }
+            }
+        }
+    }
+    let mut unique = HashSet::new();
+    names.retain(|name| unique.insert(name.clone()));
+    if names.is_empty() {
+        return Ok(());
+    }
+
+    let _guard = vm_lock()?;
+    let mut last_error: Option<String> = None;
+    let mut stopped_any = false;
+
+    for name in names {
+        let running = match provider {
+            VmProvider::Lima => lima_instance_running(&name, limactl.as_deref()),
+            VmProvider::Wsl => wsl_instance_running(&name),
+        };
+        if !running {
+            continue;
+        }
+        emit_vm_status(
+            Some(app),
+            repo_path,
+            Some(&name),
+            Some(provider),
+            "stopping",
+            "Stopping virtual machine",
+        );
+        match stop_vm_inner(provider, &name, limactl.as_deref()) {
+            Ok(()) => {
+                stopped_any = true;
+                emit_vm_status(
+                    Some(app),
+                    repo_path,
+                    Some(&name),
+                    Some(provider),
+                    "stopped",
+                    "VM stopped",
+                );
+            }
+            Err(err) => {
+                last_error = Some(err.clone());
+                emit_vm_status(
+                    Some(app),
+                    repo_path,
+                    Some(&name),
+                    Some(provider),
+                    "error",
+                    &format!("Failed to stop VM: {err}"),
+                );
+            }
+        }
+    }
+
+    if let Some(err) = last_error {
+        Err(err)
+    } else {
+        if !stopped_any {
             emit_vm_status(
                 Some(app),
                 repo_path,
-                Some(&name),
+                Some(&primary),
                 Some(provider),
                 "stopped",
-                "VM stopped",
+                "VM already stopped",
             );
-            Ok(())
         }
-        Err(err) => {
-            emit_vm_status(
-                Some(app),
-                repo_path,
-                Some(&name),
-                Some(provider),
-                "error",
-                &format!("Failed to stop VM: {err}"),
-            );
-            Err(err)
+        Ok(())
+    }
+}
+
+pub fn stop_all_repo_backends(app: &AppHandle) {
+    let provider = match vm_provider() {
+        Ok(value) => value,
+        Err(_) => return,
+    };
+    let limactl = limactl_path(Some(app));
+    let installed = match provider {
+        VmProvider::Lima => limactl.is_some() || command_exists("limactl"),
+        VmProvider::Wsl => check_wsl_available(),
+    };
+    if !installed {
+        return;
+    }
+    let vms = match list_backend_vms_inner(app) {
+        Ok(list) => list,
+        Err(_) => return,
+    };
+    let _guard = match vm_lock() {
+        Ok(guard) => guard,
+        Err(_) => return,
+    };
+    for vm in vms {
+        if vm.repo_path.is_none() || vm.status == "stopped" {
+            continue;
         }
+        let _ = stop_vm_inner(provider, &vm.name, limactl.as_deref());
     }
 }
 
