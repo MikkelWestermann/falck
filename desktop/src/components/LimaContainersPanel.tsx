@@ -10,17 +10,20 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { containerService, type ContainerInfo, type LimaStatus } from "@/services/containerService";
+import {
+  containerService,
+  type ContainerInfo,
+  type LimaStatus,
+} from "@/services/containerService";
 import { cn } from "@/lib/utils";
 
 interface LimaContainersPanelProps {
   className?: string;
 }
 
-const STATUS_LABELS: Record<LimaStatus["installed"], string> = {
-  true: "Installed",
-  false: "Not installed",
-};
+function statusLabel(installed: boolean): string {
+  return installed ? "Installed" : "Not installed";
+}
 
 function statusBadgeVariant(installed: boolean) {
   return installed ? "secondary" : "destructive";
@@ -37,14 +40,14 @@ function containerBadgeVariant(state: ContainerInfo["state"]) {
   }
 }
 
-function containerStateLabel(state: ContainerInfo["state"], status?: string) {
+function containerStateLabel(state: ContainerInfo["state"]) {
   if (state === "running") {
     return "Running";
   }
   if (state === "stopped") {
-    return status && status !== "" ? status : "Stopped";
+    return "Stopped";
   }
-  return "Unknown";
+  return "Needs attention";
 }
 
 function repoLabel(path: string) {
@@ -129,6 +132,27 @@ export function LimaContainersPanel({ className }: LimaContainersPanelProps) {
     return Array.from(map.entries());
   }, [containers]);
 
+  const containerSummary = useMemo(() => {
+    const running = containers.filter(
+      (container) => container.state === "running",
+    ).length;
+    const stopped = containers.filter(
+      (container) => container.state === "stopped",
+    ).length;
+    const total = containers.length;
+    const attention = Math.max(total - running - stopped, 0);
+    const projects = new Set(
+      containers.map((container) => container.repo_path),
+    ).size;
+    return {
+      total,
+      running,
+      stopped,
+      attention,
+      projects,
+    };
+  }, [containers]);
+
   const handleContainerAction = async (
     container: ContainerInfo,
     action: "start" | "stop" | "delete",
@@ -165,55 +189,78 @@ export function LimaContainersPanel({ className }: LimaContainersPanelProps) {
   };
 
   const installed = limaStatus?.installed ?? false;
-  const statusLabel = limaStatus ? STATUS_LABELS[limaStatus.installed] : "Checking";
+  const statusLabelText = limaStatus ? statusLabel(limaStatus.installed) : "Checking";
 
   return (
     <Card className={cn("border-border/60 bg-background/85", className)}>
       <CardHeader className="border-b border-border/60 pb-5">
-        <CardTitle className="text-xl">Dev containers</CardTitle>
-        <CardDescription>
-          Run Dockerfile-based dev environments with Lima + nerdctl.
-        </CardDescription>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <CardTitle className="text-xl">Containers</CardTitle>
+            <CardDescription>
+              Some projects run inside containers. Falck sets them up only when
+              needed.
+            </CardDescription>
+          </div>
+          <Badge variant="outline" className="h-6">
+            Optional
+          </Badge>
+        </div>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1 text-sm">
-            <div className="font-semibold">Lima runtime</div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={statusBadgeVariant(installed)}>
-                {limaChecking ? "Checking" : statusLabel}
-              </Badge>
-              {limaStatus?.version ? (
-                <span className="text-xs text-muted-foreground">
-                  {limaStatus.version}
-                </span>
-              ) : null}
-            </div>
-            {limaStatus?.path ? (
-              <div className="text-xs font-mono text-muted-foreground break-all">
-                {limaStatus.path}
+        <Alert className="border-border/60 bg-background/60">
+          <AlertDescription>
+            You only need this if a project asks for containers. Falck will
+            prompt you when that happens.
+          </AlertDescription>
+        </Alert>
+
+        <div className="rounded-lg border border-border/60 bg-background/60 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1 text-sm">
+              <div className="font-semibold">Container helper (Lima)</div>
+              <div className="text-xs text-muted-foreground">
+                Install only when a project needs containers.
               </div>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {!installed ? (
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {!installed ? (
+                <Button
+                  onClick={handleInstall}
+                  disabled={limaInstalling}
+                  className="normal-case tracking-normal"
+                >
+                  {limaInstalling ? "Installing..." : "Install Lima"}
+                </Button>
+              ) : null}
               <Button
-                onClick={handleInstall}
-                disabled={limaInstalling}
+                variant="outline"
+                onClick={handleRefresh}
+                disabled={limaChecking || containersLoading}
                 className="normal-case tracking-normal"
               >
-                {limaInstalling ? "Installing..." : "Install Lima"}
+                Refresh
               </Button>
-            ) : null}
-            <Button
-              variant="outline"
-              onClick={handleRefresh}
-              disabled={limaChecking || containersLoading}
-              className="normal-case tracking-normal"
-            >
-              Refresh
-            </Button>
+            </div>
           </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <Badge variant={statusBadgeVariant(installed)}>
+              {limaChecking ? "Checking" : statusLabelText}
+            </Badge>
+          </div>
+          {limaStatus?.version || limaStatus?.path ? (
+            <details className="mt-2 text-xs text-muted-foreground">
+              <summary className="cursor-pointer">Technical details</summary>
+              {limaStatus?.version ? (
+                <div className="mt-1">Version: {limaStatus.version}</div>
+              ) : null}
+              {limaStatus?.path ? (
+                <div className="mt-1 font-mono break-all">
+                  Location: {limaStatus.path}
+                </div>
+              ) : null}
+            </details>
+          ) : null}
         </div>
 
         {limaError ? (
@@ -223,105 +270,195 @@ export function LimaContainersPanel({ className }: LimaContainersPanelProps) {
         ) : null}
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold">Containers</div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={loadContainers}
-              disabled={containersLoading}
-              className="normal-case tracking-normal"
-            >
-              {containersLoading ? "Loading..." : "Reload"}
-            </Button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="text-sm font-semibold">Containers</div>
+              <div className="text-xs text-muted-foreground">
+                {containerSummary.projects > 0
+                  ? `${containerSummary.projects} project${
+                      containerSummary.projects === 1 ? "" : "s"
+                    }`
+                  : "No projects yet."}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{containerSummary.total} total</Badge>
+              <Badge variant="secondary">{containerSummary.running} running</Badge>
+              <Badge variant="outline">{containerSummary.stopped} stopped</Badge>
+              {containerSummary.attention > 0 ? (
+                <Badge variant="destructive">
+                  {containerSummary.attention} needs attention
+                </Badge>
+              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={loadContainers}
+                disabled={containersLoading}
+                className="normal-case tracking-normal"
+              >
+                {containersLoading ? "Loading..." : "Reload"}
+              </Button>
+            </div>
           </div>
 
           {!installed ? (
             <div className="rounded-lg border border-dashed border-border/60 px-3 py-3 text-xs text-muted-foreground">
-              Install Lima to build and manage containers.
+              Install the container helper to run container-based projects.
             </div>
           ) : containersLoading ? (
             <div className="rounded-lg border border-dashed border-border/60 px-3 py-3 text-xs text-muted-foreground">
-              Fetching containers...
+              Loading containers...
             </div>
           ) : groupedContainers.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border/60 px-3 py-3 text-xs text-muted-foreground">
-              No containers tracked yet. Launch a Dockerfile-based app to create one.
+              No containers yet. They appear after you run a container-based
+              project.
             </div>
           ) : (
-            <ScrollArea className="max-h-[320px] pr-2">
+            <ScrollArea className="max-h-[420px] pr-2">
               <div className="space-y-3">
-                {groupedContainers.map(([repoPath, repoContainers]) => (
-                  <div
-                    key={repoPath}
-                    className="rounded-lg border border-border/60 bg-background/60 p-3"
-                  >
-                    <div className="space-y-1">
-                      <div className="text-sm font-semibold">{repoLabel(repoPath)}</div>
-                      <div className="text-xs font-mono text-muted-foreground break-all">
-                        {repoPath}
+                {groupedContainers.map(([repoPath, repoContainers]) => {
+                  const runningCount = repoContainers.filter(
+                    (container) => container.state === "running",
+                  ).length;
+                  const stoppedCount = repoContainers.filter(
+                    (container) => container.state === "stopped",
+                  ).length;
+                  const attentionCount = Math.max(
+                    repoContainers.length - runningCount - stoppedCount,
+                    0,
+                  );
+
+                  return (
+                    <div
+                      key={repoPath || "unknown"}
+                      className="rounded-lg border border-border/60 bg-background/60 p-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">
+                            {repoLabel(repoPath)}
+                          </div>
+                          {repoPath ? (
+                            <details className="text-xs text-muted-foreground">
+                              <summary className="cursor-pointer">
+                                Show folder
+                              </summary>
+                              <div className="mt-1 font-mono break-all">
+                                {repoPath}
+                              </div>
+                            </details>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">
+                              No project folder linked.
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <Badge variant="outline">
+                            {repoContainers.length} container
+                            {repoContainers.length === 1 ? "" : "s"}
+                          </Badge>
+                          {runningCount > 0 ? (
+                            <Badge variant="secondary">
+                              {runningCount} running
+                            </Badge>
+                          ) : null}
+                          {stoppedCount > 0 ? (
+                            <Badge variant="outline">
+                              {stoppedCount} stopped
+                            </Badge>
+                          ) : null}
+                          {attentionCount > 0 ? (
+                            <Badge variant="destructive">
+                              {attentionCount} needs attention
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="mt-4 space-y-2">
+                        {repoContainers.map((container) => {
+                          const running = container.state === "running";
+                          const actionKey = `${container.id}:${
+                            running ? "stop" : "start"
+                          }`;
+                          const deleteKey = `${container.id}:delete`;
+                          return (
+                            <div
+                              key={container.id}
+                              className="flex flex-col gap-2 rounded-lg border border-border/60 bg-background/80 p-3 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <div className="space-y-1">
+                                <div className="text-sm font-medium">
+                                  {container.name}
+                                </div>
+                                {container.app_id ? (
+                                  <div className="text-xs text-muted-foreground">
+                                    App: {container.app_id}
+                                  </div>
+                                ) : null}
+                                <details className="text-xs text-muted-foreground">
+                                  <summary className="cursor-pointer">
+                                    Technical details
+                                  </summary>
+                                  <div className="mt-1">
+                                    Workspace: {container.vm}
+                                  </div>
+                                  {container.image ? (
+                                    <div className="mt-1">
+                                      Image: {container.image}
+                                    </div>
+                                  ) : null}
+                                  {container.status ? (
+                                    <div className="mt-1">
+                                      Status: {container.status}
+                                    </div>
+                                  ) : null}
+                                </details>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge
+                                  variant={containerBadgeVariant(container.state)}
+                                >
+                                  {containerStateLabel(container.state)}
+                                </Badge>
+                                <Button
+                                  size="sm"
+                                  variant={running ? "default" : "outline"}
+                                  onClick={() =>
+                                    void handleContainerAction(
+                                      container,
+                                      running ? "stop" : "start",
+                                    )
+                                  }
+                                  disabled={containerAction[actionKey]}
+                                  className="normal-case tracking-normal"
+                                >
+                                  {running ? "Stop" : "Start"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    void handleContainerAction(
+                                      container,
+                                      "delete",
+                                    )
+                                  }
+                                  disabled={containerAction[deleteKey]}
+                                  className="normal-case tracking-normal"
+                                >
+                                  Delete
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                    <div className="mt-3 space-y-2">
-                      {repoContainers.map((container) => {
-                        const running = container.state === "running";
-                        const actionKey = `${container.id}:${running ? "stop" : "start"}`;
-                        const deleteKey = `${container.id}:delete`;
-                        return (
-                          <div
-                            key={container.id}
-                            className="flex flex-col gap-2 rounded-lg border border-border/60 bg-background/80 p-3 sm:flex-row sm:items-center sm:justify-between"
-                          >
-                            <div className="space-y-1">
-                              <div className="text-sm font-medium">
-                                {container.name}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                VM: {container.vm}
-                                {container.app_id ? ` | App: ${container.app_id}` : ""}
-                              </div>
-                              {container.image ? (
-                                <div className="text-xs text-muted-foreground">
-                                  Image: {container.image}
-                                </div>
-                              ) : null}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge variant={containerBadgeVariant(container.state)}>
-                                {containerStateLabel(container.state, container.status)}
-                              </Badge>
-                              <Button
-                                size="sm"
-                                variant={running ? "default" : "outline"}
-                                onClick={() =>
-                                  void handleContainerAction(
-                                    container,
-                                    running ? "stop" : "start",
-                                  )
-                                }
-                                disabled={containerAction[actionKey]}
-                                className="normal-case tracking-normal"
-                              >
-                                {running ? "Stop" : "Start"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  void handleContainerAction(container, "delete")
-                                }
-                                disabled={containerAction[deleteKey]}
-                                className="normal-case tracking-normal"
-                              >
-                                Delete
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </ScrollArea>
           )}

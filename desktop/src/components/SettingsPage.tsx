@@ -250,6 +250,8 @@ export function SettingsPage({
 
         <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="flex flex-col gap-6">
+            <VirtualizedBackendPanel className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4" />
+            <LimaContainersPanel className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4" />
             <Card
               className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4"
               style={{ animationDuration: "720ms" }}
@@ -412,8 +414,6 @@ export function SettingsPage({
           </div>
 
           <div className="flex flex-col gap-6">
-            <VirtualizedBackendPanel className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4" />
-            <LimaContainersPanel className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4" />
             {openCodeReady ? (
               <>
                 <OpenCodeInstallPanel className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4" />
