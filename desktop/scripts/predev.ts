@@ -432,6 +432,16 @@ async function ensureLimaSidecar(target: string) {
     return
   }
 
+  if (targetTerms(target).isWindows) {
+    await $`mkdir -p src-tauri/sidecars`
+    fs.writeFileSync(
+      dest,
+      "Lima is not supported on Windows. This stub exists to satisfy packaging.\n",
+    )
+    console.log(`Created Windows Lima stub at ${dest}`)
+    return
+  }
+
   const envPath = Bun.env.LIMACTL_PATH
   if (envPath && fs.existsSync(envPath)) {
     await $`mkdir -p src-tauri/sidecars`
