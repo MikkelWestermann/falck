@@ -1,7 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Button from '../components/Button.astro';
-import { resolvePath } from '../config/site';
 import whichWay from '../assets/which-way.jpg';
 ---
 
@@ -30,8 +29,8 @@ import whichWay from '../assets/which-way.jpg';
             team, and Falck handles the rails.
           </p>
           <div class="flex flex-col sm:flex-row gap-4">
-            <Button href={resolvePath('/download')}>Download Falck</Button>
-            <Button href={resolvePath('/download')} variant="secondary">See download options</Button>
+            <Button href="/download">Download Falck</Button>
+            <Button href="/download" variant="secondary">See download options</Button>
           </div>
         </div>
         <div class="relative reveal-delay-2">
@@ -114,7 +113,7 @@ import whichWay from '../assets/which-way.jpg';
         awkward handoffs.
       </p>
       <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-        <Button href={resolvePath('/download')}>Download Falck</Button>
+        <Button href="/download">Download Falck</Button>
       </div>
     </div>
   </section>

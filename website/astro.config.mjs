@@ -4,7 +4,7 @@ import { astroGrab } from "astro-grab";
 
 export default defineConfig({
   site: "https://mikkelwestermann.github.io/falck",
-  base: process.env.NODE_ENV === "production" ? "/falck" : "/",
+  base: "/",
   output: "static",
   integrations: [
     tailwind(),
