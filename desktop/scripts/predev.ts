@@ -354,6 +354,130 @@ function normalizeGuestAgentName(shareDir: string, info: LimaGuestAgentInfo) {
   }
 }
 
+type LimaBinaryInfo = {
+  os: "Darwin" | "Linux" | "Windows"
+  assetArch: "arm64" | "aarch64" | "x86_64"
+}
+
+function getLimaBinaryInfo(target: string): LimaBinaryInfo | null {
+  const { isMac, isWindows, isLinux } = targetTerms(target)
+  if (isWindows) {
+    return {
+      os: "Windows",
+      assetArch: "x86_64",
+    }
+  }
+
+  const lower = target.toLowerCase()
+  const isArm64 = lower.includes("aarch64") || lower.includes("arm64")
+
+  if (isMac) {
+    return {
+      os: "Darwin",
+      assetArch: isArm64 ? "arm64" : "x86_64",
+    }
+  }
+
+  if (isLinux) {
+    return {
+      os: "Linux",
+      assetArch: isArm64 ? "aarch64" : "x86_64",
+    }
+  }
+
+  return null
+}
+
+function limaBinaryAssetName(info: LimaBinaryInfo) {
+  if (info.os === "Windows") {
+    return `lima-${LIMA_VERSION}-Windows-${info.assetArch}.zip`
+  }
+  return `lima-${LIMA_VERSION}-${info.os}-${info.assetArch}.tar.gz`
+}
+
+function findLimactlBinary(root: string) {
+  const targetName = process.platform === "win32" ? "limactl.exe" : "limactl"
+  const stack = [root]
+  const visited = new Set<string>()
+
+  while (stack.length) {
+    const current = stack.pop()!
+    if (visited.has(current)) continue
+    visited.add(current)
+
+    let entries: fs.Dirent[] = []
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true })
+    } catch {
+      continue
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(fullPath)
+      } else if (entry.isFile() && entry.name === targetName) {
+        return fullPath
+      }
+    }
+  }
+
+  return null
+}
+
+async function ensureLimaSidecar(target: string) {
+  const dest = windowsify(`src-tauri/sidecars/limactl-${target}`)
+  if (fs.existsSync(dest)) {
+    console.log(`Using existing Lima sidecar at ${dest}`)
+    return
+  }
+
+  const envPath = Bun.env.LIMACTL_PATH
+  if (envPath && fs.existsSync(envPath)) {
+    await $`mkdir -p src-tauri/sidecars`
+    await $`cp ${envPath} ${dest}`
+    if (process.platform !== "win32") {
+      await $`chmod +x ${dest}`
+    }
+    console.log(`Copied LIMACTL_PATH to ${dest}`)
+    return
+  }
+
+  const info = getLimaBinaryInfo(target)
+  if (!info) {
+    throw new Error(`Lima sidecar not supported for target ${target}`)
+  }
+
+  const assetName = limaBinaryAssetName(info)
+  const url = `https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/${assetName}`
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "falck-lima-bin-"))
+  const archivePath = path.join(tempDir, assetName)
+
+  await $`curl -L --fail ${url} -o ${archivePath}`
+
+  if (assetName.endsWith(".zip")) {
+    if (process.platform === "win32") {
+      await $`powershell -Command "Expand-Archive -Force -Path '${archivePath}' -DestinationPath '${tempDir}'"`
+    } else {
+      await $`unzip -q ${archivePath} -d ${tempDir}`
+    }
+  } else {
+    await $`tar -xzf ${archivePath} -C ${tempDir}`
+  }
+
+  const limactlPath = findLimactlBinary(tempDir)
+  if (!limactlPath) {
+    throw new Error(`Downloaded Lima archive missing limactl (${assetName})`)
+  }
+
+  await $`mkdir -p src-tauri/sidecars`
+  await $`cp ${limactlPath} ${dest}`
+  if (process.platform !== "win32") {
+    await $`chmod +x ${dest}`
+  }
+  console.log(`Lima sidecar copied to ${dest}`)
+}
+
 async function ensureLimaGuestAgents(target: string) {
   const info = getLimaGuestAgentInfo(target)
   if (!info) {
@@ -412,6 +536,7 @@ async function ensureLimaGuestAgents(target: string) {
   )
 }
 
+await ensureLimaSidecar(target)
 await ensureLimaGuestAgents(target)
 
 if (fs.existsSync(dest)) {

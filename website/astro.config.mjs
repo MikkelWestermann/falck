@@ -3,7 +3,7 @@ import tailwind from "@astrojs/tailwind";
 import { astroGrab } from "astro-grab";
 
 export default defineConfig({
-  site: "https://mikkelwestermann.github.io/falck",
+  site: "https://falck.wstr.dk",
   base: "/",
   output: "static",
   integrations: [
