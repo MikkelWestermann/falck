@@ -317,9 +317,27 @@ fn ensure_vm_bootstrap(
         r#"
 set -e
 echo "[falck] bootstrap start" >&2
-if [ -f /var/lib/falck/bootstrap_v1 ]; then
+
+needs_env=0
+for pair in CHOKIDAR_USEPOLLING=true CHOKIDAR_INTERVAL=100 WATCHPACK_POLLING=true POLL=1; do
+  if ! grep -q "^${{pair}}$" /etc/environment 2>/dev/null; then
+    needs_env=1
+    break
+  fi
+done
+if [ "$needs_env" -eq 0 ]; then
+  for pair in CHOKIDAR_USEPOLLING=true CHOKIDAR_INTERVAL=100 WATCHPACK_POLLING=true POLL=1; do
+    if ! grep -q "^export ${{pair}}$" /etc/profile.d/falck-polling.sh 2>/dev/null; then
+      needs_env=1
+      break
+    fi
+  done
+fi
+
+if [ -f /var/lib/falck/bootstrap_v1 ] && [ "$needs_env" -eq 0 ]; then
   exit 0
 fi
+
 if [ "$(id -u)" -eq 0 ]; then
   SUDO=""
 else
@@ -333,19 +351,53 @@ else
   fi
   SUDO="sudo -n"
 fi
-$SUDO mkdir -p /var/lib/falck
-if command -v apt-get >/dev/null 2>&1; then
-  $SUDO DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Lock::Timeout=60 update
-  $SUDO DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Lock::Timeout=60 install unzip zip git curl ca-certificates rsync
-elif command -v dnf >/dev/null 2>&1; then
-  $SUDO dnf -y install unzip zip git curl ca-certificates rsync
-elif command -v apk >/dev/null 2>&1; then
-  $SUDO apk add --no-cache unzip zip git curl ca-certificates rsync
-else
-  echo "No supported package manager found on VM." >&2
-  exit 1
+
+ensure_polling_env() {{
+  $SUDO mkdir -p /etc/profile.d
+  $SUDO tee /etc/profile.d/falck-polling.sh >/dev/null <<'EOF'
+export CHOKIDAR_USEPOLLING=true
+export CHOKIDAR_INTERVAL=100
+export WATCHPACK_POLLING=true
+export POLL=1
+EOF
+  $SUDO chmod 0644 /etc/profile.d/falck-polling.sh
+
+  ENV_FILE="/etc/environment"
+  $SUDO touch "$ENV_FILE"
+  upsert_env() {{
+    key="$1"
+    value="$2"
+    if $SUDO grep -q "^${{key}}=" "$ENV_FILE" 2>/dev/null; then
+      $SUDO sed -i.bak "s|^${{key}}=.*|${{key}}=${{value}}|g" "$ENV_FILE"
+    else
+      echo "${{key}}=${{value}}" | $SUDO tee -a "$ENV_FILE" >/dev/null
+    fi
+  }}
+  upsert_env "CHOKIDAR_USEPOLLING" "true"
+  upsert_env "CHOKIDAR_INTERVAL" "100"
+  upsert_env "WATCHPACK_POLLING" "true"
+  upsert_env "POLL" "1"
+}}
+
+if [ ! -f /var/lib/falck/bootstrap_v1 ]; then
+  $SUDO mkdir -p /var/lib/falck
+  if command -v apt-get >/dev/null 2>&1; then
+    $SUDO DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Lock::Timeout=60 update
+    $SUDO DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Lock::Timeout=60 install unzip zip git curl ca-certificates rsync
+  elif command -v dnf >/dev/null 2>&1; then
+    $SUDO dnf -y install unzip zip git curl ca-certificates rsync
+  elif command -v apk >/dev/null 2>&1; then
+    $SUDO apk add --no-cache unzip zip git curl ca-certificates rsync
+  else
+    echo "No supported package manager found on VM." >&2
+    exit 1
+  fi
+  $SUDO touch /var/lib/falck/bootstrap_v1
 fi
-$SUDO touch /var/lib/falck/bootstrap_v1
+
+if [ "$needs_env" -ne 0 ]; then
+  ensure_polling_env
+fi
 "#,
         sudo_hint = sudo_hint
     );
