@@ -128,11 +128,6 @@ export function FalckDashboard({
   >({});
   const [secretsDialogApp, setSecretsDialogApp] =
     useState<FalckApplication | null>(null);
-  const [limaPromptOpen, setLimaPromptOpen] = useState(false);
-  const [limaInstalling, setLimaInstalling] = useState(false);
-  const [limaPromptError, setLimaPromptError] = useState<string | null>(null);
-  const [pendingLaunchApp, setPendingLaunchApp] =
-    useState<FalckApplication | null>(null);
   const [prereqInstallRunning, setPrereqInstallRunning] = useState<
     Record<string, boolean>
   >({});
@@ -425,9 +420,13 @@ export function FalckDashboard({
       if (app.launch.container && !options?.skipLimaCheck) {
         const limaStatus = await containerService.checkLimaInstalled();
         if (!limaStatus.installed) {
-          setPendingLaunchApp(app);
-          setLimaPromptError(null);
-          setLimaPromptOpen(true);
+          const message =
+            "Lima is unavailable in this build. Reinstall Falck or use a build that bundles Lima.";
+          setLaunchError((prev) => ({ ...prev, [app.id]: message }));
+          setContainerStatusByApp((prev) => ({
+            ...prev,
+            [app.id]: { status: "error", message },
+          }));
           setLaunchingApps((prev) => ({ ...prev, [app.id]: false }));
           return;
         }
@@ -472,25 +471,6 @@ export function FalckDashboard({
       });
     } catch (err) {
       setLaunchError((prev) => ({ ...prev, [app.id]: String(err) }));
-    }
-  };
-
-  const handleInstallLima = async () => {
-    if (!pendingLaunchApp) {
-      return;
-    }
-    setLimaInstalling(true);
-    setLimaPromptError(null);
-    try {
-      await containerService.installLima();
-      setLimaPromptOpen(false);
-      const appToLaunch = pendingLaunchApp;
-      setPendingLaunchApp(null);
-      await performLaunch(appToLaunch, { skipLimaCheck: true });
-    } catch (err) {
-      setLimaPromptError(`Lima install failed: ${String(err)}`);
-    } finally {
-      setLimaInstalling(false);
     }
   };
 
@@ -1060,52 +1040,6 @@ export function FalckDashboard({
             </DialogContent>
           </Dialog>
 
-          <Dialog
-            open={limaPromptOpen}
-            onOpenChange={(open) => {
-              if (!open) {
-                setLimaPromptOpen(false);
-                setPendingLaunchApp(null);
-                setLimaPromptError(null);
-              }
-            }}
-          >
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Lima required</DialogTitle>
-                <DialogDescription>
-                  This app is configured to run from a Dockerfile. Install Lima
-                  to create the dev container.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                {limaPromptError ? (
-                  <Alert variant="destructive">
-                    <AlertDescription>{limaPromptError}</AlertDescription>
-                  </Alert>
-                ) : null}
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setLimaPromptOpen(false);
-                      setPendingLaunchApp(null);
-                      setLimaPromptError(null);
-                    }}
-                    disabled={limaInstalling}
-                  >
-                    Not now
-                  </Button>
-                  <Button
-                    onClick={() => void handleInstallLima()}
-                    disabled={limaInstalling}
-                  >
-                    {limaInstalling ? "Installing..." : "Install Lima"}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
         </div>
       ) : null}
 

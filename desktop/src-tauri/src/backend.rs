@@ -1,4 +1,3 @@
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
@@ -6,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter};
 
 use crate::blocking::run_blocking;
 pub use crate::storage::BackendMode;
@@ -435,21 +434,6 @@ fi
             eprintln!("[falck][backend] bootstrap failed: {}", combined);
             Err(combined)
         }
-    }
-}
-
-fn install_wsl_prereq() -> Result<String, String> {
-    let status = {
-        let mut cmd = Command::new("wsl");
-        cmd.arg("--install");
-        apply_shell_env(&mut cmd);
-        cmd.status()
-    }
-    .map_err(|e| format!("Failed to run wsl --install: {e}"))?;
-    if status.success() {
-        Ok("WSL installation started. Windows may require a restart.".to_string())
-    } else {
-        Err("WSL installation failed.".to_string())
     }
 }
 
@@ -1287,6 +1271,7 @@ fn limactl_create(
     repo_path: &Path,
     port_forwards: Option<&[u16]>,
     limactl: Option<&Path>,
+    template_path: Option<&Path>,
 ) -> Result<(), String> {
     let mounts_expr = lima_mounts_yq(repo_path);
     let cmd = {
@@ -1298,8 +1283,12 @@ fn limactl_create(
             name,
             "--set",
             &mounts_expr,
-            "template:default",
         ]);
+        if let Some(template_path) = template_path {
+            cmd.arg(template_path);
+        } else {
+            cmd.arg("template:default");
+        }
         if let Some(port_forwards) = port_forwards {
             if let Some(expr) = lima_port_forwards_yq(port_forwards) {
                 cmd.args(["--set", &expr]);
@@ -1457,6 +1446,29 @@ fn ensure_vm_running_inner(
         "starting",
         "VM lock acquired",
     );
+
+    let template_path = if provider == VmProvider::Lima {
+        if let Some(app_handle) = app {
+            match containers::prepare_lima_environment(app_handle) {
+                Ok(path) => Some(path),
+                Err(err) => {
+                    emit_vm_status(
+                        app,
+                        repo_path,
+                        Some(&name),
+                        Some(provider),
+                        "error",
+                        &format!("Lima setup failed: {err}"),
+                    );
+                    return Err(err);
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     match provider {
         VmProvider::Lima => {
@@ -1618,7 +1630,8 @@ fn ensure_vm_running_inner(
                 "creating",
                 "Creating new VM",
             );
-            limactl_create(&name, repo_path, None, limactl).map_err(|err| {
+            limactl_create(&name, repo_path, None, limactl, template_path.as_deref())
+                .map_err(|err| {
                 emit_vm_status(
                     app,
                     repo_path,
@@ -1628,7 +1641,7 @@ fn ensure_vm_running_inner(
                     &format!("Failed to create VM: {err}"),
                 );
                 err
-            })?;
+                })?;
             emit_vm_status(
                 app,
                 repo_path,
@@ -2385,21 +2398,6 @@ pub async fn check_virtualized_backend_prereq(
         })
     })
     .await
-}
-
-#[tauri::command]
-pub async fn install_virtualized_backend_prereq(
-    app: AppHandle,
-    client: State<'_, Client>,
-) -> Result<String, String> {
-    let provider = vm_provider()?;
-    match provider {
-        VmProvider::Lima => {
-            let result = containers::install_lima(app, client).await?;
-            Ok(format!("Lima installed at {}", result.path))
-        }
-        VmProvider::Wsl => run_blocking(install_wsl_prereq).await,
-    }
 }
 
 #[tauri::command]

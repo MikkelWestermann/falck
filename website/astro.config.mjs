@@ -12,7 +12,6 @@ export default defineConfig({
       enabled: true,
       holdDuration: 1000,
       contextLines: 4,
-      // set the hue to the same green color used for the theme
       hue: 163.1,
       toolbar: true,
       template: `[site_context] Source: {{file}}:{{targetLine}}

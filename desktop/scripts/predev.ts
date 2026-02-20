@@ -246,6 +246,174 @@ function satisfiesCaret(version: string, base: string) {
   return compareVersion(version, base) >= 0
 }
 
+const LIMA_VERSION = "2.0.3"
+
+type LimaGuestAgentInfo = {
+  os: "Darwin" | "Linux"
+  assetArch: "arm64" | "aarch64" | "x86_64"
+  guestArch: "aarch64" | "x86_64"
+}
+
+function getLimaGuestAgentInfo(target: string): LimaGuestAgentInfo | null {
+  const { isMac, isWindows, isLinux } = targetTerms(target)
+  if (isWindows) return null
+
+  const lower = target.toLowerCase()
+  const isArm64 = lower.includes("aarch64") || lower.includes("arm64")
+
+  if (isMac) {
+    return {
+      os: "Darwin",
+      assetArch: isArm64 ? "arm64" : "x86_64",
+      guestArch: isArm64 ? "aarch64" : "x86_64",
+    }
+  }
+
+  if (isLinux) {
+    return {
+      os: "Linux",
+      assetArch: isArm64 ? "aarch64" : "x86_64",
+      guestArch: isArm64 ? "aarch64" : "x86_64",
+    }
+  }
+
+  return null
+}
+
+function findShareLimaDir(root: string) {
+  const direct = path.join(root, "share", "lima")
+  if (fs.existsSync(direct)) return direct
+
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const candidate = path.join(root, entry.name, "share", "lima")
+    if (fs.existsSync(candidate)) return candidate
+  }
+
+  return null
+}
+
+function guestAgentExpectedNames(guestArch: "aarch64" | "x86_64") {
+  const base = `lima-guestagent.Linux-${guestArch}`
+  const names = new Set([base, `${base}.gz`])
+  if (guestArch === "aarch64") {
+    names.add("lima-guestagent.Linux-arm64")
+    names.add("lima-guestagent.Linux-arm64.gz")
+  }
+  return Array.from(names)
+}
+
+function guestAgentCandidates(info: LimaGuestAgentInfo) {
+  const osVariants = [info.os, info.os.toLowerCase()]
+  const archVariants = new Set([info.assetArch])
+  if (info.os === "Darwin" && info.assetArch === "arm64") {
+    archVariants.add("aarch64")
+  }
+  const candidates: string[] = []
+  for (const osName of osVariants) {
+    for (const arch of archVariants) {
+      candidates.push(`lima-${LIMA_VERSION}-${osName}-${arch}.tar.gz`)
+      candidates.push(`lima-${LIMA_VERSION}-${osName}-${arch}.tgz`)
+    }
+  }
+  candidates.push(`lima-guestagent.Linux-${info.guestArch}.gz`)
+  if (info.guestArch === "aarch64") {
+    candidates.push("lima-guestagent.Linux-arm64.gz")
+  }
+  candidates.push(
+    `lima-additional-guestagents-${LIMA_VERSION}-${info.os}-${info.assetArch}.tar.gz`,
+  )
+  candidates.push(
+    `lima-additional-guestagents-${LIMA_VERSION}-${info.os.toLowerCase()}-${info.assetArch}.tar.gz`,
+  )
+  return candidates
+}
+
+function hasExpectedGuestAgent(shareDir: string, info: LimaGuestAgentInfo) {
+  return guestAgentExpectedNames(info.guestArch).some((name) =>
+    fs.existsSync(path.join(shareDir, name)),
+  )
+}
+
+function copyShareLimaFiles(shareSrc: string, shareDir: string) {
+  fs.mkdirSync(shareDir, { recursive: true })
+  for (const entry of fs.readdirSync(shareSrc, { withFileTypes: true })) {
+    if (!entry.isFile()) continue
+    const src = path.join(shareSrc, entry.name)
+    const dest = path.join(shareDir, entry.name)
+    fs.copyFileSync(src, dest)
+  }
+}
+
+function normalizeGuestAgentName(shareDir: string, info: LimaGuestAgentInfo) {
+  if (info.guestArch !== "aarch64") return
+  const arm64Name = path.join(shareDir, "lima-guestagent.Linux-arm64.gz")
+  const aarch64Name = path.join(shareDir, "lima-guestagent.Linux-aarch64.gz")
+  if (!fs.existsSync(aarch64Name) && fs.existsSync(arm64Name)) {
+    fs.copyFileSync(arm64Name, aarch64Name)
+  }
+}
+
+async function ensureLimaGuestAgents(target: string) {
+  const info = getLimaGuestAgentInfo(target)
+  if (!info) {
+    console.log("Skipping Lima guest agents: unsupported platform.")
+    return
+  }
+
+  const shareDir = path.join(process.cwd(), "src-tauri", "share", "lima")
+  if (hasExpectedGuestAgent(shareDir, info)) {
+    console.log(`Using existing Lima guest agent in ${shareDir}`)
+    return
+  }
+
+  const baseUrl = `https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}`
+  const attempts: string[] = []
+  for (const assetName of guestAgentCandidates(info)) {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "falck-lima-"))
+    const archivePath = path.join(tempDir, assetName)
+    const url = `${baseUrl}/${assetName}`
+    attempts.push(assetName)
+    try {
+      await $`curl -L --fail ${url} -o ${archivePath}`
+    } catch (err) {
+      continue
+    }
+
+    if (assetName.endsWith(".gz") && !assetName.endsWith(".tar.gz") && !assetName.endsWith(".tgz")) {
+      fs.mkdirSync(shareDir, { recursive: true })
+      const destName = assetName.includes("Linux-arm64")
+        ? "lima-guestagent.Linux-aarch64.gz"
+        : assetName
+      fs.copyFileSync(archivePath, path.join(shareDir, destName))
+      normalizeGuestAgentName(shareDir, info)
+      if (hasExpectedGuestAgent(shareDir, info)) {
+        console.log(`Lima guest agent copied to ${shareDir}`)
+        return
+      }
+      continue
+    }
+
+    await $`tar -xzf ${archivePath} -C ${tempDir}`
+    const shareSrc = findShareLimaDir(tempDir)
+    if (!shareSrc) {
+      continue
+    }
+    copyShareLimaFiles(shareSrc, shareDir)
+    normalizeGuestAgentName(shareDir, info)
+    if (hasExpectedGuestAgent(shareDir, info)) {
+      console.log(`Lima guest agents copied to ${shareDir}`)
+      return
+    }
+  }
+
+  throw new Error(
+    `Unable to fetch Lima guest agents for ${info.os}/${info.guestArch}. Tried: ${attempts.join(", ")}`,
+  )
+}
+
+await ensureLimaGuestAgents(target)
+
 if (fs.existsSync(dest)) {
   console.log(`Using existing OpenCode CLI at ${dest}`)
   cliReady = true

@@ -22,7 +22,7 @@ interface LimaContainersPanelProps {
 }
 
 function statusLabel(installed: boolean): string {
-  return installed ? "Installed" : "Not installed";
+  return installed ? "Ready" : "Missing";
 }
 
 function statusBadgeVariant(installed: boolean) {
@@ -62,7 +62,6 @@ function repoLabel(path: string) {
 export function LimaContainersPanel({ className }: LimaContainersPanelProps) {
   const [limaStatus, setLimaStatus] = useState<LimaStatus | null>(null);
   const [limaChecking, setLimaChecking] = useState(true);
-  const [limaInstalling, setLimaInstalling] = useState(false);
   const [limaError, setLimaError] = useState<string | null>(null);
 
   const [containers, setContainers] = useState<ContainerInfo[]>([]);
@@ -102,20 +101,6 @@ export function LimaContainersPanel({ className }: LimaContainersPanelProps) {
     void loadLimaStatus();
     void loadContainers();
   }, [loadContainers, loadLimaStatus]);
-
-  const handleInstall = async () => {
-    setLimaInstalling(true);
-    setLimaError(null);
-    try {
-      await containerService.installLima();
-      await loadLimaStatus();
-      await loadContainers();
-    } catch (err) {
-      setLimaError(`Lima install failed: ${String(err)}`);
-    } finally {
-      setLimaInstalling(false);
-    }
-  };
 
   const handleRefresh = async () => {
     await loadLimaStatus();
@@ -210,29 +195,20 @@ export function LimaContainersPanel({ className }: LimaContainersPanelProps) {
       <CardContent className="space-y-6 pt-6">
         <Alert className="border-border/60 bg-background/60">
           <AlertDescription>
-            You only need this if a project asks for containers. Falck will
-            prompt you when that happens.
+            Falck includes Lima so containers work out of the box. If you
+            already have Lima installed, Falck will use it automatically.
           </AlertDescription>
         </Alert>
 
         <div className="rounded-lg border border-border/60 bg-background/60 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1 text-sm">
-              <div className="font-semibold">Container helper (Lima)</div>
+              <div className="font-semibold">Lima helper</div>
               <div className="text-xs text-muted-foreground">
-                Install only when a project needs containers.
+                Runs container-based projects in a safe workspace.
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              {!installed ? (
-                <Button
-                  onClick={handleInstall}
-                  disabled={limaInstalling}
-                  className="normal-case tracking-normal"
-                >
-                  {limaInstalling ? "Installing..." : "Install Lima"}
-                </Button>
-              ) : null}
               <Button
                 variant="outline"
                 onClick={handleRefresh}
@@ -247,10 +223,23 @@ export function LimaContainersPanel({ className }: LimaContainersPanelProps) {
             <Badge variant={statusBadgeVariant(installed)}>
               {limaChecking ? "Checking" : statusLabelText}
             </Badge>
+            {limaStatus?.source ? (
+              <Badge variant="outline">
+                {limaStatus.source === "system"
+                  ? "Using system Lima"
+                  : "Using bundled Lima"}
+              </Badge>
+            ) : null}
           </div>
           {limaStatus?.version || limaStatus?.path ? (
             <details className="mt-2 text-xs text-muted-foreground">
               <summary className="cursor-pointer">Technical details</summary>
+              {limaStatus?.source ? (
+                <div className="mt-1">
+                  Source:{" "}
+                  {limaStatus.source === "system" ? "System" : "Bundled"}
+                </div>
+              ) : null}
               {limaStatus?.version ? (
                 <div className="mt-1">Version: {limaStatus.version}</div>
               ) : null}
@@ -304,7 +293,8 @@ export function LimaContainersPanel({ className }: LimaContainersPanelProps) {
 
           {!installed ? (
             <div className="rounded-lg border border-dashed border-border/60 px-3 py-3 text-xs text-muted-foreground">
-              Install the container helper to run container-based projects.
+              The Lima helper is missing from this build. Reinstall Falck or
+              use a build that bundles Lima.
             </div>
           ) : containersLoading ? (
             <div className="rounded-lg border border-dashed border-border/60 px-3 py-3 text-xs text-muted-foreground">

@@ -31,7 +31,12 @@
     "targets": "all",
     "externalBin": [
       "sidecars/opencode-cli",
-      "sidecars/opencode-sidecar"
+      "sidecars/opencode-sidecar",
+      "sidecars/limactl"
+    ],
+    "resources": [
+      "share/lima",
+      "sidecars/limactl-*"
     ],
     "icon": [
       "icons/32x32.png",

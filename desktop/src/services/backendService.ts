@@ -34,10 +34,6 @@ export const backendService = {
     return invoke<BackendPrereqStatus>("check_virtualized_backend_prereq");
   },
 
-  async installPrereq(): Promise<string> {
-    return invoke<string>("install_virtualized_backend_prereq");
-  },
-
   async ensureRepoBackend(repoPath: string): Promise<BackendEnsureResult> {
     return invoke<BackendEnsureResult>("ensure_repo_backend", { repoPath });
   },

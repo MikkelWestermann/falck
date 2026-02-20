@@ -4,11 +4,7 @@ export interface LimaStatus {
   installed: boolean;
   version?: string;
   path?: string;
-}
-
-export interface LimaInstallResult {
-  version: string;
-  path: string;
+  source?: "system" | "bundled";
 }
 
 export interface ContainerInfo {
@@ -26,10 +22,6 @@ export interface ContainerInfo {
 export const containerService = {
   async checkLimaInstalled(): Promise<LimaStatus> {
     return invoke<LimaStatus>("check_lima_installed");
-  },
-
-  async installLima(): Promise<LimaInstallResult> {
-    return invoke<LimaInstallResult>("install_lima");
   },
 
   async listContainers(repoPath?: string): Promise<ContainerInfo[]> {

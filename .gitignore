@@ -38,3 +38,6 @@ desktop/src-tauri/target
 desktop/src-tauri/sidecars/
 desktop/src-tauri/binaries/
 desktop/sidecar-opencode/my-sidecar*
+
+# Lima guest agents (downloaded in predev)
+desktop/src-tauri/share/lima/lima-guestagent*

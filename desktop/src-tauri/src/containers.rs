@@ -1,14 +1,12 @@
 use anyhow::{bail, Context, Result as AnyhowResult};
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::env;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::blocking::run_blocking;
 use crate::storage::{self, StoredContainer};
@@ -18,12 +16,14 @@ pub struct LimaStatus {
     pub installed: bool,
     pub version: Option<String>,
     pub path: Option<String>,
+    pub source: Option<LimaSource>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct LimaInstallResult {
-    pub version: String,
-    pub path: String,
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum LimaSource {
+    System,
+    Bundled,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -94,12 +94,6 @@ struct ContainerLogEvent {
     container: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-struct LimaStatusEvent {
-    status: String,
-    message: String,
-}
-
 #[derive(Debug, Clone)]
 struct EventContext {
     repo_path: Option<String>,
@@ -146,16 +140,6 @@ fn emit_container_log(app: &AppHandle, log: &str, ctx: &EventContext) {
     );
 }
 
-fn emit_lima_status(app: &AppHandle, status: &str, message: &str) {
-    let _ = app.emit(
-        "lima-status",
-        LimaStatusEvent {
-            status: status.to_string(),
-            message: message.to_string(),
-        },
-    );
-}
-
 fn limactl_executable_name() -> &'static str {
     if cfg!(target_os = "windows") {
         "limactl.exe"
@@ -164,24 +148,21 @@ fn limactl_executable_name() -> &'static str {
     }
 }
 
-fn find_limactl_in_dir(dir: &Path) -> Option<PathBuf> {
-    let direct = dir.join("bin").join(limactl_executable_name());
-    if direct.exists() {
-        return Some(direct);
-    }
+const BUNDLED_LIMA_VERSION: &str = "2.0.3";
+const FALCK_LIMA_TEMPLATE: &str = r#"
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+mounts:
+  - location: "~"
+"#;
 
-    let entries = fs::read_dir(dir).ok()?;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let candidate = path.join("bin").join(limactl_executable_name());
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-    None
+#[derive(Debug, Clone)]
+struct LimactlLocation {
+    path: PathBuf,
+    source: LimaSource,
 }
 
 fn find_in_path(command: &str) -> Option<PathBuf> {
@@ -203,19 +184,257 @@ fn find_in_path(command: &str) -> Option<PathBuf> {
         .filter(|path| !path.as_os_str().is_empty())
 }
 
-fn find_limactl_path(app: &AppHandle) -> Option<PathBuf> {
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        let install_dir = data_dir.join("lima");
-        if let Some(path) = find_limactl_in_dir(&install_dir) {
-            return Some(path);
+fn find_named_in_dir(dir: &Path, prefix: &str) -> Option<PathBuf> {
+    let direct = dir.join(prefix);
+    if direct.exists() {
+        return Some(direct);
+    }
+
+    let exe = dir.join(format!("{prefix}.exe"));
+    if exe.exists() {
+        return Some(exe);
+    }
+
+    let entries = fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
+            if name.starts_with(prefix) {
+                return Some(path);
+            }
         }
     }
 
-    find_in_path(limactl_executable_name())
+    None
+}
+
+fn limactl_share_dir(path: &Path) -> Option<PathBuf> {
+    let parent = path.parent()?;
+    let prefix = parent.parent()?;
+    Some(prefix.join("share").join("lima"))
+}
+
+fn limactl_has_guest_agents(path: &Path) -> bool {
+    let Some(share_dir) = limactl_share_dir(path) else {
+        return false;
+    };
+    guest_agent_filenames()
+        .iter()
+        .any(|name| share_dir.join(name).exists())
+}
+
+fn find_bundled_limactl(app: &AppHandle) -> Option<PathBuf> {
+    let mut fallback: Option<PathBuf> = None;
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        for candidate in [
+            resource_dir.clone(),
+            resource_dir.join("sidecars"),
+            resource_dir.join("binaries"),
+        ] {
+            if let Some(found) = find_named_in_dir(&candidate, "limactl") {
+                if limactl_has_guest_agents(&found) {
+                    return Some(found);
+                }
+                if fallback.is_none() {
+                    fallback = Some(found);
+                }
+            }
+        }
+    }
+
+    if let Ok(current) = tauri::process::current_binary(&app.env()) {
+        if let Some(parent) = current.parent() {
+            for candidate in [parent.to_path_buf(), parent.join("sidecars")] {
+                if let Some(found) = find_named_in_dir(&candidate, "limactl") {
+                    if limactl_has_guest_agents(&found) {
+                        return Some(found);
+                    }
+                    if fallback.is_none() {
+                        fallback = Some(found);
+                    }
+                }
+            }
+        }
+    }
+
+    let cwd = std::env::current_dir().ok();
+    let candidates = [
+        cwd.as_ref().map(|dir| dir.join("sidecars")),
+        cwd.as_ref()
+            .map(|dir| dir.join("src-tauri").join("sidecars")),
+        cwd.as_ref()
+            .map(|dir| dir.join("..").join("src-tauri").join("sidecars")),
+        cwd.as_ref().map(|dir| dir.join("binaries")),
+        cwd.as_ref()
+            .map(|dir| dir.join("src-tauri").join("binaries")),
+        cwd.as_ref()
+            .map(|dir| dir.join("..").join("src-tauri").join("binaries")),
+    ];
+
+    for candidate in candidates.into_iter().flatten() {
+        if let Some(found) = find_named_in_dir(&candidate, "limactl") {
+            if limactl_has_guest_agents(&found) {
+                return Some(found);
+            }
+            if fallback.is_none() {
+                fallback = Some(found);
+            }
+        }
+    }
+
+    fallback
+}
+
+fn falck_lima_home(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Ok(value) = std::env::var("FALCK_LIMA_HOME") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed));
+        }
+    }
+
+    let home_dir = app.path().home_dir().map_err(|e| e.to_string())?;
+    Ok(home_dir.join(".falck").join("lima"))
+}
+
+fn find_lima_template_source(app: &AppHandle) -> Option<PathBuf> {
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let candidate = resource_dir.join("lima").join("templates").join("default.yaml");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    let cwd = std::env::current_dir().ok();
+    let candidates = [
+        cwd.as_ref()
+            .map(|dir| dir.join("resources").join("lima").join("templates").join("default.yaml")),
+        cwd.as_ref().map(|dir| {
+            dir.join("src-tauri")
+                .join("resources")
+                .join("lima")
+                .join("templates")
+                .join("default.yaml")
+        }),
+        cwd.as_ref().map(|dir| {
+            dir.join("..")
+                .join("src-tauri")
+                .join("resources")
+                .join("lima")
+                .join("templates")
+                .join("default.yaml")
+        }),
+    ];
+
+    for candidate in candidates.into_iter().flatten() {
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
+pub(crate) fn prepare_lima_environment(app: &AppHandle) -> Result<PathBuf, String> {
+    let lima_home = falck_lima_home(app)?;
+    let templates_dir = lima_home.join("_templates");
+    let template_path = templates_dir.join("falck-default.yaml");
+
+    if !template_path.exists() {
+        fs::create_dir_all(&templates_dir).map_err(|e| e.to_string())?;
+        if let Some(source) = find_lima_template_source(app) {
+            fs::copy(&source, &template_path).map_err(|e| e.to_string())?;
+        } else {
+            fs::write(&template_path, FALCK_LIMA_TEMPLATE).map_err(|e| e.to_string())?;
+        }
+    }
+
+    std::env::set_var("LIMA_HOME", &lima_home);
+    Ok(template_path)
+}
+
+fn guest_agent_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "aarch64" | "arm64" => "aarch64",
+        "x86_64" | "amd64" => "x86_64",
+        other => other,
+    }
+}
+
+fn guest_agent_filenames() -> Vec<String> {
+    let arch = guest_agent_arch();
+    let base = format!("lima-guestagent.Linux-{}", arch);
+    let mut names = vec![base.clone(), format!("{}.gz", base)];
+    if arch == "aarch64" {
+        names.push("lima-guestagent.Linux-arm64".to_string());
+        names.push("lima-guestagent.Linux-arm64.gz".to_string());
+    }
+    names
+}
+
+fn limactl_share_dirs(app: &AppHandle, limactl: &Path) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(parent) = limactl.parent() {
+        if let Some(grand) = parent.parent() {
+            dirs.push(grand.join("share").join("lima"));
+        }
+        dirs.push(parent.join("share").join("lima"));
+    }
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        dirs.push(resource_dir.join("share").join("lima"));
+    }
+
+    let mut seen = HashSet::new();
+    dirs.retain(|dir| seen.insert(dir.clone()));
+    dirs
+}
+
+fn ensure_lima_guest_agents(app: &AppHandle, limactl: &Path) -> AnyhowResult<()> {
+    let filenames = guest_agent_filenames();
+    let dirs = limactl_share_dirs(app, limactl);
+    let found = dirs.iter().any(|dir| {
+        filenames
+            .iter()
+            .any(|name| dir.join(name).exists())
+    });
+
+    if found {
+        return Ok(());
+    }
+
+    let missing = filenames.join(" or ");
+    bail!(
+        "Falck is missing a required VM helper file. Please reinstall Falck. (Missing: {})",
+        missing
+    )
+}
+
+fn find_limactl_location(app: &AppHandle) -> Option<LimactlLocation> {
+    if let Some(path) = find_in_path(limactl_executable_name()) {
+        return Some(LimactlLocation {
+            path,
+            source: LimaSource::System,
+        });
+    }
+
+    if let Some(path) = find_bundled_limactl(app) {
+        return Some(LimactlLocation {
+            path,
+            source: LimaSource::Bundled,
+        });
+    }
+
+    None
 }
 
 pub(crate) fn limactl_path(app: &AppHandle) -> Option<PathBuf> {
-    find_limactl_path(app)
+    let location = find_limactl_location(app)?;
+    if prepare_lima_environment(app).is_err() {
+        return None;
+    }
+    Some(location.path)
 }
 
 fn limactl_version(path: &Path) -> Option<String> {
@@ -289,6 +508,9 @@ fn ensure_vm_running(
     vm: &str,
     ctx: &EventContext,
 ) -> AnyhowResult<()> {
+    ensure_lima_guest_agents(app, limactl)?;
+    let template_path =
+        prepare_lima_environment(app).map_err(|err| anyhow::anyhow!(err))?;
     let mut vm_exists = false;
     let mut vm_running = false;
 
@@ -382,8 +604,8 @@ fn ensure_vm_running(
         "--tty=false",
         "--mount-writable",
         "--mount-inotify",
-        "template:default",
     ]);
+    command.arg(&template_path);
     let status = run_command_with_logs(app, command, "vm-create", ctx)?;
     if !status.success() {
         emit_container_status(
@@ -523,190 +745,37 @@ fn status_to_state(status: Option<&str>) -> String {
     }
 }
 
-async fn download_to_file(client: &Client, url: &str, path: &Path) -> AnyhowResult<()> {
-    let response = client
-        .get(url)
-        .header("User-Agent", "Falck")
-        .send()
-        .await
-        .context("Failed to request download")?;
-    if !response.status().is_success() {
-        bail!(
-            "Download failed with status {} for {}",
-            response.status(),
-            url
-        );
-    }
-    let bytes = response.bytes().await.context("Failed to read download")?;
-    tokio::fs::write(path, &bytes)
-        .await
-        .context("Failed to write download")?;
-    Ok(())
-}
-
-fn extract_tar(archive: &Path, destination: &Path) -> AnyhowResult<()> {
-    let archive_str = archive
-        .to_str()
-        .context("Invalid archive path")?;
-    let dest_str = destination
-        .to_str()
-        .context("Invalid destination path")?;
-    let status = Command::new("tar")
-        .args(["-xzf", archive_str, "-C", dest_str])
-        .status()
-        .context("Failed to extract archive")?;
-    if !status.success() {
-        bail!("Extraction failed for {}", archive_str);
-    }
-    Ok(())
-}
-
-fn platform_tuple() -> AnyhowResult<(&'static str, &'static str)> {
-    let os = if cfg!(target_os = "macos") {
-        "Darwin"
-    } else if cfg!(target_os = "linux") {
-        "Linux"
-    } else {
-        bail!("Lima install only supported on macOS and Linux")
-    };
-
-    let arch = match (os, env::consts::ARCH) {
-        ("Darwin", "aarch64") | ("Darwin", "arm64") => "arm64",
-        ("Linux", "aarch64") | ("Linux", "arm64") => "aarch64",
-        (_, "x86_64") => "x86_64",
-        (_, other) => bail!("Unsupported CPU architecture: {}", other),
-    };
-
-    Ok((os, arch))
-}
-
 #[tauri::command]
 pub async fn check_lima_installed(app: AppHandle) -> Result<LimaStatus, String> {
     run_blocking(move || {
-        let path = find_limactl_path(&app);
-        if let Some(path) = path {
-            let version = limactl_version(&path);
+        let location = find_limactl_location(&app);
+        if let Some(location) = location {
+            prepare_lima_environment(&app)?;
+            let mut version = limactl_version(&location.path);
+            if version.is_none() && matches!(location.source, LimaSource::Bundled) {
+                version = Some(format!("v{}", BUNDLED_LIMA_VERSION));
+            }
             return Ok(LimaStatus {
                 installed: true,
                 version,
-                path: Some(path.to_string_lossy().to_string()),
+                path: Some(location.path.to_string_lossy().to_string()),
+                source: Some(location.source),
             });
         }
         Ok(LimaStatus {
             installed: false,
             version: None,
             path: None,
+            source: None,
         })
     })
     .await
 }
 
-#[tauri::command]
-pub async fn install_lima(
-    app: AppHandle,
-    client: State<'_, Client>,
-) -> Result<LimaInstallResult, String> {
-    if let Some(path) = find_limactl_path(&app) {
-        let version = limactl_version(&path).unwrap_or_else(|| "Unknown".to_string());
-        return Ok(LimaInstallResult {
-            version,
-            path: path.to_string_lossy().to_string(),
-        });
-    }
-
-    emit_lima_status(&app, "checking", "Fetching latest Lima release");
-    let response = client
-        .get("https://api.github.com/repos/lima-vm/lima/releases/latest")
-        .header("User-Agent", "Falck")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "Failed to fetch Lima release: {}",
-            response.status()
-        ));
-    }
-    let payload: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
-    let tag = payload
-        .get("tag_name")
-        .and_then(|value| value.as_str())
-        .ok_or_else(|| "Lima release tag not found".to_string())?;
-    let version_short = tag.trim_start_matches('v');
-    let (os, arch) = platform_tuple().map_err(|e| e.to_string())?;
-
-    let lima_url = format!(
-        "https://github.com/lima-vm/lima/releases/download/{}/lima-{}-{}-{}.tar.gz",
-        tag, version_short, os, arch
-    );
-    let guest_url = format!(
-        "https://github.com/lima-vm/lima/releases/download/{}/lima-additional-guestagents-{}-{}-{}.tar.gz",
-        tag, version_short, os, arch
-    );
-
-    let temp_root = app
-        .path()
-        .temp_dir()
-        .unwrap_or_else(|_| std::env::temp_dir());
-    let download_dir = temp_root.join(format!("falck-lima-{}", now_timestamp()));
-    tokio::fs::create_dir_all(&download_dir)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let lima_archive = download_dir.join("lima.tar.gz");
-    let guest_archive = download_dir.join("lima-guest.tar.gz");
-
-    emit_lima_status(&app, "downloading", "Downloading Lima" );
-    download_to_file(&client, &lima_url, &lima_archive)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    emit_lima_status(&app, "downloading", "Downloading guest agents" );
-    download_to_file(&client, &guest_url, &guest_archive)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let install_dir = app_data_dir.join("lima");
-    let staging_dir = app_data_dir.join("lima-staging");
-
-    let app_clone = app.clone();
-    let version_label = version_short.to_string();
-    let result = run_blocking(move || {
-        if staging_dir.exists() {
-            fs::remove_dir_all(&staging_dir).map_err(|e| e.to_string())?;
-        }
-        fs::create_dir_all(&staging_dir).map_err(|e| e.to_string())?;
-
-        emit_lima_status(&app_clone, "extracting", "Extracting Lima");
-        extract_tar(&lima_archive, &staging_dir).map_err(|e| e.to_string())?;
-
-        emit_lima_status(&app_clone, "extracting", "Extracting guest agents");
-        extract_tar(&guest_archive, &staging_dir).map_err(|e| e.to_string())?;
-
-        if install_dir.exists() {
-            fs::remove_dir_all(&install_dir).map_err(|e| e.to_string())?;
-        }
-        fs::rename(&staging_dir, &install_dir).map_err(|e| e.to_string())?;
-
-        let limactl_path = find_limactl_in_dir(&install_dir)
-            .ok_or_else(|| "limactl not found after install".to_string())?;
-
-        emit_lima_status(&app_clone, "installed", "Lima installed");
-
-        Ok(LimaInstallResult {
-            version: version_label,
-            path: limactl_path.to_string_lossy().to_string(),
-        })
-    })
-    .await?;
-
-    let _ = tokio::fs::remove_dir_all(&download_dir).await;
-    Ok(result)
-}
-
 pub fn launch_container(app: &AppHandle, spec: ContainerLaunchSpec) -> AnyhowResult<ContainerHandle> {
-    let limactl = find_limactl_path(app).context("Lima is not installed")?;
+    let limactl = limactl_path(app).context(
+        "Lima is unavailable. Reinstall Falck or use a build that bundles Lima.",
+    )?;
     let ctx = EventContext {
         repo_path: Some(spec.repo_path.to_string_lossy().to_string()),
         app_id: spec.app_id.clone(),
@@ -868,7 +937,7 @@ pub async fn list_containers(
 ) -> Result<Vec<ContainerInfo>, String> {
     run_blocking(move || {
         let records = storage::list_containers(&app, repo_path.as_deref())?;
-        let limactl = find_limactl_path(&app);
+        let limactl = limactl_path(&app);
 
         let mut vm_status: HashMap<String, String> = HashMap::new();
         if let Some(limactl) = &limactl {
@@ -979,7 +1048,10 @@ pub async fn start_container(
     name: String,
 ) -> Result<String, String> {
     run_blocking(move || {
-        let limactl = find_limactl_path(&app).ok_or_else(|| "Lima is not installed".to_string())?;
+        let limactl = limactl_path(&app).ok_or_else(|| {
+            "Lima is unavailable. Reinstall Falck or use a build that bundles Lima."
+                .to_string()
+        })?;
         let record = storage::list_containers(&app, None)
             .ok()
             .and_then(|records| records.into_iter().find(|record| record.id == id));
@@ -1027,7 +1099,10 @@ pub async fn stop_container(
     name: String,
 ) -> Result<String, String> {
     run_blocking(move || {
-        let limactl = find_limactl_path(&app).ok_or_else(|| "Lima is not installed".to_string())?;
+        let limactl = limactl_path(&app).ok_or_else(|| {
+            "Lima is unavailable. Reinstall Falck or use a build that bundles Lima."
+                .to_string()
+        })?;
         let record = storage::list_containers(&app, None)
             .ok()
             .and_then(|records| records.into_iter().find(|record| record.id == id));
@@ -1075,7 +1150,10 @@ pub async fn delete_container(
     name: String,
 ) -> Result<String, String> {
     run_blocking(move || {
-        let limactl = find_limactl_path(&app).ok_or_else(|| "Lima is not installed".to_string())?;
+        let limactl = limactl_path(&app).ok_or_else(|| {
+            "Lima is unavailable. Reinstall Falck or use a build that bundles Lima."
+                .to_string()
+        })?;
         let record = storage::list_containers(&app, None)
             .ok()
             .and_then(|records| records.into_iter().find(|record| record.id == id));

@@ -86,7 +86,6 @@ export function VirtualizedBackendPanel({
   const [prereq, setPrereq] = useState<BackendPrereqStatus | null>(null);
   const [prereqLoading, setPrereqLoading] = useState(true);
   const [prereqError, setPrereqError] = useState<string | null>(null);
-  const [prereqInstalling, setPrereqInstalling] = useState(false);
 
   const [vms, setVms] = useState<BackendVmInfo[]>([]);
   const [vmsLoading, setVmsLoading] = useState(true);
@@ -149,20 +148,6 @@ export function VirtualizedBackendPanel({
       setModeError(`Failed to update backend mode: ${String(err)}`);
     } finally {
       setModeSaving(false);
-    }
-  };
-
-  const handleInstallPrereq = async () => {
-    setPrereqInstalling(true);
-    setPrereqError(null);
-    try {
-      await backendService.installPrereq();
-      await loadPrereq();
-      await loadVms();
-    } catch (err) {
-      setPrereqError(`Install failed: ${String(err)}`);
-    } finally {
-      setPrereqInstalling(false);
     }
   };
 
@@ -292,21 +277,10 @@ export function VirtualizedBackendPanel({
               <div className="space-y-1 text-sm">
                 <div className="font-semibold">{toolLabel} helper</div>
                 <div className="text-xs text-muted-foreground">
-                  Install only when a project needs virtual workspaces.
+                  Bundled with Falck and used automatically when needed.
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {!prereqInstalled ? (
-                  <Button
-                    onClick={handleInstallPrereq}
-                    disabled={prereqInstalling}
-                    className="normal-case tracking-normal"
-                  >
-                    {prereqInstalling
-                      ? "Installing..."
-                      : `Install ${toolLabel}`}
-                  </Button>
-                ) : null}
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -326,8 +300,8 @@ export function VirtualizedBackendPanel({
                 {prereqLoading
                   ? "Checking"
                   : prereqInstalled
-                    ? "Installed"
-                    : "Not installed"}
+                    ? "Ready"
+                    : "Missing"}
               </Badge>
               {prereq?.message ? <span>{prereq.message}</span> : null}
             </div>
@@ -381,8 +355,8 @@ export function VirtualizedBackendPanel({
 
           {!prereqInstalled ? (
             <div className="rounded-lg border border-dashed border-border/60 px-3 py-3 text-xs text-muted-foreground">
-              Install the {toolLabel} helper to create virtual workspaces when a
-              project needs them.
+              The {toolLabel} helper is missing from this build. Reinstall
+              Falck or use a build that bundles it.
             </div>
           ) : vmsLoading ? (
             <div className="rounded-lg border border-dashed border-border/60 px-3 py-3 text-xs text-muted-foreground">
