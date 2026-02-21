@@ -193,6 +193,17 @@ export function useSshSetup({ initialKey, setSshKey }: UseSshSetupOptions) {
     [setSshKey],
   );
 
+  const clearSelection = useCallback(() => {
+    setSelectedKey(null);
+    setSshKey(null);
+    configService.setSelectedSSHKey(null);
+    setKeyAdded(false);
+    setManualConfirmed(false);
+    setCopyState(false);
+    setAgentMessage(null);
+    setAgentError(null);
+  }, [setSshKey]);
+
   const copyKey = useCallback(() => {
     if (!selectedKey) {
       return;
@@ -287,6 +298,7 @@ export function useSshSetup({ initialKey, setSshKey }: UseSshSetupOptions) {
     ready,
     setManualConfirmed,
     selectKey,
+    clearSelection,
     refreshKeys,
     refreshOs,
     createKey,

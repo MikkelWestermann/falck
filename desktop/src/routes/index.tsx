@@ -14,7 +14,7 @@ function IndexRoute() {
     configService.getSetupCompleted(),
   );
 
-  const hasExistingSetup = Boolean(sshKey || repoPath);
+  const hasExistingSetup = Boolean(repoPath);
   const effectiveSetupCompleted = setupCompleted || hasExistingSetup;
 
   useEffect(() => {

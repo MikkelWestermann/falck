@@ -11,15 +11,8 @@ function getStoredTheme(): Theme | null {
   return null;
 }
 
-function getSystemTheme(): Theme {
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
-}
-
 function getEffectiveTheme(): Theme {
-  return getStoredTheme() ?? getSystemTheme();
+  return getStoredTheme() ?? "light";
 }
 
 function applyTheme(theme: Theme) {
@@ -39,17 +32,6 @@ export function useTheme() {
     localStorage.setItem(STORAGE_KEY, theme);
   }, [theme]);
 
-  useEffect(() => {
-    const stored = getStoredTheme();
-    if (stored) {
-      setThemeState(stored);
-    } else {
-      const mql = window.matchMedia("(prefers-color-scheme: dark)");
-      const handler = () => setThemeState(getSystemTheme());
-      mql.addEventListener("change", handler);
-      return () => mql.removeEventListener("change", handler);
-    }
-  }, []);
 
   const setTheme = (next: Theme) => setThemeState(next);
   const toggleTheme = () =>
