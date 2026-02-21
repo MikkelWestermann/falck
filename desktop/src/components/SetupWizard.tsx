@@ -224,9 +224,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                   </h1>
                   <p className="wizard-subtitle">
                     We'll set up a few essentials together: connect GitHub, set
-                    up secure access, choose where your projects run, and
-                    (optionally) turn on OpenCode. You can change any of this
-                    later.
+                    up secure access, choose where your projects run, and turn
+                    on OpenCode. You can change any of this later.
                   </p>
                   <div className="wizard-cta-row">
                     <Button
@@ -1152,8 +1151,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                           </li>
                         </ul>
                         <div className="wizard-caption">
-                          You can skip for now, but Falck feels best with
-                          OpenCode turned on.
+                          Falck works best with OpenCode turned on.
                         </div>
                       </div>
                     </div>
@@ -1161,12 +1159,6 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 </div>
               </div>
               <div className="wizard-opencode-footer">
-                <WizardToggle
-                  checked={skipOpenCode}
-                  onChange={(value) => setSkipOpenCode(value)}
-                  label="Skip OpenCode for now"
-                  description="You can enable it later from Settings."
-                />
                 <div className="wizard-step-cta">
                   <Button
                     size="lg"
@@ -1178,9 +1170,21 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                   {!openCodeReady && (
-                    <div className="wizard-caption">
-                      Install OpenCode or skip for now.
-                    </div>
+                    <>
+                      <div className="wizard-caption">
+                        Install OpenCode to continue.
+                      </div>
+                      <button
+                        type="button"
+                        className="mt-4 text-xs text-muted-foreground/70 hover:text-muted-foreground transition-colors"
+                        onClick={() => {
+                          setSkipOpenCode(true);
+                          goNext();
+                        }}
+                      >
+                        Skip for now
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
