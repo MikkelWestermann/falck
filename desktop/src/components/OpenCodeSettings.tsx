@@ -32,6 +32,7 @@ import { ModelSelectorLogo } from "@/components/ai-elements/model-selector";
 import {
   opencodeService,
   OpenCodeConfigData,
+  OpenCodeProviderConfig,
   OpenCodeProviderList,
   OpenCodeProviderListItem,
   Provider,
@@ -307,6 +308,7 @@ function ProviderSelectView({
 interface ProviderConnectViewProps {
   provider: OpenCodeProviderListItem;
   methods: ProviderAuthMethod[];
+  config: OpenCodeConfigData | null;
   onBack: () => void;
   onComplete: (provider: OpenCodeProviderListItem) => void;
 }
@@ -314,6 +316,7 @@ interface ProviderConnectViewProps {
 function ProviderConnectView({
   provider,
   methods,
+  config,
   onBack,
   onComplete,
 }: ProviderConnectViewProps) {
@@ -327,18 +330,39 @@ function ProviderConnectView({
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [apiError, setApiError] = useState<string | null>(null);
+  const [resourceName, setResourceName] = useState("");
+  const [resourceError, setResourceError] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const activeMethod =
     methodIndex !== null ? resolvedMethods[methodIndex] : null;
+  const isAzure =
+    provider.id === "azure" ||
+    provider.env.some(
+      (envVar) =>
+        envVar.toUpperCase() === "AZURE_RESOURCE_NAME" ||
+        envVar.toUpperCase() === "AZURE_COGNITIVE_SERVICES_RESOURCE_NAME",
+    );
+  const existingResourceName = useMemo(() => {
+    const entry = config?.provider?.[provider.id];
+    if (!entry?.options || typeof entry.options !== "object") return "";
+    const candidate = (entry.options as Record<string, unknown>).resourceName;
+    return typeof candidate === "string" ? candidate : "";
+  }, [config?.provider, provider.id]);
 
   useEffect(() => {
     if (resolvedMethods.length === 1 && methodIndex === null) {
       void selectMethod(0);
     }
   }, [resolvedMethods.length, methodIndex]);
+
+  useEffect(() => {
+    if (!isAzure) return;
+    setResourceName(existingResourceName);
+    setResourceError(null);
+  }, [existingResourceName, isAzure]);
 
   useEffect(() => {
     if (!authorization?.url) {
@@ -411,9 +435,32 @@ function ProviderConnectView({
       setApiError("API key is required.");
       return;
     }
+    if (isAzure && !resourceName.trim()) {
+      setResourceError("Azure resource name is required.");
+      return;
+    }
     setApiError(null);
+    setResourceError(null);
     setSubmitting(true);
     try {
+      if (isAzure) {
+        const existingConfig = config?.provider?.[provider.id];
+        const existingOptions =
+          existingConfig?.options && typeof existingConfig.options === "object"
+            ? (existingConfig.options as Record<string, unknown>)
+            : {};
+        const nextOptions = {
+          ...existingOptions,
+          resourceName: resourceName.trim(),
+        };
+        const nextProviderConfig: OpenCodeProviderConfig = {
+          ...(existingConfig ?? {}),
+          options: nextOptions,
+        };
+        await opencodeService.updateConfig({
+          provider: { [provider.id]: nextProviderConfig },
+        });
+      }
       await opencodeService.setAuth(provider.id, apiKey.trim());
       await onComplete(provider);
     } catch (err) {
@@ -525,6 +572,30 @@ function ProviderConnectView({
 
       {activeMethod?.type === "api" && (
         <form onSubmit={handleApiSubmit} className="space-y-4">
+          {isAzure && (
+            <div className="space-y-2">
+              <Label htmlFor="provider-azure-resource">Azure resource name</Label>
+              <Input
+                id="provider-azure-resource"
+                placeholder="my-azure-openai"
+                value={resourceName}
+                onChange={(event) => setResourceName(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                The resource name is the{" "}
+                <span className="font-mono">{"<resourceName>"}</span> in{" "}
+                <span className="font-mono">
+                  https://{"<resourceName>"}.openai.azure.com
+                </span>
+                .
+              </p>
+              {resourceError && (
+                <p className="text-sm font-medium text-destructive">
+                  {resourceError}
+                </p>
+              )}
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="provider-api-key">
               {provider.name} API key
@@ -1392,6 +1463,7 @@ const OpenCodeSettingsContent = ({ active }: OpenCodeSettingsContentProps) => {
             <ProviderConnectView
               provider={selectedProvider}
               methods={providerAuth[selectedProvider.id] ?? []}
+              config={config}
               onBack={() => {
                 setDialogView("select");
                 setSelectedProviderId(null);
