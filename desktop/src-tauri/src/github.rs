@@ -103,9 +103,11 @@ pub struct GithubRequestReviewersInput {
 }
 
 fn github_client_id() -> Result<String, String> {
-    std::env::var("GITHUB_CLIENT_ID")
-        .or_else(|_| std::env::var("FALCK_GITHUB_CLIENT_ID"))
-        .map_err(|_| "Missing GitHub OAuth client id. Set GITHUB_CLIENT_ID.".to_string())
+    option_env!("GITHUB_CLIENT_ID")
+        .map(String::from)
+        .or_else(|| std::env::var("GITHUB_CLIENT_ID").ok())
+        .or_else(|| std::env::var("FALCK_GITHUB_CLIENT_ID").ok())
+        .ok_or_else(|| "Missing GitHub OAuth client id. Set GITHUB_CLIENT_ID in .env or environment.".to_string())
 }
 
 fn store_token(app: &AppHandle, token: &str) -> Result<(), String> {

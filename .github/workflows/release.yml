@@ -44,6 +44,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENCODE_SOURCE: repo
+          GITHUB_CLIENT_ID: ${{ secrets.FALCK_GITHUB_CLIENT_ID }}
         with:
           projectPath: desktop
           tagName: v__VERSION__
