@@ -244,12 +244,6 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                     <div className="wizard-portal-ring" />
                     <div className="wizard-portal-ring ring-two" />
                     <div className="wizard-portal-core"></div>
-                    <div className="wizard-portal-orbit-track">
-                      <div className="wizard-portal-orbit" />
-                    </div>
-                    <div className="wizard-portal-spark-track">
-                      <div className="wizard-portal-spark" />
-                    </div>
                   </div>
                 </div>
               </div>
@@ -951,11 +945,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               <div className="wizard-opencode-journey">
                 <div className="wizard-opencode-beacon" aria-hidden>
                   <div className="wizard-opencode-halo" />
-                  <div className="wizard-opencode-orbit" />
                   <div className="wizard-opencode-wave" />
-                  <div className="wizard-opencode-wave wave-two" />
                   <div className="wizard-opencode-core" />
-                  <div className="wizard-opencode-particles" />
                 </div>
                 <div className="wizard-opencode-steps">
                   <div
@@ -1291,9 +1282,6 @@ function WizardBackdrop() {
       <div className="wizard-step-layer wizard-step-layer--two" />
       <div className="wizard-stars" />
       <div className="wizard-glow" />
-      <div className="wizard-haze" />
-      <div className="wizard-sweep" />
-      <div className="wizard-comet" />
     </div>
   );
 }

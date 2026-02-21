@@ -843,7 +843,6 @@
     repeating-linear-gradient(0deg, rgba(15, 23, 42, 0.06) 0px, transparent 1px, transparent 3px),
     repeating-linear-gradient(90deg, rgba(15, 23, 42, 0.04) 0px, transparent 1px, transparent 4px);
   opacity: 0.22;
-  mix-blend-mode: multiply;
   pointer-events: none;
   z-index: 1;
 }
@@ -885,9 +884,9 @@
     radial-gradient(45% 40% at 20% 20%, rgba(148, 163, 184, 0.24), transparent 70%),
     radial-gradient(40% 45% at 80% 10%, var(--wizard-bg-one), transparent 75%),
     radial-gradient(50% 45% at 70% 80%, var(--wizard-bg-two), transparent 75%);
-  filter: blur(140px);
-  opacity: 0.7;
-  animation: wizard-nebula 48s ease-in-out infinite;
+  filter: blur(90px);
+  opacity: 0.6;
+  animation: wizard-nebula 80s ease-in-out infinite;
   pointer-events: none;
 }
 
@@ -900,7 +899,7 @@
     radial-gradient(2px 2px at 35% 80%, rgba(20, 184, 166, 0.35) 2px, transparent 2px),
     radial-gradient(1px 1px at 85% 60%, rgba(20, 184, 166, 0.3) 1px, transparent 1px);
   background-size: 700px 500px;
-  animation: wizard-stars 160s linear infinite;
+  animation: none;
   opacity: 0.22;
 }
 
@@ -910,9 +909,9 @@
   background:
     radial-gradient(45% 45% at 20% 20%, var(--wizard-bg-one), transparent 70%),
     radial-gradient(35% 40% at 80% 10%, var(--wizard-bg-two), transparent 75%);
-  filter: blur(120px);
-  opacity: 0.55;
-  animation: wizard-glow-drift 48s ease-in-out infinite;
+  filter: blur(80px);
+  opacity: 0.5;
+  animation: none;
   pointer-events: none;
 }
 
@@ -922,9 +921,9 @@
   background:
     radial-gradient(40% 40% at 20% 20%, rgba(255, 255, 255, 0.7), transparent 70%),
     radial-gradient(35% 35% at 80% 70%, rgba(241, 245, 249, 0.6), transparent 70%);
-  filter: blur(80px);
+  filter: blur(60px);
   opacity: 0.35;
-  animation: wizard-haze 36s ease-in-out infinite;
+  animation: none;
 }
 
 .wizard-sweep {
@@ -937,8 +936,8 @@
     transparent 70%
   );
   opacity: 0.18;
-  mix-blend-mode: multiply;
-  animation: wizard-sweep 22s ease-in-out infinite;
+  mix-blend-mode: normal;
+  animation: none;
 }
 
 .wizard-comet {
@@ -955,7 +954,7 @@
     transparent
   );
   filter: drop-shadow(0 0 16px rgba(20, 184, 166, 0.4));
-  animation: wizard-comet 36s ease-in-out infinite;
+  animation: none;
 }
 
 .wizard-stage {
@@ -1397,7 +1396,7 @@
   inset: -30%;
   background: radial-gradient(60% 60% at 70% 10%, var(--wizard-bg-one), transparent 60%);
   opacity: 0.6;
-  animation: wizard-curtain 18s ease-in-out infinite;
+  animation: none;
   pointer-events: none;
   z-index: 0;
 }
@@ -1422,7 +1421,7 @@
   inset: 10px;
   border-radius: 9999px;
   border: 1px solid rgba(15, 23, 42, 0.12);
-  animation: wizard-portal-spin 24s linear infinite;
+  animation: wizard-portal-spin 60s linear infinite;
 }
 
 .wizard-ssh-crest-core {
@@ -1434,7 +1433,7 @@
   background: radial-gradient(circle at 30% 30%, #ffffff, var(--wizard-accent) 55%, #e6f7f1 100%);
   box-shadow: 0 0 18px var(--wizard-glow);
   color: #0f766e;
-  animation: wizard-signal 5s ease-in-out infinite;
+  animation: wizard-signal 12s ease-in-out infinite;
 }
 
 .wizard-ssh-crest-spark {
@@ -1446,7 +1445,7 @@
   right: 20%;
   background: #ffffff;
   box-shadow: 0 0 18px var(--wizard-glow);
-  animation: wizard-portal-pulse 3.5s ease-in-out infinite;
+  animation: wizard-portal-pulse 12s ease-in-out infinite;
 }
 
 .wizard-ssh-grid {
@@ -1471,7 +1470,7 @@
   inset: -20%;
   background: radial-gradient(40% 40% at 20% 20%, var(--wizard-bg-two), transparent 60%);
   opacity: 0.5;
-  animation: wizard-dust 36s linear infinite;
+  animation: none;
   pointer-events: none;
   z-index: 0;
 }
@@ -1498,7 +1497,7 @@
   inset: -20%;
   background: radial-gradient(45% 45% at 70% 20%, var(--wizard-bg-one), transparent 60%);
   opacity: 0.6;
-  animation: wizard-iris-drift 20s ease-in-out infinite;
+  animation: none;
   pointer-events: none;
   z-index: 0;
 }
@@ -1658,7 +1657,7 @@
   inset: -35%;
   background: radial-gradient(55% 45% at 50% 20%, var(--wizard-bg-one), transparent 65%);
   opacity: 0.6;
-  animation: wizard-beacon-drift 36s ease-in-out infinite;
+  animation: none;
   pointer-events: none;
   z-index: 0;
 }
@@ -1674,7 +1673,7 @@
     transparent 70%
   );
   opacity: 0.25;
-  animation: wizard-beacon-sweep 18s ease-in-out infinite;
+  animation: none;
   pointer-events: none;
   z-index: 0;
 }
@@ -1685,7 +1684,7 @@
   border-radius: 9999px;
   border: 1px solid rgba(15, 23, 42, 0.12);
   box-shadow: inset 0 0 30px rgba(15, 23, 42, 0.04);
-  animation: wizard-portal-spin 40s linear infinite;
+  animation: wizard-portal-spin 80s linear infinite;
   z-index: 1;
 }
 
@@ -1694,7 +1693,7 @@
   inset: 6%;
   border-radius: 9999px;
   border: 1px dashed rgba(15, 23, 42, 0.12);
-  animation: wizard-portal-spin 55s linear reverse infinite;
+  animation: none;
   z-index: 1;
 }
 
@@ -1704,13 +1703,13 @@
   border-radius: 9999px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   opacity: 0.55;
-  animation: wizard-beacon-pulse 14s ease-in-out infinite;
+  animation: wizard-beacon-pulse 24s ease-in-out infinite;
   z-index: 0;
 }
 
 .wizard-opencode-wave.wave-two {
   inset: -22%;
-  animation-duration: 22s;
+  animation-duration: 28s;
   opacity: 0.35;
 }
 
@@ -1720,7 +1719,7 @@
   border-radius: 9999px;
   background: radial-gradient(circle at 30% 30%, #ffffff, var(--wizard-accent) 55%, #e6f7f1 100%);
   box-shadow: 0 0 40px var(--wizard-glow);
-  animation: wizard-beacon-pulse 5s ease-in-out infinite;
+  animation: wizard-beacon-pulse 14s ease-in-out infinite;
   z-index: 2;
 }
 
@@ -1732,7 +1731,7 @@
     radial-gradient(2px 2px at 70% 20%, rgba(16, 185, 129, 0.45), transparent 40%),
     radial-gradient(1px 1px at 40% 70%, rgba(16, 185, 129, 0.3), transparent 40%);
   opacity: 0.45;
-  animation: wizard-dust 46s linear infinite;
+  animation: none;
   pointer-events: none;
   z-index: 0;
 }
@@ -1900,13 +1899,12 @@
   inset: 0;
   border-radius: 9999px;
   border: 1px solid rgba(15, 23, 42, 0.12);
-  animation: wizard-portal-spin 30s linear infinite;
+  animation: wizard-portal-spin 70s linear infinite;
 }
 
 .wizard-finish-ring.ring-two {
   inset: 28px;
-  animation-duration: 20s;
-  animation-direction: reverse;
+  animation: none;
 }
 
 .wizard-finish-core {
@@ -1918,7 +1916,7 @@
   background: radial-gradient(circle at 30% 30%, #ffffff, var(--wizard-accent) 55%, #e6f7f1 100%);
   color: #0f766e;
   box-shadow: 0 0 24px var(--wizard-glow);
-  animation: wizard-signal 6s ease-in-out infinite;
+  animation: wizard-signal 14s ease-in-out infinite;
 }
 
 .wizard-finish-spark {
@@ -1930,7 +1928,7 @@
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.85);
   box-shadow: 0 0 18px var(--wizard-glow);
-  animation: wizard-portal-pulse 3.4s ease-in-out infinite;
+  animation: wizard-portal-pulse 14s ease-in-out infinite;
 }
 
 .wizard-eyebrow {
@@ -2035,7 +2033,7 @@
   display: grid;
   place-items: center;
   filter: drop-shadow(0 30px 70px rgba(15, 23, 42, 0.16));
-  animation: wizard-float 14s ease-in-out infinite;
+  animation: wizard-float 24s ease-in-out infinite;
 }
 
 .wizard-portal::before {
@@ -2051,9 +2049,9 @@
     var(--wizard-accent-strong),
     transparent 70%
   );
-  filter: blur(18px);
-  opacity: 0.45;
-  animation: wizard-portal-halo 30s linear infinite;
+  filter: blur(12px);
+  opacity: 0.4;
+  animation: wizard-portal-halo 60s linear infinite;
   pointer-events: none;
 }
 
@@ -2079,13 +2077,12 @@
   border-radius: 9999px;
   border: 1px solid rgba(15, 23, 42, 0.12);
   box-shadow: inset 0 0 30px rgba(15, 23, 42, 0.04);
-  animation: wizard-portal-spin 26s linear infinite;
+  animation: wizard-portal-spin 60s linear infinite;
 }
 
 .wizard-portal-ring.ring-two {
   inset: 32px;
-  animation-duration: 18s;
-  animation-direction: reverse;
+  animation: none;
 }
 
 .wizard-portal-core {
@@ -2100,7 +2097,7 @@
   );
   display: grid;
   place-items: center;
-  animation: wizard-portal-pulse 4s ease-in-out infinite;
+  animation: wizard-portal-pulse 10s ease-in-out infinite;
 }
 
 .wizard-portal-logo {
@@ -2113,14 +2110,14 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  animation: wizard-portal-spin 10s linear infinite;
+  animation: none;
 }
 
 .wizard-portal-spark-track {
   position: absolute;
   inset: 32px;
   pointer-events: none;
-  animation: wizard-portal-spin 14s linear infinite;
+  animation: none;
 }
 
 .wizard-portal-orbit {
@@ -2849,13 +2846,13 @@
 .wizard-step-github .wizard-step-layer {
   background: linear-gradient(120deg, transparent 25%, var(--wizard-accent), transparent 70%);
   opacity: 0.35;
-  animation: wizard-sweep 20s ease-in-out infinite;
+  animation: none;
 }
 
 .wizard-step-github .wizard-step-layer--two {
   background: radial-gradient(45% 40% at 80% 20%, var(--wizard-bg-one), transparent 65%);
   opacity: 0.45;
-  animation: wizard-glow-drift 28s ease-in-out infinite;
+  animation: none;
 }
 
 .wizard-step--ssh {
@@ -2872,7 +2869,7 @@
 .wizard-step-ssh .wizard-step-layer {
   background: radial-gradient(50% 45% at 20% 80%, var(--wizard-bg-one), transparent 60%);
   opacity: 0.5;
-  animation: wizard-rift 24s ease-in-out infinite;
+  animation: none;
 }
 
 .wizard-step-ssh .wizard-step-layer--two {
@@ -2897,7 +2894,7 @@
     radial-gradient(40% 40% at 60% 30%, var(--wizard-bg-one), transparent 70%);
   background-size: 120px 120px;
   opacity: 0.18;
-  animation: wizard-dust 48s linear infinite;
+  animation: none;
 }
 
 .wizard-step-backend .wizard-step-layer--two {
@@ -2918,7 +2915,7 @@
 .wizard-step-opencode .wizard-step-layer {
   background: radial-gradient(55% 45% at 60% 20%, var(--wizard-bg-one), transparent 60%);
   opacity: 0.5;
-  animation: wizard-iris-drift 26s ease-in-out infinite;
+  animation: none;
 }
 
 .wizard-step-opencode .wizard-step-layer--two {
