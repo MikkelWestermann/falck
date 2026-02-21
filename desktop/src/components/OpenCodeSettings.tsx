@@ -189,15 +189,15 @@ function ProviderSelectView({
 }: ProviderSelectViewProps) {
   return (
     <>
-      <DialogHeader className="px-6 pt-6">
+      <DialogHeader className="flex-shrink-0 px-6 pt-6">
         <DialogTitle>Connect a provider</DialogTitle>
         <DialogDescription>
           Search and choose a provider to add an API key or OAuth connection.
         </DialogDescription>
       </DialogHeader>
-      <Command className="border-none">
+      <Command className="border-none flex-1 min-h-0 flex flex-col overflow-hidden">
         <CommandInput placeholder="Search providers..." autoFocus />
-        <CommandList className="max-h-[460px] px-2 pb-4">
+        <CommandList className="min-h-0 flex-1 max-h-[50vh] overflow-y-auto px-2 pb-4">
           <CommandEmpty>
             {loading ? "Loading providers..." : "No providers found."}
           </CommandEmpty>
@@ -458,23 +458,24 @@ function ProviderConnectView({
   }, [authorization?.instructions]);
 
   return (
-    <div className="space-y-6 px-6 pb-6 pt-6">
-      <div className="flex items-start gap-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={onBack}
-          className="mt-0.5"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="space-y-6 px-6 pb-6 pt-6">
         <div className="flex items-start gap-3">
-          <div className="flex size-9 items-center justify-center rounded-full bg-secondary/60">
-            <ModelSelectorLogo provider={provider.id} className="size-4" />
-          </div>
-          <div className="space-y-1">
-            <DialogTitle>Connect {provider.name}</DialogTitle>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onBack}
+            className="mt-0.5"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex items-start gap-3">
+            <div className="flex size-9 items-center justify-center rounded-full bg-secondary/60">
+              <ModelSelectorLogo provider={provider.id} className="size-4" />
+            </div>
+            <div className="space-y-1">
+              <DialogTitle>Connect {provider.name}</DialogTitle>
             <DialogDescription>
               Choose an authentication method for {provider.name}.
             </DialogDescription>
@@ -616,6 +617,7 @@ function ProviderConnectView({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+      </div>
     </div>
   );
 }
@@ -866,20 +868,21 @@ function CustomProviderView({
   };
 
   return (
-    <div className="space-y-6 px-6 pb-6 pt-6">
-      <div className="flex items-start gap-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={onBack}
-          className="mt-0.5"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="space-y-6 px-6 pb-6 pt-6">
         <div className="flex items-start gap-3">
-          <div className="flex size-9 items-center justify-center rounded-full bg-secondary/60">
-            <ModelSelectorLogo provider="synthetic" className="size-4" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onBack}
+            className="mt-0.5"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex items-start gap-3">
+            <div className="flex size-9 items-center justify-center rounded-full bg-secondary/60">
+              <ModelSelectorLogo provider="synthetic" className="size-4" />
           </div>
           <div className="space-y-1">
             <DialogTitle>Custom provider</DialogTitle>
@@ -1079,6 +1082,7 @@ function CustomProviderView({
           {form.saving ? "Saving..." : "Save provider"}
         </Button>
       </form>
+      </div>
     </div>
   );
 }
@@ -1374,7 +1378,7 @@ const OpenCodeSettingsContent = ({ active }: OpenCodeSettingsContentProps) => {
       </section>
 
       <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className="max-w-2xl p-0">
+        <DialogContent className="max-h-[85vh] max-w-2xl flex flex-col overflow-hidden p-0">
           {dialogView === "select" && (
             <ProviderSelectView
               loading={loadingProviders}
@@ -1477,13 +1481,15 @@ export function OpenCodeSettingsPanel({ className }: OpenCodeSettingsPanelProps)
 export function OpenCodeSettings({ open, onOpenChange }: OpenCodeSettingsProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
+      <DialogContent className="max-h-[85vh] flex flex-col gap-4 overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>OpenCode settings</DialogTitle>
           <DialogDescription>Connect providers and manage models.</DialogDescription>
         </DialogHeader>
 
-        <OpenCodeSettingsContent active={open} />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <OpenCodeSettingsContent active={open} />
+        </div>
       </DialogContent>
     </Dialog>
   );
