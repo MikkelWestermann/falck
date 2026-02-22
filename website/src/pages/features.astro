@@ -32,8 +32,8 @@ import Button from '../components/Button.astro';
     </div>
   </section>
 
-  <section class="container mx-auto px-6 py-20">
-    <div class="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] items-center">
+    <section class="container mx-auto px-6 py-20">
+      <div class="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] items-center">
         <div class="space-y-4 reveal">
           <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Setup concierge</p>
           <h2 class="text-2xl font-semibold">Setup that explains itself</h2>
@@ -82,57 +82,111 @@ import Button from '../components/Button.astro';
             </div>
           </div>
         </div>
-    </div>
-  </section>
+     </div>
+   </section>
 
-  <section class="container mx-auto px-6 py-20">
-    <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
-        <div class="order-2 lg:order-1 surface accent-card p-6 reveal">
-          <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
-            <span>Project tools</span>
-            <span class="text-slate-500">Active: launch-idea</span>
-          </div>
-          <div class="mt-5 grid gap-3">
-            <div class="surface-muted px-4 py-3 text-sm">
-              <div class="flex items-center justify-between">
-                <span class="font-semibold">Save queue</span>
-                <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">3 updates</span>
-              </div>
-              <p class="mt-1 text-xs text-slate-500">Your notes become ready-to-share changes</p>
-            </div>
-            <div class="surface-muted px-4 py-3 text-sm">
-              <p class="font-semibold">Version history</p>
-              <p class="mt-1 text-xs text-slate-500">Restore in one click if things get weird</p>
-            </div>
-            <div class="surface-dark px-4 py-3 text-sm">
-              <p class="font-semibold">Team ready</p>
-              <p class="mt-1 text-xs text-emerald-100/70">Clear summary of what changed</p>
-            </div>
-          </div>
-        </div>
-        <div class="order-1 lg:order-2 space-y-4 reveal-delay-1">
-          <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Projects</p>
-          <h2 class="text-2xl font-semibold">Projects that stay tidy</h2>
-          <p class="text-slate-600">
-            Falck keeps changes organized and easy to share. Your team gets clear updates, you get confidence.
-          </p>
-          <div class="grid gap-3 text-sm text-slate-600">
-            <div class="flex items-center gap-2">
-              <span class="h-2 w-2 rounded-full bg-slate-900"></span>
-              Guided project creation and naming
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="h-2 w-2 rounded-full bg-slate-900"></span>
-              Save notes that feel like plain English
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="h-2 w-2 rounded-full bg-slate-900"></span>
-              Undo and retry without the scary commands
-            </div>
-          </div>
-        </div>
-    </div>
-  </section>
+   <section class="container mx-auto px-6 py-20">
+     <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+       <div class="space-y-4 reveal">
+         <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Deep dives</p>
+         <h2 class="text-3xl sm:text-4xl font-semibold text-slate-950">Explore the feature pages</h2>
+       </div>
+       <p class="max-w-xl text-slate-600 reveal-delay-1">
+         Want a closer look? These pages go deeper into the features non-technical teammates use every day.
+       </p>
+     </div>
+     <div class="mt-12 grid gap-6 md:grid-cols-3">
+       <a href="/features/idea-studio" class="surface p-6 reveal">
+         <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Idea Studio</p>
+         <h3 class="mt-3 text-xl font-semibold text-slate-950">From messy idea to clear plan</h3>
+         <p class="mt-2 text-sm text-slate-600">
+           Falck helps you shape the plan and stay confident about the next step.
+         </p>
+         <span class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600">
+           Explore Idea Studio ->
+         </span>
+       </a>
+       <a href="/features/setup-concierge" class="surface p-6 reveal-delay-1">
+         <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Setup Concierge</p>
+         <h3 class="mt-3 text-xl font-semibold text-slate-950">Friendly setup without guessing</h3>
+         <p class="mt-2 text-sm text-slate-600">
+           Clear prompts, safe checks, and calm guidance through every step.
+         </p>
+         <span class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600">
+           See Setup Concierge ->
+         </span>
+       </a>
+       <a href="/features/share-updates" class="surface p-6 reveal-delay-2">
+         <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Share Updates</p>
+         <h3 class="mt-3 text-xl font-semibold text-slate-950">Share progress with confidence</h3>
+         <p class="mt-2 text-sm text-slate-600">
+           Clean summaries that show what changed without the awkward handoff.
+         </p>
+         <span class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600">
+           Explore sharing ->
+         </span>
+       </a>
+     </div>
+   </section>
+
+   <section class="container mx-auto px-6 py-20">
+     <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
+         <div class="order-2 lg:order-1 app-window reveal">
+           <div class="app-window-bar">
+             <span>Falck Desktop</span>
+             <span>Projects</span>
+           </div>
+           <div class="p-4 space-y-3">
+             <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+               <span>Project tools</span>
+               <span class="text-slate-500">Active: launch-idea</span>
+             </div>
+             <div class="grid gap-2">
+               <div class="surface-muted px-4 py-3 text-sm">
+                 <div class="flex items-center justify-between">
+                   <span class="font-semibold">Save queue</span>
+                   <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">3 updates</span>
+                 </div>
+                 <p class="mt-1 text-xs text-slate-500">Your notes become ready-to-share changes</p>
+               </div>
+               <div class="surface-muted px-4 py-3 text-sm">
+                 <p class="font-semibold">Version history</p>
+                 <p class="mt-1 text-xs text-slate-500">Restore in one click if things get weird</p>
+               </div>
+               <div class="surface-dark px-4 py-3 text-sm">
+                 <p class="font-semibold">Team ready</p>
+                 <p class="mt-1 text-xs text-emerald-100/70">Clear summary of what changed</p>
+               </div>
+             </div>
+             <div class="rounded-2xl border border-emerald-100/80 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
+               Your future self will thank you for the tidy timeline.
+             </div>
+           </div>
+         </div>
+         <div class="order-1 lg:order-2 space-y-4 reveal-delay-1">
+           <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Projects</p>
+           <h2 class="text-2xl font-semibold">Projects that stay tidy</h2>
+           <p class="text-slate-600">
+             Falck keeps changes organized and easy to share. Your team gets clear updates, you get confidence and a
+             slightly smug smile.
+           </p>
+           <div class="grid gap-3 text-sm text-slate-600">
+             <div class="flex items-center gap-2">
+               <span class="h-2 w-2 rounded-full bg-slate-900"></span>
+               Guided project creation and naming
+             </div>
+             <div class="flex items-center gap-2">
+               <span class="h-2 w-2 rounded-full bg-slate-900"></span>
+               Save notes that feel like plain English
+             </div>
+             <div class="flex items-center gap-2">
+               <span class="h-2 w-2 rounded-full bg-slate-900"></span>
+               Undo and retry without the scary commands
+             </div>
+           </div>
+         </div>
+     </div>
+   </section>
 
   <section class="container mx-auto px-6 py-20">
     <div class="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] items-center">
@@ -140,7 +194,8 @@ import Button from '../components/Button.astro';
           <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Share + celebrate</p>
           <h2 class="text-2xl font-semibold">Share work without the drama</h2>
           <p class="text-slate-600">
-            Falck makes sharing updates feel simple and safe. Your team sees exactly what changed.
+            Falck makes sharing updates feel simple and safe. Your team sees exactly what changed, without the "what is
+            this branch?" detective work.
           </p>
           <div class="grid gap-3 text-sm text-slate-600">
             <div class="flex items-center gap-2">
@@ -157,29 +212,61 @@ import Button from '../components/Button.astro';
             </div>
           </div>
         </div>
-        <div class="surface accent-card p-6 reveal-delay-1">
-          <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+        <div class="app-window reveal-delay-1">
+          <div class="app-window-bar">
+            <span>Falck Desktop</span>
             <span>Share</span>
-            <span class="text-emerald-500">In progress</span>
           </div>
-          <div class="mt-5 grid gap-3">
-          <div class="surface-muted px-4 py-3 text-sm">
-            <div class="flex items-center justify-between">
-              <span class="font-semibold">Share changes</span>
-              <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">Ready</span>
+          <div class="p-4 space-y-3">
+            <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+              <span>Share</span>
+              <span class="text-emerald-500">In progress</span>
             </div>
-            <p class="mt-1 text-xs text-slate-500">One click to share with your team</p>
+            <div class="grid gap-2">
+              <div class="surface-muted px-4 py-3 text-sm">
+                <div class="flex items-center justify-between">
+                  <span class="font-semibold">Share changes</span>
+                  <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">Ready</span>
+                </div>
+                <p class="mt-1 text-xs text-slate-500">One click to share with your team</p>
+              </div>
+              <div class="surface-muted px-4 py-3 text-sm">
+                <p class="font-semibold">Get updates</p>
+                <p class="mt-1 text-xs text-slate-500">Everything stays tidy</p>
+              </div>
+              <div class="surface-dark px-4 py-3 text-sm">
+                <p class="font-semibold">Ready to share</p>
+                <p class="mt-1 text-xs text-emerald-100/70">Everything looks good</p>
+              </div>
+            </div>
+            <div class="rounded-2xl border border-emerald-100/80 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
+              Shipping updates without sweat: that's the dream.
+            </div>
           </div>
-        <div class="surface-muted px-4 py-3 text-sm">
-          <p class="font-semibold">Get updates</p>
-          <p class="mt-1 text-xs text-slate-500">Everything stays tidy</p>
         </div>
-          <div class="surface-dark px-4 py-3 text-sm">
-          <p class="font-semibold">Ready to share</p>
-          <p class="mt-1 text-xs text-emerald-100/70">Everything looks good</p>
-          </div>
-          </div>
-        </div>
+    </div>
+    <div class="mt-10 grid gap-6 md:grid-cols-3">
+      <div class="surface p-6 reveal">
+        <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Visibility</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">Everyone sees the same story</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          Falck keeps a clean summary attached to the work so nobody is guessing what changed or why.
+        </p>
+      </div>
+      <div class="surface p-6 reveal-delay-1">
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Safety</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">Guardrails stay on</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          Reviews, branches, and CI rules stay intact. You get real code without the risky surprises.
+        </p>
+      </div>
+      <div class="surface p-6 reveal-delay-2">
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Momentum</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">Less meeting, more shipping</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          The update is clear, the branch is ready, and your team can move without a scheduling puzzle.
+        </p>
+      </div>
     </div>
   </section>
 

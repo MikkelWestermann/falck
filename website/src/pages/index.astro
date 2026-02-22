@@ -23,14 +23,14 @@ import opencodeLogo from '../assets/opencode.svg';
             Skip the slides. Build the real thing.
           </span>
           <h1 class="text-4xl sm:text-5xl lg:text-6xl font-semibold leading-[1.1] text-slate-950">
-            The AI IDE that lets non-technical teammates ship real code
+            The AI studio that lets non-technical teammates ship real product updates
             <span class="bg-gradient-to-r from-emerald-500 via-teal-400 to-sky-400 bg-clip-text text-transparent">
               without the sharp edges.
             </span>
           </h1>
           <p class="text-lg text-slate-600 max-w-2xl">
-            Falck turns brave ideas into real product changes. Skip the slide decks, mockups, and Figma demos. You work on
-            the real thing with calm guidance, gentle nudges, and a little celebration when it ships.
+            Falck turns brave ideas into real product changes. Share what you want to improve and Falck guides you step by
+            step, keeping the technical bits out of your way. No terminal spells required.
           </p>
           <div class="flex flex-col sm:flex-row gap-4">
             <Button href="/download">Download the desktop app</Button>
@@ -95,18 +95,233 @@ import opencodeLogo from '../assets/opencode.svg';
     </div>
   </section>
 
+  <section id="ease" class="container mx-auto px-6 py-28">
+    <div class="grid gap-12 lg:grid-cols-[0.95fr_1.05fr] items-center">
+      <div class="space-y-6 reveal">
+        <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Make it feel doable</p>
+        <h2 class="text-3xl sm:text-4xl font-semibold text-slate-950">
+          Skip the terminal drama. Ship with a single click.
+        </h2>
+        <p class="text-slate-600">
+          You should not need to learn tech jargon or memorize commands to contribute. Falck lets you show up like a real
+          technical teammate without a computer science degree and with none of the tech jargon.
+        </p>
+        <div class="grid gap-3 text-sm text-slate-600">
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            Clear steps, plain language, and calm guardrails
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            You focus on the idea, Falck handles the tech glue
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            Real contributions without the CS degree gatekeeping
+          </div>
+        </div>
+      </div>
+      <div class="ease-story reveal-delay-1">
+        <div class="ease-terminal">
+          <div class="ease-terminal-bar">
+            <span>Terminal</span>
+            <span>session</span>
+          </div>
+          <div class="ease-terminal-body" data-terminal>
+            <div class="ease-line" data-text="git fetch origin">
+              <span class="ease-prompt">falck@studio %</span>
+              <span class="ease-typed"></span>
+            </div>
+            <div class="ease-line" data-text="git checkout -b onboarding-copy">
+              <span class="ease-prompt">falck@studio %</span>
+              <span class="ease-typed"></span>
+            </div>
+            <div class="ease-line" data-text="npm install">
+              <span class="ease-prompt">falck@studio %</span>
+              <span class="ease-typed"></span>
+            </div>
+            <div class="ease-line" data-text="npm run dev">
+              <span class="ease-prompt">falck@studio %</span>
+              <span class="ease-typed"></span>
+            </div>
+            <div class="ease-line" data-text="git status">
+              <span class="ease-prompt">falck@studio %</span>
+              <span class="ease-typed"></span>
+            </div>
+            <div class="ease-line" data-text="git diff">
+              <span class="ease-prompt">falck@studio %</span>
+              <span class="ease-typed"></span>
+            </div>
+            <div class="ease-line" data-text="git add .">
+              <span class="ease-prompt">falck@studio %</span>
+              <span class="ease-typed"></span>
+            </div>
+            <div class="ease-line" data-text='git commit -m "update onboarding welcome"'>
+              <span class="ease-prompt">falck@studio %</span>
+              <span class="ease-typed"></span>
+            </div>
+            <div class="ease-line" data-text="git push origin onboarding-copy">
+              <span class="ease-prompt">falck@studio %</span>
+              <span class="ease-typed"></span>
+            </div>
+          </div>
+        </div>
+        <div class="ease-divider">
+          <div class="ease-divider-line"></div>
+          <span>This is hard. Let's do something smarter.</span>
+          <div class="ease-divider-line"></div>
+        </div>
+        <div class="ease-app">
+          <div class="ease-app-header">
+            <div>
+              <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Falck Desktop</p>
+              <p class="mt-2 text-lg font-semibold text-slate-900">One-click change</p>
+            </div>
+            <span class="ease-app-badge">One click</span>
+          </div>
+          <div class="ease-app-body">
+            <div class="ease-app-card">
+              <p class="text-xs uppercase tracking-[0.3em] text-slate-400">You ask</p>
+              <p class="mt-2 text-sm font-semibold text-slate-900">
+                "Set up my dev environment, run the app, and push my commit"
+              </p>
+            </div>
+            <div class="ease-app-card">
+              <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Falck does</p>
+              <p class="mt-2 text-sm font-semibold text-slate-900">
+                Runs the steps, makes the change, and shows what happened
+              </p>
+            </div>
+            <div class="ease-app-button">Run it for me</div>
+            <div class="ease-app-status">
+              <span class="ease-app-dot"></span>
+              Done in seconds. No terminal required.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script is:inline>
+    const terminal = document.querySelector('[data-terminal]');
+    if (terminal) {
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      /** @type {HTMLElement[]} */
+      const lines = Array.from(terminal.querySelectorAll('[data-text]'));
+      const cursor = document.createElement('span');
+      cursor.className = 'ease-cursor';
+      cursor.setAttribute('aria-hidden', 'true');
+      cursor.textContent = '|';
+      let timeoutId;
+
+      const clearLines = () => {
+        lines.forEach((line) => {
+          const typed = line.querySelector('.ease-typed');
+          line.classList.remove('is-active', 'is-done');
+          if (!typed) {
+            return;
+          }
+          typed.textContent = '';
+        });
+      };
+
+      /** @param {HTMLElement} line */
+      const attachCursor = (line) => {
+        const typed = line.querySelector('.ease-typed');
+        if (!typed) {
+          return;
+        }
+        typed.after(cursor);
+      };
+
+      /** @param {boolean} isTyping */
+      const setCursorTyping = (isTyping) => {
+        cursor.hidden = isTyping;
+        cursor.classList.toggle('is-hidden', isTyping);
+      };
+
+      let lineIndex = 0;
+
+      const typeLine = () => {
+        const line = lines[lineIndex];
+        if (!line) {
+          return;
+        }
+        const typed = line.querySelector('.ease-typed');
+        const text = line.getAttribute('data-text') ?? '';
+        let charIndex = 0;
+        line.classList.add('is-active');
+        if (!typed) {
+          return;
+        }
+        attachCursor(line);
+        setCursorTyping(true);
+
+        const step = () => {
+          if (charIndex < text.length) {
+            typed.textContent += text[charIndex];
+            const currentChar = text[charIndex];
+            charIndex += 1;
+            let delay = 35 + Math.random() * 65;
+            if (currentChar === ' ') {
+              delay += 35;
+            }
+            if (',.;:'.includes(currentChar)) {
+              delay += 120;
+            }
+            timeoutId = window.setTimeout(step, delay);
+            return;
+          }
+
+          line.classList.remove('is-active');
+          line.classList.add('is-done');
+          setCursorTyping(false);
+          const nextIndex = lineIndex + 1;
+          if (nextIndex < lines.length) {
+            lineIndex = nextIndex;
+            timeoutId = window.setTimeout(typeLine, 1500);
+          } else {
+            timeoutId = window.setTimeout(() => {
+              clearLines();
+              lineIndex = 0;
+              typeLine();
+            }, 2200);
+          }
+        };
+
+        step();
+      };
+
+      if (reduceMotion) {
+        lines.forEach((line) => {
+          const typed = line.querySelector('.ease-typed');
+          if (!typed) {
+            return;
+          }
+          typed.textContent = line.getAttribute('data-text') ?? '';
+          line.classList.add('is-done');
+        });
+        cursor.remove();
+      } else {
+        clearLines();
+        typeLine();
+      }
+    }
+  </script>
+
   <section id="explore" class="container mx-auto px-6 py-28">
     <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
       <div class="space-y-4 reveal">
-        <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Pick your adventure</p>
+        <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Find your lane</p>
         <h2 class="text-3xl sm:text-4xl font-semibold text-slate-950">
           Big ideas deserve a path that feels doable.
         </h2>
       </div>
-      <p class="max-w-xl text-slate-600 reveal-delay-1">
-        Falck is here for the idea people, the people people, and the "please do not make me touch the tech stuff" people.
-        Choose the page that sounds like you.
-      </p>
+        <p class="max-w-xl text-slate-600 reveal-delay-1">
+          Falck is here for the idea people, the people people, and the "please do not make me touch the tech stuff" people.
+          Choose the path that makes you feel confident.
+        </p>
     </div>
     <div class="mt-12 grid gap-6 md:grid-cols-3">
       <a href="/modes" class="surface p-6 reveal">
@@ -139,6 +354,53 @@ import opencodeLogo from '../assets/opencode.svg';
           Browse feature pages ->
         </span>
       </a>
+    </div>
+  </section>
+
+  <section id="handoff" class="container mx-auto px-6 py-28">
+    <div class="grid gap-12 lg:grid-cols-[0.95fr_1.05fr] items-center">
+      <div class="surface accent-card p-6 reveal">
+        <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+          <span>Handoff flow</span>
+          <span class="text-emerald-500">Ready</span>
+        </div>
+        <div class="mt-6 grid gap-3">
+          <div class="surface-muted px-4 py-3 text-sm">
+            <p class="font-semibold">You</p>
+            <p class="mt-1 text-xs text-slate-500">Ship a change with notes and context</p>
+          </div>
+          <div class="surface-muted px-4 py-3 text-sm">
+            <p class="font-semibold">Falck</p>
+            <p class="mt-1 text-xs text-slate-500">Creates a clean branch + summary</p>
+          </div>
+          <div class="surface-dark px-4 py-3 text-sm">
+            <p class="font-semibold">Engineering</p>
+            <p class="mt-1 text-xs text-emerald-100/70">Reviews, tweaks, or continues the branch</p>
+          </div>
+        </div>
+      </div>
+      <div class="space-y-4 reveal-delay-1">
+        <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Everyone stays in the flow</p>
+        <h2 class="text-3xl sm:text-4xl font-semibold text-slate-950">No more "can you build my idea" handoffs</h2>
+        <p class="text-slate-600">
+          Falck keeps your idea in the codebase, not in a slide deck. Engineers see exactly what you intended, then decide
+          to merge it, refine it, or keep building. Same branch, same context, fewer meetings.
+        </p>
+        <div class="grid gap-3 text-sm text-slate-600">
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            Notes become a readable change summary
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            Tech teams keep their review flow intact
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            You keep the momentum (and the credit)
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 

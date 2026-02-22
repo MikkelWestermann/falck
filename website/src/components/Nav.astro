@@ -2,16 +2,151 @@
 import logo from '../assets/logo.png';
 
 const { variant = 'default' } = Astro.props;
+const isTech = variant === 'tech';
 
-const navClass =
-  variant === 'tech'
-    ? 'sticky top-0 z-50 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/70 text-slate-100'
-    : 'sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-900/5';
-const linkClass = variant === 'tech' ? 'text-slate-200 hover:text-white' : 'text-slate-700 hover:text-slate-950';
-const ctaClass =
-  variant === 'tech'
-    ? 'hidden sm:inline-flex items-center gap-2 rounded-full border border-slate-700/80 px-4 py-2 text-sm font-medium text-slate-100'
-    : 'hidden sm:inline-flex items-center gap-2 rounded-full border border-slate-200/80 px-4 py-2 text-sm font-medium';
+const navClass = isTech
+  ? 'sticky top-0 z-50 bg-slate-950/95 backdrop-blur-md border-b border-slate-800/70 text-slate-100'
+  : 'sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-900/5';
+const linkClass = isTech ? 'text-slate-200 hover:text-white' : 'text-slate-700 hover:text-slate-950';
+const ctaClass = isTech
+  ? 'hidden sm:inline-flex items-center gap-2 rounded-full border border-slate-700/80 px-4 py-2 text-sm font-medium text-slate-100'
+  : 'hidden sm:inline-flex items-center gap-2 rounded-full border border-slate-200/80 px-4 py-2 text-sm font-medium';
+
+const nonTechMegaMenu = [
+  {
+    title: 'Start here',
+    items: [
+      {
+        title: 'Ways to build',
+        href: '/modes',
+        kicker: 'Pick your path',
+        description: 'Choose the mode that matches your team and comfort level.',
+        tone: 'emerald',
+      },
+      {
+        title: 'How it feels',
+        href: '/workflow',
+        kicker: 'Guided flow',
+        description: 'A calm, step-by-step path from idea to change.',
+        tone: 'sky',
+      },
+      {
+        title: 'Feature tour',
+        href: '/features',
+        kicker: 'Quick tour',
+        description: 'A friendly overview of the Falck experience.',
+        tone: 'amber',
+      },
+    ],
+  },
+  {
+    title: 'Go deeper',
+    items: [
+      {
+        title: 'Idea Studio',
+        href: '/features/idea-studio',
+        kicker: 'Shape the plan',
+        description: 'Turn a messy idea into a clear, doable plan.',
+        tone: 'teal',
+      },
+      {
+        title: 'Setup Concierge',
+        href: '/features/setup-concierge',
+        kicker: 'Friendly checks',
+        description: 'Clear setup guidance with zero drama.',
+        tone: 'rose',
+      },
+      {
+        title: 'Share Updates',
+        href: '/features/share-updates',
+        kicker: 'Keep everyone aligned',
+        description: 'Share progress in a way teams can trust.',
+        tone: 'slate',
+      },
+    ],
+  },
+];
+
+const techMegaMenu = [
+  {
+    title: 'Core platform',
+    items: [
+      {
+        title: 'Falck config',
+        href: '/tech/config',
+        kicker: 'Set guardrails',
+        description: 'Define setup, secrets, and launch rules once.',
+        tone: 'cyan',
+      },
+      {
+        title: 'Runtime',
+        href: '/tech/runtime',
+        kicker: 'Run it locally',
+        description: 'OpenCode orchestration with optional Lima.',
+        tone: 'sky',
+      },
+      {
+        title: 'Git workflow',
+        href: '/tech/workflow',
+        kicker: 'Keep it clean',
+        description: 'Guardrails, save queues, review-ready output.',
+        tone: 'emerald',
+      },
+    ],
+  },
+  {
+    title: 'Go deeper',
+    items: [
+      {
+        title: 'Save queues',
+        href: '/tech/save-queues',
+        kicker: 'Intent first',
+        description: 'Stage changes with context and clear intent.',
+        tone: 'teal',
+      },
+      {
+        title: 'Secrets and prereqs',
+        href: '/tech/secrets',
+        kicker: 'Setup safely',
+        description: 'Safe setup checks and secret prompts.',
+        tone: 'slate',
+      },
+      {
+        title: 'Model orchestration',
+        href: '/tech/model-orchestration',
+        kicker: 'Bring your models',
+        description: 'Bring your own models, keep workflows local.',
+        tone: 'indigo',
+      },
+    ],
+  },
+];
+
+const megaMenuSections = isTech ? techMegaMenu : nonTechMegaMenu;
+const menuTriggerClass = `inline-flex items-center gap-2 font-semibold ${linkClass}`;
+const menuHeadingClass = isTech ? 'text-slate-400' : 'text-slate-500';
+const menuItemShellClass = isTech ? 'mega-card mega-card--tech' : 'mega-card';
+const menuItemTitleClass = isTech ? 'text-slate-100' : 'text-slate-900';
+const menuItemDescClass = isTech ? 'text-slate-400' : 'text-slate-500';
+const menuItemKickerClass = isTech ? 'text-slate-400' : 'text-slate-500';
+
+const toneMap = {
+  emerald: '16 185 129',
+  sky: '14 165 233',
+  amber: '245 158 11',
+  teal: '20 184 166',
+  rose: '244 63 94',
+  slate: '100 116 139',
+  cyan: '34 211 238',
+  indigo: '99 102 241',
+};
+
+const megaBadges = isTech
+  ? ['Open source', 'Local-first', 'BYO models', 'CI friendly']
+  : ['Prototype mode', 'Team mode', 'Open source', 'Review-ready'];
+const megaBadgeClass = isTech
+  ? 'rounded-full border border-slate-800/80 bg-slate-950 px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-slate-400'
+  : 'rounded-full border border-slate-200/80 bg-white px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-slate-500';
 ---
 
 <nav class={navClass}>
@@ -22,20 +157,63 @@ const ctaClass =
         <span class="text-lg">Falck</span>
       </a>
       <div class={`hidden md:flex items-center gap-8 text-sm ${linkClass}`}>
-        {variant === 'tech' ? (
+        {isTech ? <a href="/tech">Overview</a> : null}
+        <div class="relative group">
+          <button type="button" class={menuTriggerClass} aria-haspopup="true">
+            Features
+            <span aria-hidden="true" class="text-xs">v</span>
+          </button>
+          <div class="absolute left-1/2 top-full mt-0 w-[640px] -translate-x-1/2 origin-top opacity-0 translate-y-2 pointer-events-none transition duration-200 ease-out group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:translate-y-0 group-focus-within:pointer-events-auto z-40">
+            <div class="pt-5">
+              <div class="mega-panel p-6">
+                <div class="flex items-center justify-between gap-4">
+                  <div class="flex items-center gap-2">
+                    <span class={isTech ? 'h-2 w-2 rounded-full bg-cyan-400' : 'h-2 w-2 rounded-full bg-emerald-500'}></span>
+                    <p class={isTech ? 'text-xs uppercase tracking-[0.3em] text-slate-400' : 'text-xs uppercase tracking-[0.3em] text-slate-500'}>
+                      {isTech ? 'Falck for engineers' : 'Falck for builders'}
+                    </p>
+                  </div>
+                  <p class={isTech ? 'text-xs text-slate-400' : 'text-xs text-slate-500'}>
+                    {isTech ? 'Guardrails + local-first runtime' : 'Calm guidance + real code'}
+                  </p>
+                </div>
+                <div class="mt-5 space-y-6">
+                  <div class="flex flex-wrap gap-2">
+                    {megaBadges.map((badge) => (
+                      <span class={megaBadgeClass}>{badge}</span>
+                    ))}
+                  </div>
+                  <div class="grid gap-6 md:grid-cols-2">
+                    {megaMenuSections.map((section) => (
+                      <div class="space-y-3">
+                        <p class={`text-xs uppercase tracking-[0.3em] ${menuHeadingClass}`}>{section.title}</p>
+                        <div class="grid gap-3">
+                          {section.items.map((item) => (
+                            <a href={item.href} class={menuItemShellClass} style={`--accent: ${toneMap[item.tone as keyof typeof toneMap]}`}>
+                              <p class={`text-[10px] uppercase tracking-[0.32em] ${menuItemKickerClass}`}>
+                                {item.kicker}
+                              </p>
+                              <p class={`mt-2 text-sm font-semibold ${menuItemTitleClass}`}>{item.title}</p>
+                              <p class={`mt-1 text-xs ${menuItemDescClass}`}>{item.description}</p>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        {isTech ? (
           <>
-            <a href="/tech">Overview</a>
-            <a href="/tech/config">Falck config</a>
-            <a href="/tech/runtime">Runtime</a>
-            <a href="/tech/workflow">Git flow</a>
             <a href="/tech/download">Download</a>
+            <a href="/" class="font-semibold">For non-technical</a>
           </>
         ) : (
           <>
             <a href="/download">Download</a>
-            <a href="/modes">Ways to build</a>
-            <a href="/workflow">How it feels</a>
-            <a href="/features">Feature tour</a>
             <a href="/tech" class="font-semibold">For developers</a>
           </>
         )}

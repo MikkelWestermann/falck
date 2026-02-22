@@ -1,0 +1,149 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Button from '../../components/Button.astro';
+---
+
+<Layout
+  title="Falck | Save queues"
+  description="Intent-first save queues that keep git clean and reviews sane."
+  theme="dark"
+  navVariant="tech"
+>
+  <section class="relative overflow-hidden pt-24 pb-20">
+    <div class="absolute inset-0 -z-10">
+      <div class="absolute inset-0 backdrop-grid opacity-50"></div>
+      <div class="absolute -top-20 left-[12%] h-[320px] w-[320px] rounded-full bg-cyan-400/30 blur-[140px] glow-pulse"></div>
+      <div class="absolute bottom-[-25%] right-[6%] h-[420px] w-[420px] rounded-full bg-sky-400/30 blur-[160px] float-soft"></div>
+    </div>
+
+    <div class="container mx-auto px-6">
+      <div class="max-w-3xl space-y-6 reveal">
+        <span class="inline-flex items-center gap-2 rounded-full bg-slate-950/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-300 border border-slate-800/80">
+          Save queues
+        </span>
+        <h1 class="text-4xl sm:text-5xl font-semibold text-white">Intent-first staging for clean history</h1>
+        <p class="text-lg text-slate-300">
+          Falck uses save queues to capture intent before anything hits git. It keeps branches clean, commits readable, and
+          reviews focused on the actual change. It is basically linting for human intent.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4">
+          <Button href="/tech/workflow">See the workflow</Button>
+          <Button href="/tech/download" variant="secondary">Download Falck</Button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-20">
+    <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
+      <div class="space-y-4 reveal">
+        <p class="text-xs uppercase tracking-[0.4em] text-cyan-400">Why it matters</p>
+        <h2 class="text-2xl font-semibold text-white">Clean commits without babysitting</h2>
+        <p class="text-slate-300">
+          Save queues collect the work, the intent, and the context in one place. Falck turns that into a commit summary so
+          PRs look like normal work. Reviewers see narrative + diff, not a scavenger hunt.
+        </p>
+        <div class="grid gap-3 text-sm text-slate-300">
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            Intent notes become commit drafts
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            Save queue stays separate from git
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+            Reviewers get a clean diff
+          </div>
+        </div>
+      </div>
+      <div class="app-window reveal-delay-1">
+        <div class="app-window-bar">
+          <span>Falck Desktop</span>
+          <span>Save queue</span>
+        </div>
+        <div class="p-4 space-y-3">
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+            <span>Save queue</span>
+            <span class="text-cyan-300">3 items</span>
+          </div>
+          <div class="grid gap-2">
+            <div class="surface-muted px-4 py-3 text-sm">
+              <p class="font-semibold text-white">Queued change</p>
+              <p class="mt-1 text-xs text-slate-400">Update pricing card layout</p>
+            </div>
+            <div class="surface-muted px-4 py-3 text-sm">
+              <p class="font-semibold text-white">Intent</p>
+              <p class="mt-1 text-xs text-slate-400">"Make the enterprise tier clearer"</p>
+            </div>
+            <div class="surface-dark px-4 py-3 text-sm">
+              <p class="font-semibold">Ready to commit</p>
+              <p class="mt-1 text-xs text-cyan-100/70">Draft summary prepared</p>
+            </div>
+          </div>
+          <div class="rounded-2xl border border-slate-800/70 bg-slate-950 px-4 py-3 text-xs text-slate-400">
+            Bonus: save queues prevent "wait, who staged this?" energy.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-20">
+    <div class="grid gap-8 lg:grid-cols-3">
+      <div class="surface p-6 reveal">
+        <p class="text-xs uppercase tracking-[0.4em] text-cyan-400">Intent</p>
+        <h3 class="mt-3 text-xl font-semibold text-white">Capture the why</h3>
+        <p class="mt-2 text-sm text-slate-300">
+          Every save queue item has a note. That note becomes the commit summary so reviews stay grounded in intent.
+        </p>
+      </div>
+      <div class="surface p-6 reveal-delay-1">
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-400">Scope</p>
+        <h3 class="mt-3 text-xl font-semibold text-white">Keep changes tidy</h3>
+        <p class="mt-2 text-sm text-slate-300">
+          Falck keeps changes organized and scoped to a branch prefix. No drive-by commits on main.
+        </p>
+      </div>
+      <div class="surface p-6 reveal-delay-2">
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-400">Review</p>
+        <h3 class="mt-3 text-xl font-semibold text-white">PRs that read like PRs</h3>
+        <p class="mt-2 text-sm text-slate-300">
+          Save queues feed clean commit messages and summaries, so reviews stay fast and boring (the good kind).
+        </p>
+      </div>
+    </div>
+    <div class="mt-10 grid gap-6 md:grid-cols-2">
+      <div class="surface p-6 reveal">
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-400">What reviewers see</p>
+        <h3 class="mt-3 text-xl font-semibold text-white">Readable commits, predictable diffs</h3>
+        <p class="mt-2 text-sm text-slate-300">
+          Falck drafts commit messages from intent notes and keeps the diff scoped to the branch. Reviewers stop asking
+          "what is this for?" and start asking "ship it?".
+        </p>
+      </div>
+      <div class="surface p-6 reveal-delay-1">
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-400">What builders see</p>
+        <h3 class="mt-3 text-xl font-semibold text-white">A queue, not a cliff</h3>
+        <p class="mt-2 text-sm text-slate-300">
+          Changes stay staged until you are ready. No accidental commits, no panic when someone closes the laptop.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 pb-28">
+    <div class="surface p-10 md:p-12 text-center reveal">
+      <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Next up</p>
+      <h2 class="mt-4 text-3xl font-semibold text-white">Protect the workflow, keep shipping</h2>
+      <p class="mt-4 text-slate-300 max-w-2xl mx-auto">
+        Save queues are one piece of the guardrails that keep your repo safe and your team productive.
+      </p>
+      <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+        <Button href="/tech/workflow">Workflow details</Button>
+        <Button href="/tech/config" variant="secondary">Config overview</Button>
+      </div>
+    </div>
+  </section>
+</Layout>
