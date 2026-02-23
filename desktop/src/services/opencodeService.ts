@@ -284,6 +284,15 @@ export const opencodeService = {
     ) as Promise<{ queued: boolean; sessionId?: string }>;
   },
 
+  async abortSession(
+    sessionPath: string,
+    directory?: string,
+  ): Promise<{ success?: boolean }> {
+    return withRetry(() =>
+      sendCommand("abortSession", { sessionPath }, directory),
+    ) as Promise<{ success?: boolean }>;
+  },
+
   async findFiles(
     query: string,
     directory?: string,

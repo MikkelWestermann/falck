@@ -312,6 +312,9 @@ async function handleCommand(request: RequestMessage) {
       case "promptAsync":
         await handlePromptAsync(sessionPath, args, directory);
         break;
+      case "abortSession":
+        await handleAbortSession(sessionPath, directory);
+        break;
       case "findFiles":
         await handleFindFiles(args, directory);
         break;
@@ -679,6 +682,23 @@ async function handlePromptAsync(
       queued: true,
       sessionId: sessionPath,
     },
+  });
+}
+
+async function handleAbortSession(sessionPath?: string, directory?: string) {
+  if (!sessionPath) {
+    sendError("sessionPath is required", "INVALID_ARGUMENT");
+    return;
+  }
+
+  const result = unwrapData(
+    await client.session.abort({ sessionID: sessionPath, directory }),
+  );
+
+  sendMessage({
+    type: "success",
+    cmd: "abortSession",
+    data: result ?? { success: true },
   });
 }
 

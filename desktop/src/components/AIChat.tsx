@@ -22,6 +22,7 @@ import {
   SparklesIcon,
   UploadCloudIcon,
   WrenchIcon,
+  XCircleIcon,
 } from "lucide-react";
 import { useDropzone, type DropEvent } from "react-dropzone";
 import { nanoid } from "nanoid";
@@ -362,6 +363,7 @@ type ActivityPhase =
   | "idle"
   | "connecting"
   | "disconnected"
+  | "error"
   | "creating-session"
   | "loading-session"
   | "queued"
@@ -370,6 +372,7 @@ type ActivityPhase =
   | "running-tools"
   | "awaiting-approval"
   | "retrying"
+  | "canceled"
   | "complete";
 
 type StatusMeta = {
@@ -455,6 +458,33 @@ const getRandomBytes = (length: number) => {
 };
 
 const TEXT_RENDER_THROTTLE_MS = 100;
+const CONNECTION_ERROR_MESSAGE =
+  "Lost connection to OpenCode. Live status updates paused.";
+const CANCELLED_MESSAGE = "Request canceled.";
+
+const matchesAbort = (value: unknown) => {
+  if (!value) return false;
+  const pattern = /abort|aborted/i;
+  if (typeof value === "string") {
+    return pattern.test(value);
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const candidates = [
+      record.name,
+      record.message,
+      (record as { data?: { message?: unknown } }).data?.message,
+      (record as { error?: { message?: unknown } }).error?.message,
+    ];
+    return candidates.some(
+      (candidate) => typeof candidate === "string" && pattern.test(candidate),
+    );
+  }
+  return false;
+};
+
+const isAbortPayload = (message: unknown, error: unknown) =>
+  matchesAbort(message) || matchesAbort(error);
 
 const useThrottledValue = (value: string, delay = TEXT_RENDER_THROTTLE_MS) => {
   const [throttled, setThrottled] = useState(value);
@@ -652,6 +682,8 @@ export function AIChat({ activeApp }: AIChatProps) {
   const [lastAssistantCompletion, setLastAssistantCompletion] = useState<
     string | null
   >(null);
+  const [lastAbortAt, setLastAbortAt] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const partsByMessage = useRef<Map<string, Map<string, PartSnapshot>>>(
     new Map(),
   );
@@ -955,11 +987,12 @@ export function AIChat({ activeApp }: AIChatProps) {
     }
   }, []);
 
-  const chatStatus: ChatStatus | undefined = sending
-    ? "submitted"
-    : streaming
-      ? "streaming"
+  const chatStatus: ChatStatus | undefined = streaming
+    ? "streaming"
+    : sending || awaitingResponse
+      ? "submitted"
       : undefined;
+  const canStop = streaming || sending || awaitingResponse;
 
   const visibleMessages = useMemo(
     () =>
@@ -1043,6 +1076,30 @@ export function AIChat({ activeApp }: AIChatProps) {
     if (sending || hasPendingUserMessage || awaitingResponse) {
       return "queued";
     }
+    if (
+      error &&
+      !streaming &&
+      !sending &&
+      !hasPendingUserMessage &&
+      !awaitingResponse &&
+      toolActivity.length === 0 &&
+      sessionStatus?.type !== "busy" &&
+      sessionStatus?.type !== "retry"
+    ) {
+      return "error";
+    }
+    if (
+      lastAbortAt &&
+      !streaming &&
+      !sending &&
+      !hasPendingUserMessage &&
+      !awaitingResponse &&
+      toolActivity.length === 0 &&
+      sessionStatus?.type !== "busy" &&
+      sessionStatus?.type !== "retry"
+    ) {
+      return "canceled";
+    }
     if (sessionStatus?.type === "idle" && lastAssistantCompletion) {
       return "complete";
     }
@@ -1055,7 +1112,9 @@ export function AIChat({ activeApp }: AIChatProps) {
     connectionState,
     creatingSession,
     currentSession,
+    error,
     hasPendingUserMessage,
+    lastAbortAt,
     lastAssistantCompletion,
     loadingSession,
     awaitingResponse,
@@ -1120,6 +1179,26 @@ export function AIChat({ activeApp }: AIChatProps) {
           badgeVariant: "destructive",
           isActive: false,
           icon: <AlertTriangleIcon className="size-4 text-destructive" />,
+        };
+      case "error":
+        return {
+          label: "Error",
+          title: "Request failed",
+          description: error || "OpenCode reported an error.",
+          badgeVariant: "destructive",
+          isActive: false,
+          icon: <AlertTriangleIcon className="size-4 text-destructive" />,
+        };
+      case "canceled":
+        return {
+          label: "Canceled",
+          title: "Request canceled",
+          description: lastAbortAt
+            ? `Canceled at ${formatStatusTime(lastAbortAt)}`
+            : CANCELLED_MESSAGE,
+          badgeVariant: "outline",
+          isActive: false,
+          icon: <XCircleIcon className="size-4 text-muted-foreground" />,
         };
       case "queued":
         return {
@@ -1215,6 +1294,8 @@ export function AIChat({ activeApp }: AIChatProps) {
   }, [
     activityPhase,
     currentSession,
+    error,
+    lastAbortAt,
     lastAssistantCompletion,
     lastEventAt,
     sessionStatus,
@@ -1458,6 +1539,9 @@ export function AIChat({ activeApp }: AIChatProps) {
       if (payload.type === "server.connected") {
         setConnectionState("connected");
         setLastEventAt(new Date().toISOString());
+        setError((prev) =>
+          prev === CONNECTION_ERROR_MESSAGE ? "" : prev,
+        );
         return;
       }
 
@@ -1492,6 +1576,7 @@ export function AIChat({ activeApp }: AIChatProps) {
         setStreaming(false);
         setStreamingMessageId(null);
         setAwaitingResponse(false);
+        setToolActivity([]);
         return;
       }
 
@@ -1508,6 +1593,16 @@ export function AIChat({ activeApp }: AIChatProps) {
         setStreaming(false);
         setStreamingMessageId(null);
         setAwaitingResponse(false);
+        setToolActivity([]);
+        if (isAbortPayload(props.message, props.error)) {
+          setError("");
+          setNotice(CANCELLED_MESSAGE);
+          setLastAbortAt(new Date().toISOString());
+          setLastAssistantCompletion(null);
+          return;
+        }
+        setNotice(null);
+        setLastAbortAt(null);
         const detail =
           props.message ??
           (props.error ? JSON.stringify(props.error) : "Unknown error");
@@ -1622,6 +1717,8 @@ export function AIChat({ activeApp }: AIChatProps) {
             prev?.type === "busy" ? prev : { type: "busy" },
           );
           setAwaitingResponse(false);
+          setLastAbortAt(null);
+          setNotice(null);
         }
         if (
           isToolPart(normalized) &&
@@ -1692,6 +1789,7 @@ export function AIChat({ activeApp }: AIChatProps) {
             new Date(info.time.completed).toISOString(),
           );
           setAwaitingResponse(false);
+          setSessionStatus({ type: "idle" });
           refreshToolActivity();
         }
       }
@@ -1846,6 +1944,18 @@ export function AIChat({ activeApp }: AIChatProps) {
       );
     };
 
+    const reportConnectionError = (message: string) => {
+      setConnectionState("error");
+      setStreaming(false);
+      setStreamingMessageId(null);
+      setAwaitingResponse(false);
+      setSessionStatus({ type: "idle" });
+      setToolActivity([]);
+      setNotice(null);
+      setLastAbortAt(null);
+      setError((prev) => (prev ? prev : message));
+    };
+
     const abortController = new AbortController();
     let eventSource: EventSource | null = null;
 
@@ -1866,7 +1976,7 @@ export function AIChat({ activeApp }: AIChatProps) {
       };
       eventSource.onerror = (err) => {
         console.error("[OpenCode] Event stream error", err);
-        setConnectionState("error");
+        reportConnectionError(CONNECTION_ERROR_MESSAGE);
       };
     };
 
@@ -1883,7 +1993,7 @@ export function AIChat({ activeApp }: AIChatProps) {
           return;
         }
         console.error("[OpenCode] SSE stream failed", err);
-        setConnectionState("error");
+        reportConnectionError(CONNECTION_ERROR_MESSAGE);
         startEventSource();
       }
     };
@@ -1905,6 +2015,42 @@ export function AIChat({ activeApp }: AIChatProps) {
       minute: "2-digit",
     });
 
+  const clearPendingUserMessages = useCallback(() => {
+    pendingUserIds.current.clear();
+    setMessages((prev) =>
+      prev.map((msg) => (msg.pending ? { ...msg, pending: false } : msg)),
+    );
+  }, [setMessages]);
+
+  const handleStop = useCallback(async () => {
+    if (!currentSession) {
+      return;
+    }
+
+    setSending(false);
+    setStreaming(false);
+    setStreamingMessageId(null);
+    setAwaitingResponse(false);
+    setSessionStatus({ type: "idle" });
+    setToolActivity([]);
+    clearPendingUserMessages();
+
+    try {
+      await opencodeService.abortSession(currentSession.path, repoPath);
+      setError("");
+      setNotice(CANCELLED_MESSAGE);
+      setLastAbortAt(new Date().toISOString());
+      setLastAssistantCompletion(null);
+    } catch (err) {
+      setError(`Failed to stop request: ${String(err)}`);
+    }
+  }, [
+    clearPendingUserMessages,
+    currentSession,
+    repoPath,
+    setError,
+  ]);
+
   const handleSendMessage = async (messageText?: string) => {
     const rawText =
       messageText ?? richInputRef.current?.getFullText() ?? inputMessage;
@@ -1914,6 +2060,8 @@ export function AIChat({ activeApp }: AIChatProps) {
     }
 
     setLastAssistantCompletion(null);
+    setLastAbortAt(null);
+    setNotice(null);
     setAwaitingResponse(true);
     setStreamingMessageId(null);
     const messageId = createMessageId();
@@ -1957,6 +2105,19 @@ export function AIChat({ activeApp }: AIChatProps) {
         parts,
       );
     } catch (err) {
+      if (matchesAbort(err)) {
+        clearPendingUserMessages();
+        setError("");
+        setNotice(CANCELLED_MESSAGE);
+        setLastAbortAt(new Date().toISOString());
+        setLastAssistantCompletion(null);
+        setStreaming(false);
+        setStreamingMessageId(null);
+        setAwaitingResponse(false);
+        setSessionStatus({ type: "idle" });
+        setToolActivity([]);
+        return;
+      }
       setError(`Failed to get response: ${String(err)}`);
       pendingUserIds.current.delete(messageId);
       roleByMessage.current.delete(messageId);
@@ -1964,6 +2125,8 @@ export function AIChat({ activeApp }: AIChatProps) {
       setStreaming(false);
       setStreamingMessageId(null);
       setAwaitingResponse(false);
+      setSessionStatus({ type: "idle" });
+      setToolActivity([]);
     } finally {
       setSending(false);
     }
@@ -1979,6 +2142,8 @@ export function AIChat({ activeApp }: AIChatProps) {
     setToolActivity([]);
     setSessionStatus(null);
     setAwaitingResponse(false);
+    setLastAbortAt(null);
+    setNotice(null);
     setMentionItems([]);
     setMentionOpen(false);
     setMentionQuery("");
@@ -2210,6 +2375,13 @@ export function AIChat({ activeApp }: AIChatProps) {
 
               <div className="flex-shrink-0">
                 <div className="relative">
+                  {notice && !error && (
+                    <div className="pointer-events-none absolute bottom-full left-0 right-0 mb-2 flex justify-center">
+                      <div className="rounded-full border border-border/60 bg-card/90 px-3 py-1 text-[0.65rem] font-medium text-muted-foreground shadow-[var(--shadow-xs)]">
+                        {notice}
+                      </div>
+                    </div>
+                  )}
                   <PromptInput
                     onSubmit={(_message, event) => {
                       event.preventDefault();
@@ -2355,11 +2527,11 @@ export function AIChat({ activeApp }: AIChatProps) {
                         </ModelSelector>
                         <PromptInputSubmit
                           status={chatStatus}
+                          onStop={handleStop}
                           disabled={
                             !currentSession ||
-                            !inputMessage.trim() ||
-                            sending ||
-                            loadingSession
+                            loadingSession ||
+                            (!inputMessage.trim() && !canStop)
                           }
                         />
                       </PromptInputTools>
