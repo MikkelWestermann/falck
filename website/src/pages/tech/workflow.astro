@@ -5,7 +5,7 @@ import Button from '../../components/Button.astro';
 
 <Layout
   title="Falck | Git workflow"
-  description="Configurable branch guardrails, save queues, and clean PRs that keep your workflow intact."
+  description="Guardrails, save queues, and PR-ready output keep your workflow intact while non-technical teammates contribute."
   theme="dark"
   navVariant="tech"
 >
@@ -21,13 +21,13 @@ import Button from '../../components/Button.astro';
         <span class="inline-flex items-center gap-2 rounded-full bg-slate-950/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-300 border border-slate-800/80">
           Git workflow
         </span>
-        <h1 class="text-4xl sm:text-5xl font-semibold text-white">Guardrails without handcuffs</h1>
+        <h1 class="text-4xl sm:text-5xl font-semibold text-white">Control without compromise</h1>
         <p class="text-lg text-slate-300">
-          Falck keeps git workflows boring: scoped branches, save queues, clean commits, and PR-ready changes. Your team
-          gets contributions without the "what branch is this?" mysteries.
+          Falck keeps git workflows boring and under your control: scoped branches, save queues, clean commits, and
+          PR-ready changes. Non-technical contributions arrive as normal PRs, not surprises.
         </p>
         <div class="flex flex-col sm:flex-row gap-4">
-          <Button href="/tech/config">See the config</Button>
+          <Button href="/tech/config">See guardrails config</Button>
           <Button href="/tech/download" variant="secondary">Download Falck</Button>
         </div>
       </div>
@@ -40,14 +40,14 @@ import Button from '../../components/Button.astro';
         <div class="h-10 w-10 rounded-2xl bg-cyan-500 text-white flex items-center justify-center font-semibold">01</div>
         <h2 class="mt-4 text-lg font-semibold text-white">Branch guardrails</h2>
         <p class="mt-2 text-sm text-slate-300">
-          `branch_prefix` keeps changes scoped (e.g. `projects/*`) while protecting default branches.
+          `branch_prefix` keeps changes scoped (e.g. `projects/*`) while default branches stay protected.
         </p>
       </div>
       <div class="surface p-6 reveal-delay-1">
         <div class="h-10 w-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-semibold">02</div>
         <h2 class="mt-4 text-lg font-semibold text-white">Save queue</h2>
         <p class="mt-2 text-sm text-slate-300">
-          Falck stages changes and lets teammates describe intent before anything becomes a commit.
+          Falck stages changes and captures intent before anything becomes a commit.
         </p>
       </div>
       <div class="surface p-6 reveal-delay-2">
@@ -71,7 +71,7 @@ import Button from '../../components/Button.astro';
     <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
       <div class="space-y-4 reveal">
         <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Workflow map</p>
-        <h2 class="text-3xl sm:text-4xl font-semibold text-white">Normal git, less drama</h2>
+        <h2 class="text-3xl sm:text-4xl font-semibold text-white">Normal git, you in the driver's seat</h2>
         <p class="text-slate-300">
           Falck is explicit about how it creates branches, tracks changes, and prepares PRs. That means you can keep your
           existing review and CI/CD flow without rewriting policies.

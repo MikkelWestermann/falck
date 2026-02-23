@@ -1,0 +1,197 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Button from '../../components/Button.astro';
+---
+
+<Layout
+  title="Falck | Team Mode"
+  description="Team Mode lets non-technical teammates build real features with guardrails, PRs, and CI intact."
+  theme="light"
+>
+  <section class="relative overflow-hidden pt-24 pb-20">
+    <div class="absolute inset-0 -z-10">
+      <div class="absolute inset-0 backdrop-grid opacity-60"></div>
+      <div class="absolute -top-20 left-[12%] h-[340px] w-[340px] rounded-full bg-emerald-300/40 blur-[140px] glow-pulse"></div>
+      <div class="absolute bottom-[-25%] right-[6%] h-[420px] w-[420px] rounded-full bg-sky-300/40 blur-[160px] float-soft"></div>
+    </div>
+
+    <div class="container mx-auto px-6">
+      <div class="max-w-3xl space-y-6 reveal">
+        <span class="inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-600 border border-white/80">
+          Team Mode
+        </span>
+        <h1 class="text-4xl sm:text-5xl font-semibold text-slate-950">
+          Non-technical teammates ship real code with the same guardrails the dev team trusts.
+        </h1>
+        <p class="text-lg text-slate-600">
+          Team Mode is the main event. Engineers set up Falck once, then PMs, designers, ops, and anyone brave enough to
+          click "Start" can build on a safe branch with reviews, CI, and PRs still intact. It is collaboration without the
+          chaos.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4">
+          <Button href="/download">Download Falck</Button>
+          <Button href="/features" variant="secondary">Back to the story</Button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-20">
+    <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
+      <div class="space-y-4 reveal">
+        <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Setup once</p>
+        <h2 class="text-2xl font-semibold text-slate-950">Engineers wire the guardrails, then step aside.</h2>
+        <p class="text-slate-600">
+          Falck reads the repo's setup steps, prerequisites, and secrets so non-tech teammates do not have to. Every step
+          is explained, every command is tracked, and nobody has to whisper "just run npm install" again.
+        </p>
+        <div class="grid gap-3 text-sm text-slate-600">
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            Prerequisite checks before anything runs
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            Secrets prompts in plain language
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            One-click setup for the real app
+          </div>
+        </div>
+      </div>
+      <div class="app-window reveal-delay-1">
+        <div class="app-window-bar">
+          <span>Falck Desktop</span>
+          <span>Setup Steps</span>
+        </div>
+        <div class="p-5 space-y-4">
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+            <span>Setup status</span>
+            <span class="text-emerald-500">All green</span>
+          </div>
+          <div class="grid gap-3">
+            <div class="surface-muted px-4 py-3 text-sm">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold">Prerequisites</span>
+                <span class="text-emerald-600">3 verified</span>
+              </div>
+              <p class="mt-1 text-xs text-slate-500">Falck checked everything for you</p>
+            </div>
+            <div class="surface-muted px-4 py-3 text-sm">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold">Secrets</span>
+                <span class="text-slate-600">Ready</span>
+              </div>
+              <p class="mt-1 text-xs text-slate-500">Explained in human words</p>
+            </div>
+            <div class="surface-dark px-4 py-3 text-sm">
+              <p class="font-semibold">Launch ready</p>
+              <p class="mt-1 text-xs text-emerald-100/70">One click to run</p>
+            </div>
+          </div>
+          <div class="rounded-2xl border border-emerald-100/80 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
+            Friendly energy: "No terminal required. You're welcome."
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-20">
+    <div class="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] items-center">
+      <div class="order-2 lg:order-1 app-window reveal">
+        <div class="app-window-bar">
+          <span>Falck Desktop</span>
+          <span>Build</span>
+        </div>
+        <div class="p-5 space-y-4">
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+            <span>Work session</span>
+            <span class="text-emerald-500">In progress</span>
+          </div>
+          <div class="grid gap-3">
+            <div class="surface-muted px-4 py-3 text-sm">
+              <p class="font-semibold">Branch</p>
+              <p class="mt-1 text-xs text-slate-500">feat/onboarding-refresh</p>
+            </div>
+            <div class="surface-muted px-4 py-3 text-sm">
+              <p class="font-semibold">Preview</p>
+              <p class="mt-1 text-xs text-slate-500">Local app running</p>
+            </div>
+            <div class="surface-dark px-4 py-3 text-sm">
+              <p class="font-semibold">Save queue</p>
+              <p class="mt-1 text-xs text-emerald-100/70">3 changes ready</p>
+            </div>
+          </div>
+          <div class="rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+            The branch is real. The edits are real. The confidence is unreal.
+          </div>
+        </div>
+      </div>
+      <div class="order-1 lg:order-2 space-y-4 reveal-delay-1">
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Build safely</p>
+        <h2 class="text-2xl font-semibold text-slate-950">Non-tech teammates do real work, safely.</h2>
+        <p class="text-slate-600">
+          Falck gives you a friendly UI for real code. You can create the feature yourself, or get it far enough that
+          engineers can polish and merge it. Same branch, same context, fewer meetings.
+        </p>
+        <div class="grid gap-3 text-sm text-slate-600">
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-slate-900"></span>
+            Changes stay on a safe branch
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-slate-900"></span>
+            The app explains what it is doing, in plain language
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-slate-900"></span>
+            Engineers can jump in without re-creating your intent
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-20">
+    <div class="grid gap-8 lg:grid-cols-3">
+      <div class="surface p-6 reveal">
+        <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">PR-ready</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">Reviews stay normal</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          Falck saves changes with a summary so the PR reads like a human wrote it (you did). Reviewers see the intent fast.
+        </p>
+      </div>
+      <div class="surface p-6 reveal-delay-1">
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">CI/CD</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">Guardrails stay on</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          Your pipeline does not change. Tests run, checks run, and engineers stay calm. Everyone wins.
+        </p>
+      </div>
+      <div class="surface p-6 reveal-delay-2">
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Context</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">Intent is visible</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          The branch shows what was meant, not just what was typed. The team gets your vision without the guessing game.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 pb-28">
+    <div class="surface p-10 md:p-12 text-center reveal">
+      <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Ready to share?</p>
+      <h2 class="mt-4 text-3xl font-semibold text-slate-950">Turn your idea into a review-ready update</h2>
+      <p class="mt-4 text-slate-600 max-w-2xl mx-auto">
+        Build the feature, save the change, and hand it off without the awkward translation layer. Falck keeps the
+        guardrails, you keep the momentum.
+      </p>
+      <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+        <Button href="/features/review-ready">See the handoff</Button>
+        <Button href="/features/local-studio" variant="secondary">Local Studio mode</Button>
+      </div>
+    </div>
+  </section>
+</Layout>

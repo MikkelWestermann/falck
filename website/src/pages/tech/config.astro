@@ -5,7 +5,7 @@ import Button from '../../components/Button.astro';
 
 <Layout
   title="Falck | Falck config"
-  description="Define prerequisites, secrets, setup steps, and launch commands once in .falck/config.yaml. Falck does the rest."
+  description="Define the guardrails in .falck/config.yaml so non-technical teammates can contribute without changing your workflow."
   theme="dark"
   navVariant="tech"
 >
@@ -21,10 +21,10 @@ import Button from '../../components/Button.astro';
         <span class="inline-flex items-center gap-2 rounded-full bg-slate-950/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-300 border border-slate-800/80">
           Falck config
         </span>
-        <h1 class="text-4xl sm:text-5xl font-semibold text-white">One file to rule the workflow</h1>
+        <h1 class="text-4xl sm:text-5xl font-semibold text-white">One file to set the rules</h1>
         <p class="text-lg text-slate-300">
           Falck reads a `.falck/config.yaml` file in your repo. Define prerequisites, secrets, setup steps, launch
-          commands, and access URLs once. Falck handles the rest.
+          commands, and access URLs once. Falck enforces the workflow you already trust.
         </p>
         <div class="flex flex-col sm:flex-row gap-4">
           <Button href="https://github.com/MikkelWestermann/falck/blob/main/falck-spec.md" target="_blank" rel="noreferrer">
@@ -40,7 +40,7 @@ import Button from '../../components/Button.astro';
     <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
       <div class="space-y-4 reveal">
         <p class="text-xs uppercase tracking-[0.4em] text-cyan-400">Core idea</p>
-        <h2 class="text-2xl font-semibold text-white">Config describes the repo, Falck drives the rest</h2>
+        <h2 class="text-2xl font-semibold text-white">Config describes the repo, Falck enforces the rules</h2>
         <p class="text-slate-300">
           The config defines how to install, configure, and launch each app in the repo. Falck turns it into a guided UI
           flow that non-technical teammates can follow without breaking anything.
@@ -110,7 +110,7 @@ applications:
   <section class="container mx-auto px-6 pb-28">
     <div class="surface p-10 md:p-12 text-center reveal">
       <p class="text-sm uppercase tracking-[0.3em] text-slate-400">TL;DR</p>
-      <h2 class="mt-4 text-3xl font-semibold text-white">Configure once, onboard forever</h2>
+      <h2 class="mt-4 text-3xl font-semibold text-white">Configure once, keep control forever</h2>
       <p class="mt-4 text-slate-300 max-w-2xl mx-auto">
         The config lives next to your code and stays versioned. Everyone gets the same setup, the same guardrails, and the
         same happy reviews.

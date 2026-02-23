@@ -4,31 +4,32 @@ import Button from '../../components/Button.astro';
 ---
 
 <Layout
-  title="Falck | Share Updates"
-  description="Share progress with your team using clear, friendly updates in Falck."
+  title="Falck | Review Ready"
+  description="Falck turns non-technical work into review-ready branches with summaries engineers can trust."
   theme="light"
 >
   <section class="relative overflow-hidden pt-24 pb-20">
     <div class="absolute inset-0 -z-10">
       <div class="absolute inset-0 backdrop-grid opacity-60"></div>
-      <div class="absolute -top-20 left-[10%] h-[320px] w-[320px] rounded-full bg-emerald-300/40 blur-[140px] glow-pulse"></div>
-      <div class="absolute bottom-[-25%] right-[8%] h-[420px] w-[420px] rounded-full bg-sky-300/40 blur-[160px] float-soft"></div>
+      <div class="absolute -top-20 left-[12%] h-[340px] w-[340px] rounded-full bg-emerald-300/40 blur-[140px] glow-pulse"></div>
+      <div class="absolute bottom-[-25%] right-[6%] h-[420px] w-[420px] rounded-full bg-sky-300/40 blur-[160px] float-soft"></div>
     </div>
 
     <div class="container mx-auto px-6">
       <div class="max-w-3xl space-y-6 reveal">
         <span class="inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-600 border border-white/80">
-          Share Updates
+          Review-ready handoff
         </span>
-        <h1 class="text-4xl sm:text-5xl font-semibold text-slate-950">Share real progress without the awkward handoff</h1>
+        <h1 class="text-4xl sm:text-5xl font-semibold text-slate-950">
+          The handoff is a real branch with a real summary. No more "please imagine this."
+        </h1>
         <p class="text-lg text-slate-600">
-          Falck packages your changes, writes a clear summary, and makes it easy to show your team what actually changed.
-          No more screenshot decks. No more "trust me" updates. Your work reads like a crisp release note, not a bedtime
-          story.
+          Falck keeps the intent attached to the work so engineers do not have to reverse-engineer your vision from a
+          screenshot. The PR reads like a calm human wrote it because you did, with a little help.
         </p>
         <div class="flex flex-col sm:flex-row gap-4">
           <Button href="/download">Download Falck</Button>
-          <Button href="/features" variant="secondary">Back to the tour</Button>
+          <Button href="/features" variant="secondary">Back to the story</Button>
         </div>
       </div>
     </div>
@@ -37,49 +38,48 @@ import Button from '../../components/Button.astro';
   <section class="container mx-auto px-6 py-20">
     <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
       <div class="space-y-4 reveal">
-        <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Clear summaries</p>
-        <h2 class="text-2xl font-semibold text-slate-950">Your team sees exactly what changed</h2>
+        <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Clear summary</p>
+        <h2 class="text-2xl font-semibold text-slate-950">Falck writes the story with you.</h2>
         <p class="text-slate-600">
-          Falck turns your notes into a clean, readable update. The changes are real, and the summary reads like a human
-          wrote it. Because it was a human. You. With help.
+          Notes become a clean summary and a list of changes. Reviewers see what changed and why, without a meeting.
         </p>
         <div class="grid gap-3 text-sm text-slate-600">
           <div class="flex items-center gap-2">
             <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            Share changes with one click
+            Branch name stays tidy and readable
           </div>
           <div class="flex items-center gap-2">
             <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            Updates read like a calm recap
+            Summary reads like a human (because it is)
           </div>
           <div class="flex items-center gap-2">
             <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-            Everyone stays aligned without extra meetings
+            Engineers can merge or keep building on the same branch
           </div>
         </div>
       </div>
       <div class="app-window reveal-delay-1">
         <div class="app-window-bar">
           <span>Falck Desktop</span>
-          <span>Share panel</span>
+          <span>Save Changes</span>
         </div>
-        <div class="p-4 space-y-3">
+        <div class="p-5 space-y-4">
           <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
-            <span>Share panel</span>
+            <span>Save queue</span>
             <span class="text-emerald-500">Ready</span>
           </div>
-          <div class="grid gap-2">
+          <div class="grid gap-3">
             <div class="surface-muted px-4 py-3 text-sm">
               <p class="font-semibold">Summary</p>
-              <p class="mt-1 text-xs text-slate-500">"Updated onboarding copy and tightened CTA"</p>
+              <p class="mt-1 text-xs text-slate-500">"Refined onboarding copy, updated CTA, fixed FAQ order"</p>
             </div>
             <div class="surface-muted px-4 py-3 text-sm">
               <p class="font-semibold">Highlights</p>
-              <p class="mt-1 text-xs text-slate-500">3 changes, 2 pages, ready for review</p>
+              <p class="mt-1 text-xs text-slate-500">3 files changed, ready for review</p>
             </div>
             <div class="surface-dark px-4 py-3 text-sm">
-              <p class="font-semibold">Share now</p>
-              <p class="mt-1 text-xs text-emerald-100/70">Send to the team</p>
+              <p class="font-semibold">Create update</p>
+              <p class="mt-1 text-xs text-emerald-100/70">PR ready in one click</p>
             </div>
           </div>
           <div class="rounded-2xl border border-emerald-100/80 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
@@ -93,25 +93,24 @@ import Button from '../../components/Button.astro';
   <section class="container mx-auto px-6 py-20">
     <div class="grid gap-8 lg:grid-cols-3">
       <div class="surface p-6 reveal">
-        <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Narrative</p>
-        <h3 class="mt-3 text-xl font-semibold text-slate-950">A summary people read</h3>
+        <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Respect</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">Reviewers stay happy</h3>
         <p class="mt-2 text-sm text-slate-600">
-          Falck turns your notes into a change story with context, not just code. It is a human-friendly explanation of the
-          diff.
+          Engineers get a clean diff with context, not a mystery batch of edits.
         </p>
       </div>
       <div class="surface p-6 reveal-delay-1">
-        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Visibility</p>
-        <h3 class="mt-3 text-xl font-semibold text-slate-950">Keep status visible</h3>
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Continuity</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">Same branch, same intent</h3>
         <p class="mt-2 text-sm text-slate-600">
-          Everyone can see what is shipping, what is ready, and what needs review. No hidden changes, no spooky surprises.
+          The technical team can keep building on the branch, so your work is the starting point, not a detour.
         </p>
       </div>
       <div class="surface p-6 reveal-delay-2">
-        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Confidence</p>
-        <h3 class="mt-3 text-xl font-semibold text-slate-950">Ship without drama</h3>
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Speed</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">Less meeting, more shipping</h3>
         <p class="mt-2 text-sm text-slate-600">
-          Falck keeps the guardrails, so sharing is a confident step, not a negotiation.
+          The intent is clear, the review is easy, and your team gets to ship sooner.
         </p>
       </div>
     </div>
@@ -119,14 +118,14 @@ import Button from '../../components/Button.astro';
 
   <section class="container mx-auto px-6 pb-28">
     <div class="surface p-10 md:p-12 text-center reveal">
-      <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Finish strong</p>
-      <h2 class="mt-4 text-3xl font-semibold text-slate-950">Ship the change, get the high-five</h2>
+      <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Go from idea to merge</p>
+      <h2 class="mt-4 text-3xl font-semibold text-slate-950">Make the handoff feel easy</h2>
       <p class="mt-4 text-slate-600 max-w-2xl mx-auto">
-        Falck keeps the guardrails in place so you can share real progress with zero anxiety.
+        Falck keeps your intent attached to the work so the team can review, polish, or ship without rework.
       </p>
       <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-        <Button href="/features/idea-studio">Idea Studio</Button>
-        <Button href="/features/setup-concierge" variant="secondary">Setup Concierge</Button>
+        <Button href="/features/team-mode">Explore Team Mode</Button>
+        <Button href="/features/local-studio" variant="secondary">Local Studio mode</Button>
       </div>
     </div>
   </section>

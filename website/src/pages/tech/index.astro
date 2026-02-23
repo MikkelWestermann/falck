@@ -5,8 +5,8 @@ import opencodeLogo from '../../assets/opencode.svg';
 ---
 
 <Layout
-  title="Falck | Developer overview"
-  description="Falck is the local-first AI IDE for teams. Configure once with .falck/config.yaml, keep git clean, and ship with real guardrails."
+  title="Falck | Developer control"
+  description="Falck keeps your tooling intact while non-technical teammates contribute safely inside your guardrails."
   theme="dark"
   navVariant="tech"
 >
@@ -24,32 +24,32 @@ import opencodeLogo from '../../assets/opencode.svg';
             For developers
           </span>
           <h1 class="text-4xl sm:text-5xl lg:text-6xl font-semibold leading-[1.1] text-white">
-            Falck keeps the guardrails.
+            You stay in control.
             <span class="bg-gradient-to-r from-cyan-400 via-sky-400 to-emerald-400 bg-clip-text text-transparent">
-              Your team ships the ideas.
+              Non-technical teammates ship inside your guardrails.
             </span>
           </h1>
           <p class="text-lg text-slate-300 max-w-2xl">
-            Falck is a local-first AI IDE that reads a simple `.falck/config.yaml` in your repo. You define prerequisites,
-            secrets, setup steps, and launch commands once. Then non-tech teammates can safely contribute with branches,
-            reviews, and CI intact. The goal: more shipping, fewer panicked Slack threads.
+            Falck is a local-first desktop app that reads `.falck/config.yaml` in your repo. You define what can run, what
+            must be installed, and which branches are allowed. Non-technical teammates contribute with real branches, PRs,
+            and CI untouched. You keep control, they keep momentum, and nobody has to learn git rebase on a Tuesday.
           </p>
           <div class="flex flex-col sm:flex-row gap-4">
-            <Button href="/tech/config">See the Falck config</Button>
+            <Button href="/tech/config">See the guardrails config</Button>
             <Button variant="secondary" href="/tech/download">Get the desktop app</Button>
           </div>
           <div class="flex flex-wrap items-center gap-6 text-sm text-slate-400">
             <div class="flex items-center gap-2">
               <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
-              Local-first, BYO models
+              Local-first runtime, zero surprise cloud
             </div>
             <div class="flex items-center gap-2">
               <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
-              Real git branches + PRs
+              Protected branches + PRs stay intact
             </div>
             <div class="flex items-center gap-2">
               <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
-              Config-driven setup + launch
+              Config-driven setup you approve
             </div>
           </div>
         </div>
@@ -60,8 +60,8 @@ import opencodeLogo from '../../assets/opencode.svg';
           <div class="relative surface accent-card p-7 sm:p-8">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Repository profile</p>
-                <p class="text-lg font-semibold text-white">falck/config.yaml</p>
+                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Repository rules</p>
+                <p class="text-lg font-semibold text-white">.falck/config.yaml</p>
               </div>
               <span class="rounded-full bg-cyan-400/20 px-3 py-1 text-xs text-cyan-200">Validated</span>
             </div>
@@ -69,13 +69,13 @@ import opencodeLogo from '../../assets/opencode.svg';
               <div class="surface-muted p-4">
                 <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Prerequisites</p>
                 <p class="mt-2 text-sm font-semibold text-white">Node 18, Postgres, Docker</p>
-                <p class="mt-1 text-xs text-slate-400">Checks are run before setup so nobody trips CI.</p>
+                <p class="mt-1 text-xs text-slate-400">Checks run before setup so you control what runs.</p>
               </div>
               <div class="grid gap-4 sm:grid-cols-2">
                 <div class="surface-muted p-4">
                   <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Setup</p>
                   <p class="mt-2 text-sm font-semibold text-white">bun install</p>
-                  <p class="mt-1 text-xs text-slate-400">Step 1 of 2, no copy-paste required.</p>
+                  <p class="mt-1 text-xs text-slate-400">Step 1 of 2, the exact command you approved.</p>
                 </div>
                 <div class="surface-dark p-4">
                   <p class="text-xs uppercase tracking-[0.3em] text-cyan-200">Launch</p>
@@ -88,7 +88,7 @@ import opencodeLogo from '../../assets/opencode.svg';
                   <p class="text-sm font-semibold text-white">Branch guardrails</p>
                   <span class="rounded-full bg-slate-900 px-2 py-0.5 text-xs text-white">projects/*</span>
                 </div>
-                <p class="mt-2 text-xs text-slate-400">Default branch stays protected. Your sanity stays intact.</p>
+                <p class="mt-2 text-xs text-slate-400">Default branch stays protected. Your rules, enforced.</p>
               </div>
             </div>
           </div>
@@ -100,24 +100,25 @@ import opencodeLogo from '../../assets/opencode.svg';
   <section class="container mx-auto px-6 py-24">
     <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
       <div class="space-y-4 reveal">
-        <p class="text-xs uppercase tracking-[0.4em] text-cyan-400">Primary use case</p>
-        <h2 class="text-3xl sm:text-4xl font-semibold text-white">Set it once, let the team ship safely</h2>
+        <p class="text-xs uppercase tracking-[0.4em] text-cyan-400">Control first</p>
+        <h2 class="text-3xl sm:text-4xl font-semibold text-white">You define the rules. Falck enforces them.</h2>
         <p class="text-slate-300">
-          Engineers configure Falck once per repo. After that, non-tech teammates can work inside the same guardrails you
-          already care about: branch naming, secrets, setup checks, and predictable launch commands.
+          Engineers configure Falck once per repo. After that, non-technical teammates can contribute inside the guardrails
+          you already require: branch prefixes, protected defaults, secrets checks, setup gating, and predictable launch
+          commands. No workflow compromises, no surprise scripts.
         </p>
         <div class="grid gap-3 text-sm text-slate-300">
           <div class="flex items-center gap-2">
             <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
-            Respects protected default branches and CI/CD rules
+            Protected branches and CI/CD rules stay intact
           </div>
           <div class="flex items-center gap-2">
             <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
-            Save queues capture intent before commits
+            Save queues capture intent before any commit happens
           </div>
           <div class="flex items-center gap-2">
             <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
-            You can review, tweak, or keep building on the same branch
+            Non-tech work lands as a PR-ready branch you can take over
           </div>
         </div>
       </div>
@@ -138,7 +139,7 @@ import opencodeLogo from '../../assets/opencode.svg';
             </div>
             <div class="surface-muted px-4 py-3 text-sm">
               <p class="font-semibold text-white">Save queue</p>
-              <p class="mt-1 text-xs text-slate-400">3 staged changes + notes</p>
+              <p class="mt-1 text-xs text-slate-400">3 staged changes + intent notes</p>
             </div>
             <div class="surface-dark px-4 py-3 text-sm">
               <p class="font-semibold">PR ready</p>
@@ -153,10 +154,10 @@ import opencodeLogo from '../../assets/opencode.svg';
   <section class="container mx-auto px-6 py-24">
     <div class="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] items-center">
       <div class="surface accent-card p-6 reveal">
-        <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
-          <span>Non-tech contribution</span>
-          <span class="text-cyan-300">In progress</span>
-        </div>
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+            <span>Guardrailed contribution</span>
+            <span class="text-cyan-300">In progress</span>
+          </div>
         <div class="mt-6 grid gap-3">
           <div class="surface-muted px-4 py-3 text-sm">
             <p class="font-semibold text-white">Intent</p>
@@ -172,28 +173,28 @@ import opencodeLogo from '../../assets/opencode.svg';
           </div>
         </div>
       </div>
-      <div class="space-y-4 reveal-delay-1">
-        <p class="text-xs uppercase tracking-[0.4em] text-slate-400">The handoff that does not hurt</p>
-        <h2 class="text-3xl sm:text-4xl font-semibold text-white">Let them sketch in code, then refine together</h2>
-        <p class="text-slate-300">
-          Falck keeps the change in a real branch with a clear summary. You can merge it as-is, tune it, or continue the
-          implementation with full context. It is like pair programming, minus the calendar math.
-        </p>
-        <div class="grid gap-3 text-sm text-slate-300">
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
-            Visual intent + real code, same artifact
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
-            Review with diff + narrative, not a slide deck
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
-            Keep your standards without the extra meetings
+        <div class="space-y-4 reveal-delay-1">
+          <p class="text-xs uppercase tracking-[0.4em] text-slate-400">Controlled handoff</p>
+          <h2 class="text-3xl sm:text-4xl font-semibold text-white">Let them sketch in code, without losing control</h2>
+          <p class="text-slate-300">
+            Falck keeps the change in a real branch with a clear summary. You can merge it as-is, tune it, or continue the
+            implementation with full context. It is like pair programming, minus the calendar math.
+          </p>
+          <div class="grid gap-3 text-sm text-slate-300">
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+              Visual intent + real code, same artifact
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+              Review with diff + narrative, not a slide deck
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+              Keep your standards without the extra meetings
+            </div>
           </div>
         </div>
-      </div>
     </div>
   </section>
 
@@ -201,10 +202,10 @@ import opencodeLogo from '../../assets/opencode.svg';
     <div class="grid gap-8 lg:grid-cols-3">
       <div class="surface p-6 reveal">
         <p class="text-xs uppercase tracking-[0.4em] text-cyan-400">Config-first</p>
-        <h2 class="mt-3 text-2xl font-semibold text-white">Describe the repo once</h2>
+        <h2 class="mt-3 text-2xl font-semibold text-white">Define the boundaries once</h2>
         <p class="mt-3 text-sm text-slate-300">
-          The `.falck/config.yaml` defines prerequisites, setup steps, launch commands, and access URLs. Falck reads it and
-          drives the whole workflow.
+          The `.falck/config.yaml` defines prerequisites, setup steps, launch commands, and access URLs. Falck enforces the
+          rules so every teammate stays inside your approved flow.
         </p>
         <a href="/tech/config" class="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-cyan-300">
           See config details ->
@@ -212,7 +213,7 @@ import opencodeLogo from '../../assets/opencode.svg';
       </div>
       <div class="surface p-6 reveal-delay-1">
         <p class="text-xs uppercase tracking-[0.4em] text-sky-400">Workflow-safe</p>
-        <h2 class="mt-3 text-2xl font-semibold text-white">Git stays boring</h2>
+        <h2 class="mt-3 text-2xl font-semibold text-white">Git stays yours</h2>
         <p class="mt-3 text-sm text-slate-300">
           Falck keeps branches scoped, tracks save queues, and produces clean commits. Your PRs look normal. Your review
           flow stays normal. Your blood pressure stays normal.
@@ -223,7 +224,7 @@ import opencodeLogo from '../../assets/opencode.svg';
       </div>
       <div class="surface p-6 reveal-delay-2">
         <p class="text-xs uppercase tracking-[0.4em] text-emerald-400">Local-first</p>
-        <h2 class="mt-3 text-2xl font-semibold text-white">Runs on open tech</h2>
+        <h2 class="mt-3 text-2xl font-semibold text-white">Runtime you control</h2>
         <p class="mt-3 text-sm text-slate-300">
           Falck runs locally, uses OpenCode to orchestrate tools, and can spin containers with Lima when you need isolation.
         </p>
@@ -239,7 +240,7 @@ import opencodeLogo from '../../assets/opencode.svg';
       <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
         <div class="space-y-4">
           <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Built on open source</p>
-          <h2 class="text-3xl sm:text-4xl font-semibold text-white">OpenCode + Lima, no secrets</h2>
+          <h2 class="text-3xl sm:text-4xl font-semibold text-white">OpenCode + Lima, full transparency</h2>
           <p class="text-slate-300">
             Falck is open source and transparent. It uses OpenCode to orchestrate models and tools, and Lima to run
             containerized dev servers when you need parity with production. You control the stack, not the other way around.

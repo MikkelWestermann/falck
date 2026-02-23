@@ -1,0 +1,136 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Button from '../../components/Button.astro';
+---
+
+<Layout
+  title="Falck | Local Studio"
+  description="Local Studio is a local-first, bring-your-own-LLM way to build with Falck, open source and in your control."
+  theme="light"
+>
+  <section class="relative overflow-hidden pt-24 pb-20">
+    <div class="absolute inset-0 -z-10">
+      <div class="absolute inset-0 backdrop-grid opacity-60"></div>
+      <div class="absolute -top-20 left-[10%] h-[340px] w-[340px] rounded-full bg-emerald-300/40 blur-[140px] glow-pulse"></div>
+      <div class="absolute bottom-[-25%] right-[8%] h-[420px] w-[420px] rounded-full bg-sky-300/40 blur-[160px] float-soft"></div>
+    </div>
+
+    <div class="container mx-auto px-6">
+      <div class="max-w-3xl space-y-6 reveal">
+        <span class="inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-xs uppercase tracking-[0.3em] text-slate-600 border border-white/80">
+          Local Studio
+        </span>
+        <h1 class="text-4xl sm:text-5xl font-semibold text-slate-950">
+          A lovable, local studio for bold ideas. Bring your own model and keep your data yours.
+        </h1>
+        <p class="text-lg text-slate-600">
+          Local Studio is Falck's "build it now" mode. It runs on your machine, works with your favorite model, and stays
+          open source. Perfect for prototypes, experiments, and those "what if we just shipped it" moments.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4">
+          <Button href="/download">Download Falck</Button>
+          <Button href="/features" variant="secondary">Back to the story</Button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-20">
+    <div class="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
+      <div class="space-y-4 reveal">
+        <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Local by design</p>
+        <h2 class="text-2xl font-semibold text-slate-950">No cloud lock-in, no mystery bills.</h2>
+        <p class="text-slate-600">
+          Your files stay on your machine. Your model runs locally. The studio is open source and flexible, so you can
+          build without handing your idea to the cloud.
+        </p>
+        <div class="grid gap-3 text-sm text-slate-600">
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            Bring your own model (or switch whenever)
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            Open source, so you can see how it works
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            Runs locally, even on airplane Wi-Fi that is basically vibes
+          </div>
+        </div>
+      </div>
+      <div class="app-window reveal-delay-1">
+        <div class="app-window-bar">
+          <span>Falck Desktop</span>
+          <span>Local Studio</span>
+        </div>
+        <div class="p-5 space-y-4">
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-slate-400">
+            <span>Session</span>
+            <span class="text-emerald-500">Running</span>
+          </div>
+          <div class="grid gap-3">
+            <div class="surface-muted px-4 py-3 text-sm">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold">Model</span>
+                <span class="text-slate-600">Local LLM</span>
+              </div>
+              <p class="mt-1 text-xs text-slate-500">You are the cloud now</p>
+            </div>
+            <div class="surface-muted px-4 py-3 text-sm">
+              <p class="font-semibold">Workspace</p>
+              <p class="mt-1 text-xs text-slate-500">Prototype: launch-day</p>
+            </div>
+            <div class="surface-dark px-4 py-3 text-sm">
+              <p class="font-semibold">Build</p>
+              <p class="mt-1 text-xs text-emerald-100/70">Live preview open</p>
+            </div>
+          </div>
+          <div class="rounded-2xl border border-emerald-100/80 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
+            Local-first energy: "Your idea stays in your laptop".
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 py-20">
+    <div class="grid gap-8 lg:grid-cols-3">
+      <div class="surface p-6 reveal">
+        <p class="text-xs uppercase tracking-[0.4em] text-emerald-500">Prototype fast</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">Skip the mockup phase</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          Build the real thing and see it immediately. No more three tools, two meetings, and a "quick deck".
+        </p>
+      </div>
+      <div class="surface p-6 reveal-delay-1">
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Open source</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">Inspect the magic</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          Falck is open source, which means you can audit, tweak, and brag about it in your team channel.
+        </p>
+      </div>
+      <div class="surface p-6 reveal-delay-2">
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-500">Ship smarter</p>
+        <h3 class="mt-3 text-xl font-semibold text-slate-950">Build, then grow up</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          Start as a prototype, then move into Team Mode when the idea sticks. No drama, same tool.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container mx-auto px-6 pb-28">
+    <div class="surface p-10 md:p-12 text-center reveal">
+      <p class="text-sm uppercase tracking-[0.3em] text-slate-400">Next up</p>
+      <h2 class="mt-4 text-3xl font-semibold text-slate-950">Move from prototype to team-ready</h2>
+      <p class="mt-4 text-slate-600 max-w-2xl mx-auto">
+        When the idea is real, let the engineers wire the guardrails and keep building in Team Mode.
+      </p>
+      <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+        <Button href="/features/team-mode">Explore Team Mode</Button>
+        <Button href="/features/review-ready" variant="secondary">See the handoff</Button>
+      </div>
+    </div>
+  </section>
+</Layout>
