@@ -684,6 +684,7 @@ export function AIChat({ activeApp }: AIChatProps) {
   >(null);
   const [lastAbortAt, setLastAbortAt] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const errorRef = useRef(error);
   const partsByMessage = useRef<Map<string, Map<string, PartSnapshot>>>(
     new Map(),
   );
@@ -693,6 +694,10 @@ export function AIChat({ activeApp }: AIChatProps) {
   const richInputRef = useRef<RichTextareaRef | null>(null);
   const [assetUploadOpen, setAssetUploadOpen] = useState(false);
   const [assetUploadFiles, setAssetUploadFiles] = useState<File[]>([]);
+
+  useEffect(() => {
+    errorRef.current = error;
+  }, [error]);
 
   const assetConfig = activeApp?.assets;
   const canUploadAssets = Boolean(activeApp && assetConfig?.root);
@@ -1082,9 +1087,7 @@ export function AIChat({ activeApp }: AIChatProps) {
       !sending &&
       !hasPendingUserMessage &&
       !awaitingResponse &&
-      toolActivity.length === 0 &&
-      sessionStatus?.type !== "busy" &&
-      sessionStatus?.type !== "retry"
+      toolActivity.length === 0
     ) {
       return "error";
     }
@@ -1094,9 +1097,7 @@ export function AIChat({ activeApp }: AIChatProps) {
       !sending &&
       !hasPendingUserMessage &&
       !awaitingResponse &&
-      toolActivity.length === 0 &&
-      sessionStatus?.type !== "busy" &&
-      sessionStatus?.type !== "retry"
+      toolActivity.length === 0
     ) {
       return "canceled";
     }
@@ -1539,9 +1540,9 @@ export function AIChat({ activeApp }: AIChatProps) {
       if (payload.type === "server.connected") {
         setConnectionState("connected");
         setLastEventAt(new Date().toISOString());
-        setError((prev) =>
-          prev === CONNECTION_ERROR_MESSAGE ? "" : prev,
-        );
+        if (errorRef.current === CONNECTION_ERROR_MESSAGE) {
+          setError("");
+        }
         return;
       }
 
@@ -1953,7 +1954,9 @@ export function AIChat({ activeApp }: AIChatProps) {
       setToolActivity([]);
       setNotice(null);
       setLastAbortAt(null);
-      setError((prev) => (prev ? prev : message));
+      if (!errorRef.current) {
+        setError(message);
+      }
     };
 
     const abortController = new AbortController();
