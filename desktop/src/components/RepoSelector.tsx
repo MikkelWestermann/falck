@@ -71,6 +71,7 @@ export function RepoSelector({
   const [githubUser, setGithubUser] = useState<GithubUser | null>(null);
   const [githubRepos, setGithubRepos] = useState<GithubRepo[]>([]);
   const [githubLoading, setGithubLoading] = useState(false);
+  const [githubLoaded, setGithubLoaded] = useState(false);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [githubQuery, setGithubQuery] = useState("");
   const [savedQuery, setSavedQuery] = useState("");
@@ -128,13 +129,11 @@ export function RepoSelector({
   }, []);
 
   useEffect(() => {
-    if (!githubConnected || githubChecking || githubLoading) {
+    if (!githubConnected || githubChecking || githubLoading || githubLoaded) {
       return;
     }
-    if (githubRepos.length === 0) {
-      void loadGithubRepos();
-    }
-  }, [githubConnected, githubChecking, githubLoading, githubRepos.length]);
+    void loadGithubRepos();
+  }, [githubConnected, githubChecking, githubLoading, githubLoaded]);
 
   const loadSavedRepos = async () => {
     try {
@@ -170,6 +169,7 @@ export function RepoSelector({
       }
     } finally {
       setGithubLoading(false);
+      setGithubLoaded(true);
     }
   };
 
@@ -577,13 +577,15 @@ export function RepoSelector({
                       />
                     </div>
 
-                    {githubLoading ? (
+                    {githubLoading || !githubLoaded ? (
                       <div className="rounded-2xl border border-dashed border-border/70 bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">
                         Loading repositories…
                       </div>
                     ) : filteredGithubRepos.length === 0 ? (
                       <div className="rounded-2xl border border-dashed border-border/70 bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">
-                        No repositories match that search.
+                        {githubQuery.trim().length > 0
+                          ? "No repositories match that search."
+                          : "No repositories found in this account yet."}
                       </div>
                     ) : (
                       <div className="grid gap-3">

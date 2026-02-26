@@ -70,6 +70,7 @@ function CreateAstroRoute() {
   const [githubConnected, setGithubConnected] = useState(false);
   const [githubUser, setGithubUser] = useState<GithubUser | null>(null);
   const [githubRepos, setGithubRepos] = useState<GithubRepo[]>([]);
+  const [githubReposLoaded, setGithubReposLoaded] = useState(false);
   const [githubLoading, setGithubLoading] = useState(false);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -298,12 +299,19 @@ function CreateAstroRoute() {
   }, []);
 
   useEffect(() => {
+    if (repoMode !== "existing") {
+      return;
+    }
+    setGithubReposLoaded(false);
+  }, [repoMode]);
+
+  useEffect(() => {
     if (
       monorepoEnabled ||
       formValues.repoMode !== "existing" ||
       !githubConnected ||
-      githubRepos.length > 0 ||
-      githubLoading
+      githubLoading ||
+      githubReposLoaded
     ) {
       return;
     }
@@ -318,6 +326,7 @@ function CreateAstroRoute() {
         setGithubError(String(err));
       } finally {
         setGithubLoading(false);
+        setGithubReposLoaded(true);
       }
     };
 
@@ -326,8 +335,8 @@ function CreateAstroRoute() {
     monorepoEnabled,
     formValues.repoMode,
     githubConnected,
-    githubRepos.length,
     githubLoading,
+    githubReposLoaded,
   ]);
 
   useEffect(() => {
@@ -403,6 +412,15 @@ function CreateAstroRoute() {
       })),
     [githubRepos],
   );
+  const repoSelectOptions = useMemo(() => {
+    if (repoOptions.length > 0) {
+      return repoOptions;
+    }
+    if (githubLoading || !githubReposLoaded) {
+      return [{ label: "Loading repositories...", value: "" }];
+    }
+    return [{ label: "No repositories found in this account.", value: "" }];
+  }, [repoOptions, githubLoading, githubReposLoaded]);
 
   if (!sshKey) {
     return <Navigate to="/ssh" />;
@@ -529,11 +547,7 @@ function CreateAstroRoute() {
                           field={field}
                           label="Select repository"
                           required
-                          options={
-                            repoOptions.length > 0
-                              ? repoOptions
-                              : [{ label: "Loading repositories...", value: "" }]
-                          }
+                          options={repoSelectOptions}
                         />
                       )}
                     </createForm.Field>
