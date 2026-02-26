@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useForm } from "@tanstack/react-form";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 
 import { FormField, FormSelect } from "@/components/form/FormField";
@@ -19,10 +20,12 @@ import { configService } from "@/services/configService";
 import { falckService } from "@/services/falckService";
 import {
   GithubDeviceResponse,
-  GithubUser,
   githubService,
 } from "@/services/githubService";
 import { KeyType, SSHKey, sshService } from "@/services/sshService";
+import { githubKeys, sshKeys } from "@/queries/keys";
+import { useGithubHasToken, useGithubUser } from "@/queries/github";
+import { useSshKeys } from "@/queries/ssh";
 import logo from "@/assets/logo.png";
 
 type Step = "select" | "create" | "guide" | "overview";
@@ -57,14 +60,13 @@ export function SSHKeySetup({
   onClose,
   initialKey = null,
 }: SSHKeySetupProps) {
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>(() => {
     if (mode === "manage") {
       return initialKey ? "overview" : "select";
     }
     return "select";
   });
-  const [keys, setKeys] = useState<SSHKey[]>([]);
-  const [loadingKeys, setLoadingKeys] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentKey, setCurrentKey] = useState<SSHKey | null>(initialKey);
   const [copied, setCopied] = useState(false);
@@ -75,76 +77,46 @@ export function SSHKeySetup({
   const [githubDevice, setGithubDevice] = useState<GithubDeviceResponse | null>(
     null,
   );
-  const [githubUser, setGithubUser] = useState<GithubUser | null>(null);
-  const [githubConnected, setGithubConnected] = useState(false);
-  const [githubWorking, setGithubWorking] = useState(false);
   const [githubKeyAdded, setGithubKeyAdded] = useState(false);
   const [githubError, setGithubError] = useState<string | null>(null);
-  const [githubChecking, setGithubChecking] = useState(false);
   const isManageMode = mode === "manage";
+
+  const keysQuery = useSshKeys();
+  const keys = keysQuery.data ?? [];
+  const loadingKeys = keysQuery.isLoading;
+  const keysError = keysQuery.error
+    ? `Failed to load SSH keys: ${String(keysQuery.error)}`
+    : null;
+  const errorMessage = error ?? keysError;
+
+  const githubTokenQuery = useGithubHasToken(step === "guide");
+  const hasGithubToken = Boolean(githubTokenQuery.data);
+  const githubUserQuery = useGithubUser(step === "guide" && hasGithubToken);
+  const githubUser = githubUserQuery.data ?? null;
+  const tokenError = githubUserQuery.error;
+  const tokenInvalid = tokenError
+    ? String(tokenError).toLowerCase().includes("token")
+    : false;
+  const githubConnected = hasGithubToken && !tokenInvalid;
+  const githubChecking = githubTokenQuery.isLoading;
+  const githubQueryError = githubTokenQuery.error
+    ? `GitHub auth unavailable: ${String(githubTokenQuery.error)}`
+    : githubUserQuery.error
+      ? String(githubUserQuery.error)
+      : null;
+  const githubErrorMessage = githubError ?? githubQueryError;
 
   useEffect(() => {
     setError(null);
   }, [step]);
 
   useEffect(() => {
-    if (step === "select") {
-      void loadKeys();
-    }
-  }, [step]);
-
-  useEffect(() => {
     if (step !== "guide") {
       return;
     }
-
-    let active = true;
-    setGithubChecking(true);
     setGithubError(null);
     setGithubDevice(null);
     setGithubKeyAdded(false);
-
-    githubService
-      .hasToken()
-      .then((hasToken) => {
-        if (!active) {
-          return;
-        }
-        setGithubConnected(hasToken);
-        if (hasToken) {
-          githubService
-            .getUser()
-            .then((user) => {
-              if (active) {
-                setGithubUser(user);
-              }
-            })
-            .catch(() => {
-              if (active) {
-                setGithubUser(null);
-              }
-            });
-        } else {
-          setGithubUser(null);
-        }
-      })
-      .catch((err) => {
-        if (!active) {
-          return;
-        }
-        setGithubConnected(false);
-        setGithubUser(null);
-        setGithubError(`GitHub auth unavailable: ${String(err)}`);
-      })
-      .finally(() => {
-        if (active) {
-          setGithubChecking(false);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
   }, [step]);
 
   useEffect(() => {
@@ -159,20 +131,6 @@ export function SSHKeySetup({
       setStep("select");
     }
   }, [initialKey, mode]);
-
-  const loadKeys = async () => {
-    setLoadingKeys(true);
-    setError(null);
-    try {
-      const availableKeys = await sshService.listKeys();
-      setKeys(availableKeys);
-    } catch (err) {
-      setError(`Failed to load SSH keys: ${String(err)}`);
-    } finally {
-      setLoadingKeys(false);
-    }
-  };
-
 
   const handleSelectKey = (key: SSHKey) => {
     setCurrentKey(key);
@@ -228,43 +186,33 @@ export function SSHKeySetup({
     }
   };
 
-  const addKeyToGithub = async () => {
-    if (!currentKey) {
-      return;
-    }
-    try {
-      await githubService.addSshKey(
-        `Falck - ${currentKey.name}`,
-        currentKey.public_key,
-      );
-      setGithubKeyAdded(true);
-    } catch (err) {
-      const message = String(err);
-      const lowered = message.toLowerCase();
-      if (lowered.includes("already exists") || lowered.includes("already in use")) {
-        setGithubKeyAdded(true);
-        return;
+  const addKeyMutation = useMutation({
+    mutationFn: async (key: SSHKey) => {
+      try {
+        await githubService.addSshKey(`Falck - ${key.name}`, key.public_key);
+      } catch (err) {
+        const message = String(err);
+        const lowered = message.toLowerCase();
+        if (
+          lowered.includes("already exists") ||
+          lowered.includes("already in use")
+        ) {
+          return;
+        }
+        throw err;
       }
-      throw err;
-    }
-  };
-
-  const handleAddKeyToGithub = async () => {
-    setGithubError(null);
-    setGithubWorking(true);
-    try {
-      await addKeyToGithub();
-    } catch (err) {
+    },
+    onSuccess: () => {
+      setGithubKeyAdded(true);
+      setGithubError(null);
+    },
+    onError: (err) => {
       setGithubError(`Failed to add key to GitHub: ${String(err)}`);
-    } finally {
-      setGithubWorking(false);
-    }
-  };
+    },
+  });
 
-  const handleConnectGithub = async () => {
-    setGithubError(null);
-    setGithubWorking(true);
-    try {
+  const connectMutation = useMutation({
+    mutationFn: async () => {
       const device = await githubService.startDeviceFlow();
       setGithubDevice(device);
       await falckService.openInBrowser(
@@ -275,25 +223,38 @@ export function SSHKeySetup({
         device.interval,
         device.expires_in,
       );
-      setGithubConnected(true);
+    },
+    onSuccess: async () => {
       setGithubDevice(null);
-      try {
-        const user = await githubService.getUser();
-        setGithubUser(user);
-      } catch {
-        setGithubUser(null);
-      }
-      try {
-        await addKeyToGithub();
-      } catch (err) {
-        setGithubError(`Failed to add key to GitHub: ${String(err)}`);
-      }
-    } catch (err) {
-      setGithubConnected(false);
+      setGithubError(null);
+      await queryClient.invalidateQueries({ queryKey: githubKeys.all });
+    },
+    onError: (err) => {
       setGithubDevice(null);
       setGithubError(`GitHub login failed: ${String(err)}`);
-    } finally {
-      setGithubWorking(false);
+    },
+  });
+
+  const githubWorking =
+    addKeyMutation.isPending || connectMutation.isPending;
+
+  const handleAddKeyToGithub = async () => {
+    if (!currentKey) {
+      return;
+    }
+    setGithubError(null);
+    await addKeyMutation.mutateAsync(currentKey);
+  };
+
+  const handleConnectGithub = async () => {
+    setGithubError(null);
+    try {
+      await connectMutation.mutateAsync();
+      if (currentKey) {
+        await addKeyMutation.mutateAsync(currentKey);
+      }
+    } catch {
+      // Errors are surfaced via mutation handlers.
     }
   };
 
@@ -316,6 +277,10 @@ export function SSHKeySetup({
           value.passphrase || null,
           value.keyType,
         );
+        queryClient.setQueryData<SSHKey[]>(sshKeys.list(), (prev) => [
+          key,
+          ...(prev ?? []),
+        ]);
         setCurrentKey(key);
         setGithubKeyAdded(false);
         setGithubError(null);
@@ -390,9 +355,9 @@ export function SSHKeySetup({
                   )}
                 </createForm.Field>
 
-                {error && (
+                {errorMessage && (
                   <Alert variant="destructive">
-                    <AlertDescription>{error}</AlertDescription>
+                    <AlertDescription>{errorMessage}</AlertDescription>
                   </Alert>
                 )}
 
@@ -534,9 +499,9 @@ export function SSHKeySetup({
                   </Alert>
                 )}
 
-                {githubError && (
+                {githubErrorMessage && (
                   <Alert variant="destructive" className="mt-4">
-                    <AlertDescription>{githubError}</AlertDescription>
+                    <AlertDescription>{githubErrorMessage}</AlertDescription>
                   </Alert>
                 )}
               </div>
@@ -755,7 +720,7 @@ export function SSHKeySetup({
               )}
 
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => void loadKeys()}>
+                <Button variant="outline" onClick={() => void keysQuery.refetch()}>
                   Refresh
                 </Button>
                 <Button onClick={() => setStep("create")} className="flex-1">
@@ -768,9 +733,9 @@ export function SSHKeySetup({
                 )}
               </div>
 
-              {error && (
+              {errorMessage && (
                 <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
+                  <AlertDescription>{errorMessage}</AlertDescription>
                 </Alert>
               )}
             </CardContent>

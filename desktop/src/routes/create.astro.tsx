@@ -24,19 +24,15 @@ import {
 } from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useGithubHasToken, useGithubRepos, useGithubUser } from "@/queries/github";
+import { useDefaultRepoDir } from "@/queries/settings";
 import { useAppState } from "@/router/app-state";
 import {
   createAstroProjectSchema,
   type CreateAstroProjectInput as CreateAstroProjectFormValues,
 } from "@/schemas/forms";
-import {
-  githubService,
-  type GithubRepo,
-  type GithubUser,
-} from "@/services/githubService";
 import { gitService } from "@/services/gitService";
 import { projectService } from "@/services/projectService";
-import { settingsService } from "@/services/settingsService";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 
 const ASTRO_TEMPLATE = "MikkelWestermann/falck-astro";
@@ -65,14 +61,6 @@ export const Route = createFileRoute("/create/astro")({
 function CreateAstroRoute() {
   const navigate = Route.useNavigate();
   const { sshKey, setRepoPath } = useAppState();
-  const [defaultRepoDir, setDefaultRepoDir] = useState<string | null>(null);
-  const [defaultRepoDirLoading, setDefaultRepoDirLoading] = useState(true);
-  const [githubConnected, setGithubConnected] = useState(false);
-  const [githubUser, setGithubUser] = useState<GithubUser | null>(null);
-  const [githubRepos, setGithubRepos] = useState<GithubRepo[]>([]);
-  const [githubReposLoaded, setGithubReposLoaded] = useState(false);
-  const [githubLoading, setGithubLoading] = useState(false);
-  const [githubError, setGithubError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -133,7 +121,6 @@ function CreateAstroRoute() {
         return;
       }
       setError(null);
-      setGithubError(null);
       const progressId = nanoid();
       setProgressMessage("Preparing to create your project...");
       setProgressDetail(null);
@@ -247,97 +234,36 @@ function CreateAstroRoute() {
   const monorepoInstallCommand =
     formValues.monorepoInstallCommand?.trim() ?? "";
 
-  useEffect(() => {
-    let active = true;
-    settingsService
-      .getDefaultRepoDir()
-      .then((dir) => {
-        if (active) {
-          setDefaultRepoDir(dir);
-        }
-      })
-      .catch((err) => {
-        if (active) {
-          setError(`Failed to load default folder: ${String(err)}`);
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setDefaultRepoDirLoading(false);
-        }
-      });
+  const defaultRepoDirQuery = useDefaultRepoDir();
+  const defaultRepoDir = defaultRepoDirQuery.data ?? null;
+  const defaultRepoDirLoading = defaultRepoDirQuery.isLoading;
+  const defaultRepoDirError = defaultRepoDirQuery.error
+    ? `Failed to load default folder: ${String(defaultRepoDirQuery.error)}`
+    : null;
 
-    githubService
-      .hasToken()
-      .then((hasToken) => {
-        if (!active) return;
-        setGithubConnected(hasToken);
-        if (hasToken) {
-          githubService
-            .getUser()
-            .then((user) => {
-              if (active) {
-                setGithubUser(user);
-              }
-            })
-            .catch(() => {
-              if (active) {
-                setGithubUser(null);
-              }
-            });
-        }
-      })
-      .catch((err) => {
-        if (!active) return;
-        setGithubConnected(false);
-        setGithubError(`GitHub auth unavailable: ${String(err)}`);
-      });
+  const githubTokenQuery = useGithubHasToken();
+  const hasGithubToken = Boolean(githubTokenQuery.data);
+  const githubUserQuery = useGithubUser(hasGithubToken);
+  const githubUser = githubUserQuery.data ?? null;
+  const githubReposQuery = useGithubRepos(
+    !monorepoEnabled && repoMode === "existing" && hasGithubToken,
+  );
+  const githubRepos = githubReposQuery.data ?? [];
+  const githubLoading = githubReposQuery.isFetching;
 
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (repoMode !== "existing") {
-      return;
-    }
-    setGithubReposLoaded(false);
-  }, [repoMode]);
-
-  useEffect(() => {
-    if (
-      monorepoEnabled ||
-      formValues.repoMode !== "existing" ||
-      !githubConnected ||
-      githubLoading ||
-      githubReposLoaded
-    ) {
-      return;
-    }
-
-    const loadRepos = async () => {
-      setGithubLoading(true);
-      setGithubError(null);
-      try {
-        const repos = await githubService.listRepos();
-        setGithubRepos(repos);
-      } catch (err) {
-        setGithubError(String(err));
-      } finally {
-        setGithubLoading(false);
-        setGithubReposLoaded(true);
-      }
-    };
-
-    void loadRepos();
-  }, [
-    monorepoEnabled,
-    formValues.repoMode,
-    githubConnected,
-    githubLoading,
-    githubReposLoaded,
-  ]);
+  const tokenError = githubUserQuery.error ?? githubReposQuery.error;
+  const tokenInvalid = tokenError
+    ? String(tokenError).toLowerCase().includes("token")
+    : false;
+  const githubConnected = hasGithubToken && !tokenInvalid;
+  const githubError = githubReposQuery.error
+    ? String(githubReposQuery.error)
+    : githubUserQuery.error
+      ? String(githubUserQuery.error)
+      : githubTokenQuery.error
+        ? `GitHub auth unavailable: ${String(githubTokenQuery.error)}`
+        : null;
+  const errorMessage = error ?? defaultRepoDirError;
 
   useEffect(() => {
     if (!repoNameAuto || repoMode !== "new") {
@@ -416,11 +342,14 @@ function CreateAstroRoute() {
     if (repoOptions.length > 0) {
       return repoOptions;
     }
-    if (githubLoading || !githubReposLoaded) {
+    if (!githubConnected) {
+      return [{ label: "Connect GitHub to load repositories.", value: "" }];
+    }
+    if (githubLoading) {
       return [{ label: "Loading repositories...", value: "" }];
     }
     return [{ label: "No repositories found in this account.", value: "" }];
-  }, [repoOptions, githubLoading, githubReposLoaded]);
+  }, [repoOptions, githubConnected, githubLoading]);
 
   if (!sshKey) {
     return <Navigate to="/ssh" />;
@@ -845,9 +774,9 @@ function CreateAstroRoute() {
               <AlertDescription>{githubError}</AlertDescription>
             </Alert>
           )}
-          {error && (
+          {errorMessage && (
             <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>{errorMessage}</AlertDescription>
             </Alert>
           )}
 

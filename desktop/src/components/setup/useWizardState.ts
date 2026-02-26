@@ -1,11 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { configService } from "@/services/configService";
 import { backendService, BackendMode, BackendPrereqStatus } from "@/services/backendService";
+import { githubKeys, sshKeys } from "@/queries/keys";
+import { useGithubHasToken, useGithubUser } from "@/queries/github";
+import { useSshKeys, useSshOs } from "@/queries/ssh";
 import {
   githubService,
   type GithubDeviceResponse,
-  type GithubUser,
 } from "@/services/githubService";
 import {
   opencodeService,
@@ -13,45 +16,32 @@ import {
   type OpenCodeStatus,
 } from "@/services/opencodeService";
 import { falckService } from "@/services/falckService";
-import { KeyType, OS, SSHKey, sshService } from "@/services/sshService";
+import { KeyType, SSHKey, sshService } from "@/services/sshService";
 
 export function useGithubSetup() {
-  const [connected, setConnected] = useState(false);
-  const [user, setUser] = useState<GithubUser | null>(null);
+  const queryClient = useQueryClient();
   const [device, setDevice] = useState<GithubDeviceResponse | null>(null);
-  const [checking, setChecking] = useState(false);
-  const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    setChecking(true);
-    setError(null);
-    try {
-      const hasToken = await githubService.hasToken();
-      setConnected(hasToken);
-      if (hasToken) {
-        try {
-          const nextUser = await githubService.getUser();
-          setUser(nextUser);
-        } catch {
-          setUser(null);
-        }
-      } else {
-        setUser(null);
-      }
-    } catch (err) {
-      setConnected(false);
-      setUser(null);
-      setError(`GitHub auth unavailable: ${String(err)}`);
-    } finally {
-      setChecking(false);
-    }
-  }, []);
+  const githubTokenQuery = useGithubHasToken();
+  const hasGithubToken = Boolean(githubTokenQuery.data);
+  const githubUserQuery = useGithubUser(hasGithubToken);
+  const tokenError = githubUserQuery.error;
+  const tokenInvalid = tokenError
+    ? String(tokenError).toLowerCase().includes("token")
+    : false;
+  const connected = hasGithubToken && !tokenInvalid;
+  const user = githubUserQuery.data ?? null;
+  const checking = githubTokenQuery.isLoading;
+  const queryError = githubTokenQuery.error
+    ? `GitHub auth unavailable: ${String(githubTokenQuery.error)}`
+    : githubUserQuery.error
+      ? String(githubUserQuery.error)
+      : null;
+  const errorMessage = error ?? queryError;
 
-  const connect = useCallback(async () => {
-    setWorking(true);
-    setError(null);
-    try {
+  const connectMutation = useMutation({
+    mutationFn: async () => {
       const nextDevice = await githubService.startDeviceFlow();
       setDevice(nextDevice);
       await falckService.openInBrowser(
@@ -62,30 +52,35 @@ export function useGithubSetup() {
         nextDevice.interval,
         nextDevice.expires_in,
       );
-      setConnected(true);
+    },
+    onSuccess: async () => {
       setDevice(null);
-      try {
-        const nextUser = await githubService.getUser();
-        setUser(nextUser);
-      } catch {
-        setUser(null);
-      }
-    } catch (err) {
-      setConnected(false);
+      setError(null);
+      await queryClient.invalidateQueries({ queryKey: githubKeys.all });
+    },
+    onError: (err) => {
       setDevice(null);
       setError(`GitHub login failed: ${String(err)}`);
-    } finally {
-      setWorking(false);
-    }
-  }, []);
+    },
+  });
+
+  const refresh = useCallback(async () => {
+    setError(null);
+    await queryClient.invalidateQueries({ queryKey: githubKeys.all });
+  }, [queryClient]);
+
+  const connect = useCallback(() => {
+    setError(null);
+    connectMutation.mutate();
+  }, [connectMutation]);
 
   return {
     connected,
     user,
     device,
     checking,
-    working,
-    error,
+    working: connectMutation.isPending,
+    error: errorMessage,
     refresh,
     connect,
   };
@@ -97,42 +92,35 @@ interface UseSshSetupOptions {
 }
 
 export function useSshSetup({ initialKey, setSshKey }: UseSshSetupOptions) {
-  const [keys, setKeys] = useState<SSHKey[]>([]);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<SSHKey | null>(initialKey);
   const [manualConfirmed, setManualConfirmed] = useState(false);
   const [keyAdded, setKeyAdded] = useState(false);
   const [copyState, setCopyState] = useState(false);
-  const [addingKey, setAddingKey] = useState(false);
-  const [os, setOs] = useState<OS>("unknown");
   const [creatingKey, setCreatingKey] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [agentWorking, setAgentWorking] = useState(false);
   const [agentMessage, setAgentMessage] = useState<string | null>(null);
   const [agentError, setAgentError] = useState<string | null>(null);
 
+  const keysQuery = useSshKeys();
+  const osQuery = useSshOs();
+  const keys = keysQuery.data ?? [];
+  const loading = keysQuery.isLoading;
+  const keysError = keysQuery.error
+    ? `Failed to load SSH keys: ${String(keysQuery.error)}`
+    : null;
+  const errorMessage = error ?? keysError;
+  const os = osQuery.data ?? "unknown";
+
   const refreshKeys = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const available = await sshService.listKeys();
-      setKeys(available);
-    } catch (err) {
-      setError(`Failed to load SSH keys: ${String(err)}`);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    await queryClient.invalidateQueries({ queryKey: sshKeys.list() });
+  }, [queryClient]);
 
   const refreshOs = useCallback(async () => {
-    try {
-      const nextOs = await sshService.getOS();
-      setOs(nextOs);
-    } catch {
-      setOs("unknown");
-    }
-  }, []);
+    await queryClient.invalidateQueries({ queryKey: sshKeys.os() });
+  }, [queryClient]);
 
   const selectKey = useCallback(
     (key: SSHKey) => {
@@ -181,7 +169,10 @@ export function useSshSetup({ initialKey, setSshKey }: UseSshSetupOptions) {
         setSelectedKey(key);
         setSshKey(key);
         configService.setSelectedSSHKey(key);
-        setKeys((prev) => [key, ...prev]);
+        queryClient.setQueryData<SSHKey[]>(sshKeys.list(), (prev) => [
+          key,
+          ...(prev ?? []),
+        ]);
         setKeyAdded(false);
         setManualConfirmed(false);
       } catch (err) {
@@ -219,30 +210,40 @@ export function useSshSetup({ initialKey, setSshKey }: UseSshSetupOptions) {
       });
   }, [selectedKey]);
 
+  const addKeyMutation = useMutation({
+    mutationFn: async (key: SSHKey) => {
+      try {
+        await githubService.addSshKey(`Falck - ${key.name}`, key.public_key);
+      } catch (err) {
+        const message = String(err);
+        const lowered = message.toLowerCase();
+        if (
+          lowered.includes("already exists") ||
+          lowered.includes("already in use")
+        ) {
+          return;
+        }
+        throw err;
+      }
+    },
+    onSuccess: () => {
+      setKeyAdded(true);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(`Failed to add key to GitHub: ${String(err)}`);
+    },
+  });
+
+  const addingKey = addKeyMutation.isPending;
+
   const addKeyToGithub = useCallback(async () => {
     if (!selectedKey) {
       return;
     }
-    setAddingKey(true);
     setError(null);
-    try {
-      await githubService.addSshKey(
-        `Falck - ${selectedKey.name}`,
-        selectedKey.public_key,
-      );
-      setKeyAdded(true);
-    } catch (err) {
-      const message = String(err);
-      const lowered = message.toLowerCase();
-      if (lowered.includes("already exists") || lowered.includes("already in use")) {
-        setKeyAdded(true);
-      } else {
-        setError(`Failed to add key to GitHub: ${message}`);
-      }
-    } finally {
-      setAddingKey(false);
-    }
-  }, [selectedKey]);
+    await addKeyMutation.mutateAsync(selectedKey);
+  }, [addKeyMutation, selectedKey]);
 
   const addToAgent = useCallback(
     async (passphrase: string) => {
@@ -282,7 +283,7 @@ export function useSshSetup({ initialKey, setSshKey }: UseSshSetupOptions) {
   return {
     keys,
     loading,
-    error,
+    error: errorMessage,
     selectedKey,
     manualConfirmed,
     keyAdded,

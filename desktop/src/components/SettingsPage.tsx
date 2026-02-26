@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,6 @@ import { configService } from "@/services/configService";
 import { falckService } from "@/services/falckService";
 import {
   GithubDeviceResponse,
-  GithubUser,
   githubService,
 } from "@/services/githubService";
 import { settingsService } from "@/services/settingsService";
@@ -35,6 +35,9 @@ import { SSHKey } from "@/services/sshService";
 import { cn } from "@/lib/utils";
 import { ArrowLeft } from "lucide-react";
 import { useAppState } from "@/router/app-state";
+import { githubKeys, settingsKeys } from "@/queries/keys";
+import { useGithubHasToken, useGithubUser } from "@/queries/github";
+import { useDefaultRepoDir } from "@/queries/settings";
 
 interface SettingsPageProps {
   sshKey: SSHKey;
@@ -54,17 +57,11 @@ export function SettingsPage({
   onClose,
 }: SettingsPageProps) {
   const { setRepoPath, setSshKey } = useAppState();
-  const [defaultRepoDir, setDefaultRepoDir] = useState<string | null>(null);
-  const [repoDirLoading, setRepoDirLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [repoDirError, setRepoDirError] = useState<string | null>(null);
-  const [repoDirSaving, setRepoDirSaving] = useState(false);
-  const [githubConnected, setGithubConnected] = useState(false);
-  const [githubUser, setGithubUser] = useState<GithubUser | null>(null);
   const [githubDevice, setGithubDevice] = useState<GithubDeviceResponse | null>(
     null,
   );
-  const [githubWorking, setGithubWorking] = useState(false);
-  const [githubChecking, setGithubChecking] = useState(true);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [openCodeReady, setOpenCodeReady] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
@@ -72,73 +69,29 @@ export function SettingsPage({
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
-    const loadDefaultDir = async () => {
-      setRepoDirLoading(true);
-      try {
-        const dir = await settingsService.getDefaultRepoDir();
-        if (mounted) {
-          setDefaultRepoDir(dir);
-        }
-      } catch (err) {
-        if (mounted) {
-          setRepoDirError(`Failed to load default folder: ${String(err)}`);
-        }
-      } finally {
-        if (mounted) {
-          setRepoDirLoading(false);
-        }
-      }
-    };
-    void loadDefaultDir();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  const defaultRepoDirQuery = useDefaultRepoDir();
+  const defaultRepoDir = defaultRepoDirQuery.data ?? null;
+  const repoDirLoading = defaultRepoDirQuery.isLoading;
+  const repoDirLoadError = defaultRepoDirQuery.error
+    ? `Failed to load default folder: ${String(defaultRepoDirQuery.error)}`
+    : null;
 
-  useEffect(() => {
-    let active = true;
-    setGithubChecking(true);
-    githubService
-      .hasToken()
-      .then((hasToken) => {
-        if (!active) {
-          return;
-        }
-        setGithubConnected(hasToken);
-        if (hasToken) {
-          githubService
-            .getUser()
-            .then((user) => {
-              if (active) {
-                setGithubUser(user);
-              }
-            })
-            .catch(() => {
-              if (active) {
-                setGithubUser(null);
-              }
-            });
-        }
-      })
-      .catch((err) => {
-        if (!active) {
-          return;
-        }
-        setGithubConnected(false);
-        setGithubError(`GitHub auth unavailable: ${String(err)}`);
-      })
-      .finally(() => {
-        if (active) {
-          setGithubChecking(false);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
+  const githubTokenQuery = useGithubHasToken();
+  const hasGithubToken = Boolean(githubTokenQuery.data);
+  const githubUserQuery = useGithubUser(hasGithubToken);
+  const githubUser = githubUserQuery.data ?? null;
+  const tokenError = githubUserQuery.error;
+  const tokenInvalid = tokenError
+    ? String(tokenError).toLowerCase().includes("token")
+    : false;
+  const githubConnected = hasGithubToken && !tokenInvalid;
+  const githubChecking = githubTokenQuery.isLoading;
+  const githubQueryError = githubTokenQuery.error
+    ? `GitHub auth unavailable: ${String(githubTokenQuery.error)}`
+    : githubUserQuery.error
+      ? String(githubUserQuery.error)
+      : null;
+  const githubErrorMessage = githubError ?? githubQueryError;
 
   useEffect(() => {
     const win = window as Window & {
@@ -160,10 +113,8 @@ export function SettingsPage({
     return () => window.clearTimeout(id);
   }, []);
 
-  const handleGithubConnect = async () => {
-    setGithubError(null);
-    setGithubWorking(true);
-    try {
+  const connectMutation = useMutation({
+    mutationFn: async () => {
       const device = await githubService.startDeviceFlow();
       setGithubDevice(device);
       await falckService.openInBrowser(
@@ -174,41 +125,58 @@ export function SettingsPage({
         device.interval,
         device.expires_in,
       );
-      setGithubConnected(true);
+    },
+    onSuccess: async () => {
       setGithubDevice(null);
-      try {
-        const user = await githubService.getUser();
-        setGithubUser(user);
-      } catch {
-        setGithubUser(null);
-      }
-    } catch (err) {
-      setGithubConnected(false);
+      setGithubError(null);
+      await queryClient.invalidateQueries({ queryKey: githubKeys.all });
+    },
+    onError: (err) => {
       setGithubDevice(null);
       setGithubError(`GitHub login failed: ${String(err)}`);
-    } finally {
-      setGithubWorking(false);
-    }
+    },
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      await githubService.clearToken();
+    },
+    onSuccess: async () => {
+      setGithubDevice(null);
+      await queryClient.invalidateQueries({ queryKey: githubKeys.all });
+    },
+    onError: (err) => {
+      setGithubError(`Failed to disconnect: ${String(err)}`);
+    },
+  });
+
+  const updateRepoDirMutation = useMutation({
+    mutationFn: async (path: string) => {
+      await settingsService.setDefaultRepoDir(path);
+      return path;
+    },
+    onSuccess: (path) => {
+      queryClient.setQueryData(settingsKeys.defaultRepoDir(), path);
+    },
+  });
+
+  const githubWorking =
+    connectMutation.isPending || disconnectMutation.isPending;
+  const repoDirSaving = updateRepoDirMutation.isPending;
+  const repoDirErrorMessage = repoDirError ?? repoDirLoadError;
+
+  const handleGithubConnect = async () => {
+    setGithubError(null);
+    connectMutation.mutate();
   };
 
-  const handleGithubDisconnect = async () => {
+  const handleGithubDisconnect = () => {
     setGithubError(null);
-    setGithubWorking(true);
-    try {
-      await githubService.clearToken();
-      setGithubConnected(false);
-      setGithubUser(null);
-      setGithubDevice(null);
-    } catch (err) {
-      setGithubError(`Failed to disconnect: ${String(err)}`);
-    } finally {
-      setGithubWorking(false);
-    }
+    disconnectMutation.mutate();
   };
 
   const handlePickRepoDir = async () => {
     setRepoDirError(null);
-    setRepoDirSaving(true);
     try {
       const selection = await open({
         directory: true,
@@ -223,12 +191,9 @@ export function SettingsPage({
       if (!selectedPath) {
         return;
       }
-      await settingsService.setDefaultRepoDir(selectedPath);
-      setDefaultRepoDir(selectedPath);
+      await updateRepoDirMutation.mutateAsync(selectedPath);
     } catch (err) {
       setRepoDirError(`Failed to update folder: ${String(err)}`);
-    } finally {
-      setRepoDirSaving(false);
     }
   };
 
@@ -334,9 +299,9 @@ export function SettingsPage({
                   </div>
                 )}
 
-                {repoDirError && (
+                {repoDirErrorMessage && (
                   <Alert variant="destructive">
-                    <AlertDescription>{repoDirError}</AlertDescription>
+                    <AlertDescription>{repoDirErrorMessage}</AlertDescription>
                   </Alert>
                 )}
               </CardContent>
@@ -423,9 +388,9 @@ export function SettingsPage({
                   </div>
                 )}
 
-                {githubError && (
+                {githubErrorMessage && (
                   <Alert variant="destructive">
-                    <AlertDescription>{githubError}</AlertDescription>
+                    <AlertDescription>{githubErrorMessage}</AlertDescription>
                   </Alert>
                 )}
               </CardContent>

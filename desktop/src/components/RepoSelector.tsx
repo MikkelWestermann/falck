@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "@tanstack/react-form";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { join } from "@tauri-apps/api/path";
 
 import { FormField } from "@/components/form/FormField";
@@ -23,16 +24,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { gitKeys, githubKeys } from "@/queries/keys";
+import { useSavedRepos } from "@/queries/git";
+import { useGithubHasToken, useGithubRepos, useGithubUser } from "@/queries/github";
+import { useDefaultRepoDir } from "@/queries/settings";
 import { cloneRepoSchema, openRepoSchema } from "@/schemas/forms";
 import { falckService } from "@/services/falckService";
 import {
   GithubDeviceResponse,
   GithubRepo,
-  GithubUser,
   githubService,
 } from "@/services/githubService";
 import { gitService, SavedRepo } from "@/services/gitService";
-import { settingsService } from "@/services/settingsService";
 import { ThemeButton } from "@/components/ThemeButton";
 import {
   ChevronDown,
@@ -57,21 +60,11 @@ export function RepoSelector({
   onOpenSettings,
   onCreateProject,
 }: RepoSelectorProps) {
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
-  const [savedRepos, setSavedRepos] = useState<SavedRepo[]>([]);
-  const [defaultRepoDir, setDefaultRepoDir] = useState<string | null>(null);
-  const [defaultRepoDirLoading, setDefaultRepoDirLoading] = useState(true);
-  const [githubConnected, setGithubConnected] = useState(false);
-  const [githubChecking, setGithubChecking] = useState(true);
-  const [githubAuthBusy, setGithubAuthBusy] = useState(false);
   const [githubDevice, setGithubDevice] = useState<GithubDeviceResponse | null>(
     null,
   );
-  const [githubUser, setGithubUser] = useState<GithubUser | null>(null);
-  const [githubRepos, setGithubRepos] = useState<GithubRepo[]>([]);
-  const [githubLoading, setGithubLoading] = useState(false);
-  const [githubLoaded, setGithubLoaded] = useState(false);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [githubQuery, setGithubQuery] = useState("");
   const [savedQuery, setSavedQuery] = useState("");
@@ -80,103 +73,38 @@ export function RepoSelector({
   const [repoToRemove, setRepoToRemove] = useState<SavedRepo | null>(null);
   const [removingRepo, setRemovingRepo] = useState(false);
 
-  useEffect(() => {
-    void loadSavedRepos();
-    void loadDefaultRepoDir();
-  }, []);
+  const savedReposQuery = useSavedRepos();
+  const savedRepos = savedReposQuery.data ?? [];
+  const defaultRepoDirQuery = useDefaultRepoDir();
+  const defaultRepoDir = defaultRepoDirQuery.data ?? null;
+  const defaultRepoDirLoading = defaultRepoDirQuery.isLoading;
 
-  useEffect(() => {
-    let active = true;
-    setGithubChecking(true);
-    githubService
-      .hasToken()
-      .then((hasToken) => {
-        if (!active) {
-          return;
-        }
-        setGithubConnected(hasToken);
-        if (hasToken) {
-          githubService
-            .getUser()
-            .then((user) => {
-              if (active) {
-                setGithubUser(user);
-              }
-            })
-            .catch(() => {
-              if (active) {
-                setGithubUser(null);
-              }
-            });
-        }
-      })
-      .catch((err) => {
-        if (!active) {
-          return;
-        }
-        setGithubConnected(false);
-        setGithubError(`GitHub auth unavailable: ${String(err)}`);
-      })
-      .finally(() => {
-        if (active) {
-          setGithubChecking(false);
-        }
-      });
+  const githubTokenQuery = useGithubHasToken();
+  const hasGithubToken = Boolean(githubTokenQuery.data);
+  const githubUserQuery = useGithubUser(hasGithubToken);
+  const githubReposQuery = useGithubRepos(hasGithubToken);
+  const githubUser = githubUserQuery.data ?? null;
+  const githubRepos = githubReposQuery.data ?? [];
+  const githubLoading = githubReposQuery.isFetching;
 
-    return () => {
-      active = false;
-    };
-  }, []);
+  const tokenError = githubUserQuery.error ?? githubReposQuery.error;
+  const tokenInvalid = tokenError
+    ? String(tokenError).toLowerCase().includes("token")
+    : false;
+  const githubConnected = hasGithubToken && !tokenInvalid;
+  const githubChecking = githubTokenQuery.isLoading;
 
-  useEffect(() => {
-    if (!githubConnected || githubChecking || githubLoading || githubLoaded) {
-      return;
-    }
-    void loadGithubRepos();
-  }, [githubConnected, githubChecking, githubLoading, githubLoaded]);
+  const githubQueryError = githubReposQuery.error
+    ? String(githubReposQuery.error)
+    : githubUserQuery.error
+      ? String(githubUserQuery.error)
+      : githubTokenQuery.error
+        ? `GitHub auth unavailable: ${String(githubTokenQuery.error)}`
+        : null;
+  const githubErrorMessage = githubError ?? githubQueryError;
 
-  const loadSavedRepos = async () => {
-    try {
-      const repos = await gitService.listSavedRepos();
-      setSavedRepos(repos);
-    } catch (err) {
-      console.error("Failed to load saved repos:", err);
-    }
-  };
-
-  const loadDefaultRepoDir = async () => {
-    try {
-      const dir = await settingsService.getDefaultRepoDir();
-      setDefaultRepoDir(dir);
-    } catch (err) {
-      console.error("Failed to load default repo dir:", err);
-    } finally {
-      setDefaultRepoDirLoading(false);
-    }
-  };
-
-  const loadGithubRepos = async () => {
-    setGithubLoading(true);
-    setGithubError(null);
-    try {
-      const repos = await githubService.listRepos();
-      setGithubRepos(repos);
-    } catch (err) {
-      const message = String(err);
-      setGithubError(message);
-      if (message.toLowerCase().includes("token")) {
-        setGithubConnected(false);
-      }
-    } finally {
-      setGithubLoading(false);
-      setGithubLoaded(true);
-    }
-  };
-
-  const handleGithubLogin = async () => {
-    setGithubError(null);
-    setGithubAuthBusy(true);
-    try {
+  const connectMutation = useMutation({
+    mutationFn: async () => {
       const device = await githubService.startDeviceFlow();
       setGithubDevice(device);
       await falckService.openInBrowser(
@@ -187,22 +115,81 @@ export function RepoSelector({
         device.interval,
         device.expires_in,
       );
-      setGithubConnected(true);
+    },
+    onSuccess: async () => {
       setGithubDevice(null);
-      try {
-        const user = await githubService.getUser();
-        setGithubUser(user);
-      } catch {
-        setGithubUser(null);
-      }
-      await loadGithubRepos();
-    } catch (err) {
-      setGithubConnected(false);
+      setGithubError(null);
+      await queryClient.invalidateQueries({ queryKey: githubKeys.all });
+    },
+    onError: (err) => {
       setGithubDevice(null);
       setGithubError(`GitHub login failed: ${String(err)}`);
-    } finally {
-      setGithubAuthBusy(false);
-    }
+    },
+  });
+
+  const cloneRepoMutation = useMutation({
+    mutationFn: async (input: {
+      name: string;
+      url: string;
+      repoLabel: string;
+    }) => {
+      if (!defaultRepoDir) {
+        throw new Error("Set a default clone folder in settings first.");
+      }
+      const folderName = normalizeRepoFolder(input.name);
+      const localPath = await join(defaultRepoDir, folderName);
+      await gitService.cloneRepository(input.url, localPath);
+      await gitService.saveRepo(input.repoLabel, localPath);
+      return localPath;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: gitKeys.savedRepos() });
+    },
+  });
+
+  const saveRepoMutation = useMutation({
+    mutationFn: async (input: {
+      name: string;
+      path: string;
+      validate?: boolean;
+    }) => {
+      if (input.validate) {
+        await gitService.getRepositoryInfo(input.path);
+      }
+      await gitService.saveRepo(input.name, input.path);
+      return input.path;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: gitKeys.savedRepos() });
+    },
+  });
+
+  const removeRepoMutation = useMutation({
+    mutationFn: async (path: string) => {
+      await gitService.removeSavedRepo(path);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: gitKeys.savedRepos() });
+    },
+  });
+
+  const cloning = cloneRepoMutation.isPending;
+  const openingRepo = saveRepoMutation.isPending;
+  const busy = cloning || openingRepo;
+  const githubAuthBusy = connectMutation.isPending;
+
+  const handleGithubLogin = () => {
+    setGithubError(null);
+    connectMutation.mutate();
+  };
+
+  const handleRefreshGithubRepos = () => {
+    setGithubError(null);
+    void githubReposQuery.refetch();
+  };
+
+  const handleRefreshSavedRepos = () => {
+    void savedReposQuery.refetch();
   };
 
   const normalizeRepoFolder = (name: string) => {
@@ -222,23 +209,17 @@ export function RepoSelector({
       onSubmit: cloneRepoSchema,
     },
     onSubmit: async ({ value }) => {
-      setLoading(true);
       setError(null);
       try {
-        if (!defaultRepoDir) {
-          throw new Error("Set a default clone folder in settings first.");
-        }
-        const folderName = normalizeRepoFolder(value.name);
-        const localPath = await join(defaultRepoDir, folderName);
-        await gitService.cloneRepository(value.url, localPath);
-        await gitService.saveRepo(value.name, localPath);
+        const localPath = await cloneRepoMutation.mutateAsync({
+          name: value.name,
+          url: value.url,
+          repoLabel: value.name,
+        });
         onRepoSelect(localPath);
         cloneForm.reset();
-        await loadSavedRepos();
       } catch (err) {
         setError(String(err));
-      } finally {
-        setLoading(false);
       }
     },
   });
@@ -263,53 +244,48 @@ export function RepoSelector({
       onSubmit: openRepoSchema,
     },
     onSubmit: async ({ value }) => {
-      setLoading(true);
       setError(null);
       try {
-        await gitService.getRepositoryInfo(value.path);
-        await gitService.saveRepo(value.name, value.path);
-        onRepoSelect(value.path);
+        const localPath = await saveRepoMutation.mutateAsync({
+          name: value.name,
+          path: value.path,
+          validate: true,
+        });
+        onRepoSelect(localPath);
         openForm.reset();
-        await loadSavedRepos();
       } catch (err) {
         setError("That folder does not look like a Git repository.");
-      } finally {
-        setLoading(false);
       }
     },
   });
 
   const handleOpenSaved = async (path: string, name: string) => {
-    setLoading(true);
     setError(null);
     try {
-      await gitService.saveRepo(name, path);
-      onRepoSelect(path);
+      const localPath = await saveRepoMutation.mutateAsync({
+        name,
+        path,
+        validate: false,
+      });
+      onRepoSelect(localPath);
     } catch (err) {
       setError("That repository is no longer available.");
-      await loadSavedRepos();
+      await queryClient.invalidateQueries({ queryKey: gitKeys.savedRepos() });
     } finally {
-      setLoading(false);
     }
   };
 
   const handleCloneGithubRepo = async (repo: GithubRepo) => {
-    setLoading(true);
     setError(null);
     try {
-      if (!defaultRepoDir) {
-        throw new Error("Set a default clone folder in settings first.");
-      }
-      const folderName = normalizeRepoFolder(repo.name);
-      const localPath = await join(defaultRepoDir, folderName);
-      await gitService.cloneRepository(repo.ssh_url, localPath);
-      await gitService.saveRepo(repo.full_name, localPath);
+      const localPath = await cloneRepoMutation.mutateAsync({
+        name: repo.name,
+        url: repo.ssh_url,
+        repoLabel: repo.full_name,
+      });
       onRepoSelect(localPath);
-      await loadSavedRepos();
     } catch (err) {
       setError(String(err));
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -317,8 +293,7 @@ export function RepoSelector({
     setRemovingRepo(true);
     setError(null);
     try {
-      await gitService.removeSavedRepo(repo.path);
-      await loadSavedRepos();
+      await removeRepoMutation.mutateAsync(repo.path);
     } catch (err) {
       setError(`Could not remove the repository: ${String(err)}`);
     } finally {
@@ -419,7 +394,7 @@ export function RepoSelector({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={loadSavedRepos}
+                  onClick={handleRefreshSavedRepos}
                   className="normal-case tracking-normal"
                 >
                   Refresh
@@ -472,7 +447,7 @@ export function RepoSelector({
                               onClick={() =>
                                 handleOpenSaved(repo.path, repo.name)
                               }
-                              disabled={loading || removingRepo}
+                              disabled={busy || removingRepo}
                               className="normal-case tracking-normal"
                             >
                               Open
@@ -481,7 +456,7 @@ export function RepoSelector({
                               variant="ghost"
                               size="sm"
                               onClick={() => setRepoToRemove(repo)}
-                              disabled={loading || removingRepo}
+                              disabled={busy || removingRepo}
                               className="normal-case tracking-normal text-muted-foreground hover:text-destructive"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -546,7 +521,7 @@ export function RepoSelector({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => void loadGithubRepos()}
+                      onClick={handleRefreshGithubRepos}
                       disabled={githubLoading || !githubConnected}
                       className="normal-case tracking-normal"
                     >
@@ -577,7 +552,7 @@ export function RepoSelector({
                       />
                     </div>
 
-                    {githubLoading || !githubLoaded ? (
+                    {githubLoading ? (
                       <div className="rounded-2xl border border-dashed border-border/70 bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">
                         Loading repositories…
                       </div>
@@ -614,10 +589,10 @@ export function RepoSelector({
                             </div>
                             <Button
                               onClick={() => void handleCloneGithubRepo(repo)}
-                              disabled={loading || defaultRepoDirLoading}
+                              disabled={busy || defaultRepoDirLoading}
                               className="normal-case tracking-normal"
                             >
-                              {loading ? "Cloning…" : "Clone"}
+                              {cloning ? "Cloning…" : "Clone"}
                             </Button>
                           </div>
                         ))}
@@ -693,9 +668,9 @@ export function RepoSelector({
                   </div>
                 )}
 
-                {githubError && (
+                {githubErrorMessage && (
                   <Alert variant="destructive">
-                    <AlertDescription>{githubError}</AlertDescription>
+                    <AlertDescription>{githubErrorMessage}</AlertDescription>
                   </Alert>
                 )}
               </CardContent>
@@ -764,11 +739,11 @@ export function RepoSelector({
                       <Button
                         type="submit"
                         disabled={
-                          loading || defaultRepoDirLoading || !defaultRepoDir
+                          busy || defaultRepoDirLoading || !defaultRepoDir
                         }
                         className="w-full normal-case tracking-normal"
                       >
-                        {loading ? "Cloning…" : "Clone"}
+                        {cloning ? "Cloning…" : "Clone"}
                       </Button>
                     </form>
                   </TabsContent>
@@ -803,10 +778,10 @@ export function RepoSelector({
                       <Button
                         type="submit"
                         variant="outline"
-                        disabled={loading}
+                        disabled={busy}
                         className="w-full normal-case tracking-normal"
                       >
-                        {loading ? "Opening…" : "Open repo"}
+                        {openingRepo ? "Opening…" : "Open repo"}
                       </Button>
                     </form>
                   </TabsContent>
