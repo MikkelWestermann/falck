@@ -528,12 +528,10 @@ fn yq_quote(value: &str) -> String {
 fn lima_mounts_yq(repo_path: &Path) -> String {
     let repo_location = repo_path.to_string_lossy().replace('\\', "/");
     let repo_mount = lima_mount_target(repo_path);
-    let home_location = yq_quote("~");
     let repo_location = yq_quote(&repo_location);
     let repo_mount = yq_quote(&repo_mount);
     format!(
-        ".mounts = [{{\"location\": {home}}}, {{\"location\": {repo}, \"mountPoint\": {mount}, \"writable\": true}}]",
-        home = home_location,
+        ".mounts = [{{\"location\": {repo}, \"mountPoint\": {mount}, \"writable\": true}}]",
         repo = repo_location,
         mount = repo_mount
     )
