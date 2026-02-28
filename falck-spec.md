@@ -237,7 +237,7 @@ Asset configuration controls where Falck will place uploaded files for an applic
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | ✓ | Display name for the option |
-| `command` | string | ✓ | Shell command to install (can call a script like `./scripts/install-node.sh`) |
+| `command` | string or array | ✓ | Shell command to install, or a list of command operations (run sequentially) |
 | `description` | string | ✗ | What this option does |
 | `timeout` | integer | ✗ | Maximum seconds to wait (default: 300) |
 | `silent` | boolean | ✗ | Whether to suppress output (default: false) |
@@ -263,12 +263,34 @@ Asset configuration controls where Falck will place uploaded files for an applic
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | ✓ | Display name of the step |
-| `command` | string | ✓ | Shell command to execute |
+| `command` | string or array | ✓ | Shell command to execute, or a list of command operations (run sequentially) |
 | `description` | string | ✗ | What this step does (for UI display) |
 | `timeout` | integer | ✗ | Maximum seconds to wait (default: 300) |
 | `silent` | boolean | ✗ | Whether to suppress output (default: false) |
 | `optional` | boolean | ✗ | Whether to skip on failure (default: false) |
 | `only_if` | string | ✗ | Conditional execution (e.g., "os == 'macos'") |
+
+### Command Operation Object
+
+When a `command` field accepts an array, each entry is a command operation. Entries can be plain strings or objects with `command`/`refresh_shell`. Operations run sequentially. Timeout and `silent` settings on the parent step/option apply to each operation. If any operation fails, the parent step/option fails (unless the setup step is marked `optional`).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | ✓ | Shell command to execute |
+| `refresh_shell` | boolean | ✗ | Refresh the shell environment after this operation before running the next one (default: false) |
+
+Example:
+
+```yaml
+setup:
+  steps:
+    - name: "Install dependencies"
+      command:
+        - "source ~/.nvm/nvm.sh"
+        - command: "nvm install 18"
+          refresh_shell: true
+        - "npm install"
+```
 
 ### Setup Check Object
 

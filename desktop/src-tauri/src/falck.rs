@@ -10,7 +10,7 @@ use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::blocking::{run_blocking, run_blocking_value};
 use crate::backend::{self, BackendContext, BackendProcess, VmProcessHandle};
@@ -19,7 +19,7 @@ lazy_static! {
     static ref SECRETS_STORE: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
 }
 
-static SHELL_ENV_CACHE: OnceLock<Option<HashMap<String, String>>> = OnceLock::new();
+static SHELL_ENV_CACHE: OnceLock<Mutex<Option<HashMap<String, String>>>> = OnceLock::new();
 const VM_ENV_TIMEOUT_SECS: u32 = 20;
 
 #[derive(Debug, Clone)]
@@ -169,9 +169,29 @@ pub enum PrerequisiteInstallInstructions {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum CommandSequence {
+    Single(String),
+    Multiple(Vec<CommandOperation>),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum CommandOperation {
+    Command(String),
+    Detailed(CommandOperationConfig),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CommandOperationConfig {
+    pub command: String,
+    pub refresh_shell: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PrerequisiteInstallOption {
     pub name: String,
-    pub command: String,
+    pub command: CommandSequence,
     pub description: Option<String>,
     pub timeout: Option<u32>,
     pub silent: Option<bool>,
@@ -200,7 +220,7 @@ pub struct SetupConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SetupStep {
     pub name: String,
-    pub command: String,
+    pub command: CommandSequence,
     pub description: Option<String>,
     pub timeout: Option<u32>,
     pub silent: Option<bool>,
@@ -228,6 +248,16 @@ pub struct SetupCheckResult {
     pub configured: bool,
     pub complete: bool,
     pub message: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct SetupStepEvent {
+    repo_path: String,
+    app_id: String,
+    step_index: usize,
+    step_name: String,
+    status: String,
+    message: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -570,6 +600,47 @@ pub fn check_app_prerequisites(
     Ok(results)
 }
 
+#[derive(Debug, Clone)]
+struct ResolvedCommandOperation {
+    command: String,
+    refresh_shell: bool,
+}
+
+fn expand_command_sequence(command: &CommandSequence) -> Vec<ResolvedCommandOperation> {
+    match command {
+        CommandSequence::Single(command) => vec![ResolvedCommandOperation {
+            command: command.clone(),
+            refresh_shell: false,
+        }],
+        CommandSequence::Multiple(operations) => operations
+            .iter()
+            .map(|operation| match operation {
+                CommandOperation::Command(command) => ResolvedCommandOperation {
+                    command: command.clone(),
+                    refresh_shell: false,
+                },
+                CommandOperation::Detailed(detail) => ResolvedCommandOperation {
+                    command: detail.command.clone(),
+                    refresh_shell: detail.refresh_shell.unwrap_or(false),
+                },
+            })
+            .collect(),
+    }
+}
+
+fn refresh_runtime_context(
+    repo_path: &Path,
+    config: &FalckConfig,
+    app: &Application,
+    backend: &BackendContext,
+) -> Result<(TemplateContext, HashMap<String, String>)> {
+    if backend.mode == backend::BackendMode::Host {
+        let _ = refresh_shell_env_cache();
+    }
+    let (_, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
+    Ok((ctx, env_map))
+}
+
 pub fn run_prerequisite_install(
     repo_path: &Path,
     config: &FalckConfig,
@@ -598,7 +669,8 @@ pub fn run_prerequisite_install(
         .get(option_index)
         .context("Install option not found")?;
 
-    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
+    let (app_root, mut ctx, mut env_map) =
+        prepare_runtime_context(repo_path, config, app, backend)?;
 
     if let Some(condition) = &option.only_if {
         if !evaluate_condition(condition, &ctx)? {
@@ -615,24 +687,46 @@ pub fn run_prerequisite_install(
         }
     }
 
-    let command = resolve_template(&option.command, &ctx)?;
     let timeout = option.timeout.unwrap_or(300);
     let silent = option.silent.unwrap_or(false);
-    let label = format!("prereq:{}:{}", prereq.name, option.name);
-    let status = run_command_backend_with_vm_logs(
-        app_handle,
-        backend,
-        "prereq",
-        &label,
-        &command,
-        &app_root,
-        &env_map,
-        Some(timeout),
-        silent,
-    )?;
+    let operations = expand_command_sequence(&option.command);
+    let has_multiple = operations.len() > 1;
 
-    if !status.success() {
-        bail!("Prerequisite install option '{}' failed", option.name);
+    for (operation_index, operation) in operations.iter().enumerate() {
+        let command = resolve_template(&operation.command, &ctx)?;
+        let label = if has_multiple {
+            format!(
+                "prereq:{}:{}:{}",
+                prereq.name,
+                option.name,
+                operation_index + 1
+            )
+        } else {
+            format!("prereq:{}:{}", prereq.name, option.name)
+        };
+
+        let status = run_command_backend_with_vm_logs(
+            app_handle,
+            backend,
+            "prereq",
+            &label,
+            &command,
+            &app_root,
+            &env_map,
+            Some(timeout),
+            silent,
+        )?;
+
+        if !status.success() {
+            bail!("Prerequisite install option '{}' failed", option.name);
+        }
+
+        if operation.refresh_shell {
+            let (refreshed_ctx, refreshed_env) =
+                refresh_runtime_context(repo_path, config, app, backend)?;
+            ctx = refreshed_ctx;
+            env_map = refreshed_env;
+        }
     }
 
     Ok(format!("Ran install option '{}'.", option.name))
@@ -677,6 +771,15 @@ pub fn run_setup(
                 }
                 if let Some(condition) = &step.only_if {
                     if !evaluate_condition(condition, &ctx)? {
+                        emit_setup_step_event(
+                            app_handle,
+                            repo_path,
+                            &app.id,
+                            index,
+                            &step.name,
+                            "skipped",
+                            Some("Condition unmet.".to_string()),
+                        );
                         emit_vm_log_entry(
                             app_handle,
                             backend,
@@ -687,37 +790,97 @@ pub fn run_setup(
                     }
                 }
 
-                let command = resolve_template(&step.command, &ctx)?;
                 let timeout = step.timeout.unwrap_or(300);
                 let silent = step.silent.unwrap_or(false);
-                let label = format!("setup:{}", step.name);
-                let status = run_command_backend_with_vm_logs(
-                    app_handle,
-                    backend,
-                    "setup",
-                    &label,
-                    &command,
-                    &app_root,
-                    &env_map,
-                    Some(timeout),
-                    silent,
-                )?;
+                let operations = expand_command_sequence(&step.command);
+                let has_multiple = operations.len() > 1;
+                let mut step_failed = false;
 
-                if !status.success() {
-                    if step.optional.unwrap_or(false) {
-                        emit_vm_log_entry(
+                emit_setup_step_event(
+                    app_handle,
+                    repo_path,
+                    &app.id,
+                    index,
+                    &step.name,
+                    "started",
+                    None,
+                );
+
+                for (operation_index, operation) in operations.iter().enumerate() {
+                    let command = resolve_template(&operation.command, &ctx)?;
+                    let label = if has_multiple {
+                        format!("setup:{}:{}", step.name, operation_index + 1)
+                    } else {
+                        format!("setup:{}", step.name)
+                    };
+                    let status = run_command_backend_with_vm_logs(
+                        app_handle,
+                        backend,
+                        "setup",
+                        &label,
+                        &command,
+                        &app_root,
+                        &env_map,
+                        Some(timeout),
+                        silent,
+                    )?;
+
+                    if !status.success() {
+                        if step.optional.unwrap_or(false) {
+                            emit_setup_step_event(
+                                app_handle,
+                                repo_path,
+                                &app.id,
+                                index,
+                                &step.name,
+                                "skipped",
+                                Some("Optional step failed.".to_string()),
+                            );
+                            emit_vm_log_entry(
+                                app_handle,
+                                backend,
+                                "setup",
+                                &format!(
+                                    "[setup:{}] Failed but marked optional, continuing",
+                                    step.name
+                                ),
+                            );
+                            step_failed = true;
+                            break;
+                        }
+                        emit_setup_step_event(
                             app_handle,
-                            backend,
-                            "setup",
-                            &format!(
-                                "[setup:{}] Failed but marked optional, continuing",
-                                step.name
-                            ),
+                            repo_path,
+                            &app.id,
+                            index,
+                            &step.name,
+                            "failed",
+                            Some("Command failed.".to_string()),
                         );
-                        continue;
+                        bail!("Setup step '{}' failed", step.name);
                     }
-                    bail!("Setup step '{}' failed", step.name);
+
+                    if operation.refresh_shell {
+                        let (refreshed_ctx, refreshed_env) =
+                            refresh_runtime_context(repo_path, config, app, backend)?;
+                        ctx = refreshed_ctx;
+                        env_map = refreshed_env;
+                    }
                 }
+
+                if step_failed {
+                    continue;
+                }
+
+                emit_setup_step_event(
+                    app_handle,
+                    repo_path,
+                    &app.id,
+                    index,
+                    &step.name,
+                    "completed",
+                    None,
+                );
             }
         }
     }
@@ -1277,6 +1440,29 @@ fn emit_vm_log_entry(
     );
 }
 
+fn emit_setup_step_event(
+    app: Option<&AppHandle>,
+    repo_path: &Path,
+    app_id: &str,
+    step_index: usize,
+    step_name: &str,
+    status: &str,
+    message: Option<String>,
+) {
+    let Some(app) = app else {
+        return;
+    };
+    let payload = SetupStepEvent {
+        repo_path: repo_path.to_string_lossy().to_string(),
+        app_id: app_id.to_string(),
+        step_index,
+        step_name: step_name.to_string(),
+        status: status.to_string(),
+        message,
+    };
+    let _ = app.emit("falck:setup-step", payload);
+}
+
 fn run_command_backend_with_vm_logs(
     app: Option<&AppHandle>,
     backend_ctx: &BackendContext,
@@ -1632,8 +1818,24 @@ fn resolve_shell_path() -> String {
     }
 }
 
+fn shell_env_cache() -> &'static Mutex<Option<HashMap<String, String>>> {
+    SHELL_ENV_CACHE.get_or_init(|| Mutex::new(None))
+}
+
 pub(crate) fn load_shell_env() -> Option<HashMap<String, String>> {
-    SHELL_ENV_CACHE.get_or_init(capture_shell_env).clone()
+    let cache = shell_env_cache();
+    let mut guard = cache.lock().unwrap_or_else(|err| err.into_inner());
+    if guard.is_none() {
+        *guard = capture_shell_env();
+    }
+    guard.clone()
+}
+
+fn refresh_shell_env_cache() -> Option<HashMap<String, String>> {
+    let cache = shell_env_cache();
+    let mut guard = cache.lock().unwrap_or_else(|err| err.into_inner());
+    *guard = capture_shell_env();
+    guard.clone()
 }
 
 #[cfg(target_os = "windows")]

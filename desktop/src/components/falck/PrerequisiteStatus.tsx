@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Prerequisite, PrerequisiteCheckResult } from "@/services/falckService";
-import { CheckCircle2, AlertCircle, CircleHelp } from "lucide-react";
+import { AlertCircle, CheckCircle2, CircleHelp, Loader2 } from "lucide-react";
 
 interface PrerequisiteStatusProps {
   prereq: Prerequisite;
@@ -9,6 +9,7 @@ interface PrerequisiteStatusProps {
   onOpenInstallUrl?: (url: string) => void;
   onRunInstallOption?: (optionIndex: number) => void;
   isOptionRunning?: (optionIndex: number) => boolean;
+  isChecking?: boolean;
   installMessage?: string;
   installError?: string;
 }
@@ -19,6 +20,7 @@ export function PrerequisiteStatus({
   onOpenInstallUrl,
   onRunInstallOption,
   isOptionRunning,
+  isChecking,
   installMessage,
   installError,
 }: PrerequisiteStatusProps) {
@@ -28,23 +30,27 @@ export function PrerequisiteStatus({
     !result?.installed;
   const isInstalled = Boolean(result?.installed);
   const isOptional = result?.optional ?? prereq.optional ?? false;
-  const statusLabel = !hasResult
-    ? "Unknown"
-    : isInstalled
-      ? "Installed"
-      : needsUpdate
-        ? "Update needed"
-        : isOptional
-          ? "Optional"
-          : "Missing";
+  const statusLabel = isChecking
+    ? "Checking"
+    : !hasResult
+      ? "Unknown"
+      : isInstalled
+        ? "Installed"
+        : needsUpdate
+          ? "Update needed"
+          : isOptional
+            ? "Optional"
+            : "Missing";
 
-  const StatusIcon = !hasResult
-    ? CircleHelp
-    : isInstalled
-      ? CheckCircle2
-      : needsUpdate || !isOptional
-        ? AlertCircle
-        : CircleHelp;
+  const StatusIcon = isChecking
+    ? Loader2
+    : !hasResult
+      ? CircleHelp
+      : isInstalled
+        ? CheckCircle2
+        : needsUpdate || !isOptional
+          ? AlertCircle
+          : CircleHelp;
 
   const instructions = prereq.install?.instructions;
   const instructionList = Array.isArray(instructions)
@@ -63,7 +69,9 @@ export function PrerequisiteStatus({
     <div className="flex flex-col gap-3 rounded-lg border-2 border-border bg-card/70 px-4 py-3 shadow-[var(--shadow-xs)]">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <StatusIcon className="h-4 w-4 text-foreground/70" />
+          <StatusIcon
+            className={`h-4 w-4 text-foreground/70 ${isChecking ? "animate-spin" : ""}`}
+          />
           <span className="font-medium text-sm">{result?.name ?? prereq.name}</span>
         </div>
         <Badge variant={isInstalled ? "secondary" : "outline"}>
@@ -117,9 +125,31 @@ export function PrerequisiteStatus({
                         {option.description}
                       </p>
                     ) : (
-                      <p className="text-xs text-muted-foreground font-mono">
-                        {option.command}
-                      </p>
+                      <div className="text-xs text-muted-foreground font-mono space-y-1">
+                        {(Array.isArray(option.command)
+                          ? option.command.map((operation) =>
+                              typeof operation === "string"
+                                ? { command: operation, refreshShell: false }
+                                : {
+                                    command: operation.command,
+                                    refreshShell: operation.refresh_shell ?? false,
+                                  },
+                            )
+                          : [{ command: option.command, refreshShell: false }]
+                        ).map((operation, operationIndex) => (
+                          <div
+                            key={`${prereq.name}-option-${option.name}-${optionIndex}-${operationIndex}`}
+                            className="flex flex-wrap items-center gap-2"
+                          >
+                            <span>{operation.command}</span>
+                            {operation.refreshShell ? (
+                              <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] uppercase tracking-wide">
+                                refresh shell
+                              </span>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
                     )}
                     {option.only_if ? (
                       <p className="text-[11px] text-muted-foreground">

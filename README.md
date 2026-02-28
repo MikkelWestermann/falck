@@ -75,4 +75,17 @@ applications:
         port: 3000
 ```
 
+Commands can also be a list of operations:
+
+```yaml
+setup:
+  steps:
+    - name: "Install dependencies"
+      command:
+        - "source ~/.nvm/nvm.sh"
+        - command: "nvm install 18"
+          refresh_shell: true
+        - "npm install"
+```
+
 Once the config is in place, open the repo in Falck and use the setup/launch actions to run the apps defined in the configuration.

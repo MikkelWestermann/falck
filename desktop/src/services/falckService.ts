@@ -52,9 +52,13 @@ export interface Prerequisite {
 
 export type PrerequisiteInstallInstructions = string | string[];
 
+export type CommandOperation = string | { command: string; refresh_shell?: boolean };
+
+export type CommandSequence = string | CommandOperation[];
+
 export interface PrerequisiteInstallOption {
   name: string;
-  command: string;
+  command: CommandSequence;
   description?: string;
   timeout?: number;
   silent?: boolean;
@@ -79,7 +83,7 @@ export interface SetupConfig {
 
 export interface SetupStep {
   name: string;
-  command: string;
+  command: CommandSequence;
   description?: string;
   timeout?: number;
   silent?: boolean;
