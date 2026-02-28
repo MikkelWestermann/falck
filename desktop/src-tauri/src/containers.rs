@@ -286,7 +286,7 @@ fn find_bundled_limactl(app: &AppHandle) -> Option<PathBuf> {
     fallback
 }
 
-fn falck_lima_home(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn falck_lima_home(app: &AppHandle) -> Result<PathBuf, String> {
     if let Ok(value) = std::env::var("FALCK_LIMA_HOME") {
         let trimmed = value.trim();
         if !trimmed.is_empty() {

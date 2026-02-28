@@ -34,6 +34,21 @@ export interface VmStatusEvent {
   timestamp_ms: number;
 }
 
+export interface VmLogEvent {
+  repo_path: string;
+  vm_name?: string | null;
+  provider?: string | null;
+  phase: string;
+  message: string;
+  timestamp_ms: number;
+}
+
+interface VmLogEntry {
+  phase: string;
+  message: string;
+  timestamp_ms: number;
+}
+
 interface VmStatusState {
   enabled: boolean;
   repoPath: string | null;
@@ -41,7 +56,7 @@ interface VmStatusState {
   provider: string | null;
   phase: VmPhase;
   message: string;
-  logs: VmStatusEvent[];
+  logs: VmLogEntry[];
 }
 
 interface VmStatusContextValue {
@@ -190,6 +205,7 @@ export function VmStatusProvider({ children }: { children: ReactNode }) {
     setExpanded(false);
 
     let unlisten: UnlistenFn | null = null;
+    let unlistenLogs: UnlistenFn | null = null;
     let active = true;
 
     listen<VmStatusEvent>("vm:status", (event) => {
@@ -201,7 +217,14 @@ export function VmStatusProvider({ children }: { children: ReactNode }) {
         return;
       }
       setState((prev) => {
-        const nextLogs = [...prev.logs, payload].slice(-LOG_LIMIT);
+        const nextLogs = [
+          ...prev.logs,
+          {
+            phase: payload.phase,
+            message: payload.message,
+            timestamp_ms: payload.timestamp_ms,
+          },
+        ].slice(-LOG_LIMIT);
         return {
           enabled: true,
           repoPath,
@@ -223,6 +246,38 @@ export function VmStatusProvider({ children }: { children: ReactNode }) {
         // Ignore listen errors; the UI will simply stay idle.
       });
 
+    listen<VmLogEvent>("vm:log", (event) => {
+      if (!active) {
+        return;
+      }
+      const payload = event.payload;
+      if (!payload || payload.repo_path !== repoPath) {
+        return;
+      }
+      setState((prev) => {
+        const nextLogs = [
+          ...prev.logs,
+          {
+            phase: payload.phase,
+            message: payload.message,
+            timestamp_ms: payload.timestamp_ms,
+          },
+        ].slice(-LOG_LIMIT);
+        return {
+          ...prev,
+          vmName: payload.vm_name ?? prev.vmName,
+          provider: payload.provider ?? prev.provider,
+          logs: nextLogs,
+        };
+      });
+    })
+      .then((stop) => {
+        unlistenLogs = stop;
+      })
+      .catch(() => {
+        // Ignore listen errors for log stream.
+      });
+
     backendService.ensureRepoBackend(repoPath).catch((err) => {
       if (!active) {
         return;
@@ -239,6 +294,9 @@ export function VmStatusProvider({ children }: { children: ReactNode }) {
       active = false;
       if (unlisten) {
         unlisten();
+      }
+      if (unlistenLogs) {
+        unlistenLogs();
       }
     };
   }, [repoPath, mode]);

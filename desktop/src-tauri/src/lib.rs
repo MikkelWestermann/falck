@@ -336,6 +336,7 @@ pub fn run() {
             backend::list_backend_vms,
             backend::stop_backend_vm,
             backend::delete_backend_vm,
+            backend::open_vm_shell,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

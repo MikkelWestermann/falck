@@ -29,6 +29,15 @@ struct VmStatusEvent {
     timestamp_ms: u64,
 }
 
+#[derive(Debug, Serialize, Clone)]
+struct VmLogEvent {
+    repo_path: String,
+    vm_name: Option<String>,
+    provider: Option<String>,
+    phase: String,
+    message: String,
+    timestamp_ms: u64,
+}
 #[derive(Debug)]
 struct EnsureInFlight {
     state: Mutex<EnsureState>,
@@ -108,6 +117,31 @@ fn emit_vm_status(
     let _ = app.emit("vm:status", payload);
 }
 
+pub(crate) fn emit_vm_log(
+    app: Option<&AppHandle>,
+    repo_path: &Path,
+    name: Option<&str>,
+    provider: Option<VmProvider>,
+    phase: &str,
+    message: &str,
+) {
+    let Some(app) = app else {
+        return;
+    };
+    let timestamp_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let payload = VmLogEvent {
+        repo_path: repo_path.to_string_lossy().to_string(),
+        vm_name: name.map(|value| value.to_string()),
+        provider: provider.map(|value| provider_id(value).to_string()),
+        phase: phase.to_string(),
+        message: message.to_string(),
+        timestamp_ms,
+    };
+    let _ = app.emit("vm:log", payload);
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VmProvider {
     Lima,
@@ -1989,6 +2023,88 @@ pub fn shell_escape(value: &str) -> String {
     escaped
 }
 
+fn lima_shell_command(
+    vm_name: &str,
+    limactl: Option<&Path>,
+    lima_home: Option<&Path>,
+) -> String {
+    let limactl_bin = limactl
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_else(|| "limactl".to_string());
+    let base_command = format!(
+        "{} shell {}",
+        shell_escape(&limactl_bin),
+        shell_escape(vm_name)
+    );
+    if let Some(home) = lima_home {
+        format!(
+            "LIMA_HOME={} {}",
+            shell_escape(home.to_string_lossy().as_ref()),
+            base_command
+        )
+    } else {
+        base_command
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn escape_applescript(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+#[cfg(target_os = "macos")]
+fn open_terminal_with_command(command: &str) -> Result<(), String> {
+    // Run through sh to ensure consistent quoting/ENV behavior regardless of the user's shell.
+    let shell_command = format!("sh -lc {}", shell_escape(command));
+    let script = format!(
+        "tell application \"Terminal\"\nactivate\ndo script \"{}\"\nend tell",
+        escape_applescript(&shell_command)
+    );
+    Command::new("osascript")
+        .args(["-e", &script])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to open Terminal: {e}"))
+}
+
+#[cfg(target_os = "linux")]
+fn open_terminal_with_command(command: &str) -> Result<(), String> {
+    let exec_terminals = [
+        "x-terminal-emulator",
+        "konsole",
+        "xfce4-terminal",
+        "xterm",
+        "alacritty",
+        "kitty",
+        "lxterminal",
+        "mate-terminal",
+    ];
+    for terminal in exec_terminals {
+        if command_exists(terminal) {
+            Command::new(terminal)
+                .args(["-e", "sh", "-lc", command])
+                .spawn()
+                .map_err(|e| format!("Failed to open terminal '{terminal}': {e}"))?;
+            return Ok(());
+        }
+    }
+
+    if command_exists("gnome-terminal") {
+        Command::new("gnome-terminal")
+            .args(["--", "sh", "-lc", command])
+            .spawn()
+            .map_err(|e| format!("Failed to open terminal 'gnome-terminal': {e}"))?;
+        return Ok(());
+    }
+
+    Err("No supported terminal emulator found.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn open_terminal_with_command(_command: &str) -> Result<(), String> {
+    Err("Opening a VM shell is not supported on Windows.".to_string())
+}
+
 pub fn build_vm_command(vm: &VmContext, script: &str) -> Command {
     match vm.provider {
         VmProvider::Lima => {
@@ -2344,6 +2460,24 @@ pub async fn delete_backend_vm(app: AppHandle, name: String) -> Result<(), Strin
         let provider = vm_provider()?;
         let limactl = limactl_path(Some(&app));
         delete_vm(provider, &name, limactl.as_deref())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn open_vm_shell(app: AppHandle, repo_path: String) -> Result<(), String> {
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        let provider = vm_provider()?;
+        if provider != VmProvider::Lima {
+            return Err("VM shell is only supported for Lima.".to_string());
+        }
+        let limactl = limactl_path(Some(&app));
+        let lima_home = containers::falck_lima_home(&app).ok();
+        let vm_name = ensure_vm_running(provider, path, Some(&app), limactl.as_deref())?;
+        let command = lima_shell_command(&vm_name, limactl.as_deref(), lima_home.as_deref());
+        open_terminal_with_command(&command)?;
+        Ok(())
     })
     .await
 }

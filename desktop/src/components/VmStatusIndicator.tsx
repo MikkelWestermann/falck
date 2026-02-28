@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,7 +9,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useVmStatus } from "@/contexts/VmStatusContext";
-import { AlertTriangle, CircleCheck, Server } from "lucide-react";
+import { backendService } from "@/services/backendService";
+import { AlertTriangle, CircleCheck, Server, Terminal } from "lucide-react";
 import { motion } from "motion/react";
 
 function VmLoader({ size = "sm" }: { size?: "sm" | "md" }) {
@@ -79,6 +81,7 @@ function formatTime(timestampMs?: number) {
 
 export function VmStatusIndicator() {
   const { state, busy, expanded, setExpanded } = useVmStatus();
+  const [shellOpening, setShellOpening] = useState(false);
 
   if (!state.enabled) {
     return null;
@@ -112,6 +115,21 @@ export function VmStatusIndicator() {
     "Working";
   const inlineText = inlineMessage;
   const showInlineStatus = busy && !expanded && inlineMessage.length > 0;
+  const canOpenShell = state.provider === "lima" && Boolean(state.repoPath);
+
+  const handleOpenShell = async () => {
+    if (!state.repoPath || shellOpening) {
+      return;
+    }
+    setShellOpening(true);
+    try {
+      await backendService.openVmShell(state.repoPath);
+    } catch (err) {
+      console.error("Failed to open VM shell:", err);
+    } finally {
+      setShellOpening(false);
+    }
+  };
 
   return (
     <Popover open={expanded} onOpenChange={setExpanded}>
@@ -127,7 +145,10 @@ export function VmStatusIndicator() {
               <VmLoader size="sm" />
             ) : (
               <span
-                className={cn("h-2.5 w-2.5 rounded-full animate-pulse", dotClass)}
+                className={cn(
+                  "h-2.5 w-2.5 rounded-full animate-pulse",
+                  dotClass,
+                )}
               />
             )}
           </span>
@@ -209,14 +230,19 @@ export function VmStatusIndicator() {
                 )}
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setExpanded(!expanded)}
-              className="h-8"
-            >
-              {expanded ? "Collapse" : "Details"}
-            </Button>
+            <div className="flex items-center gap-2">
+              {canOpenShell && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5"
+                  disabled={shellOpening}
+                  onClick={handleOpenShell}
+                >
+                  <Terminal className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="border-t border-border/60 px-4 py-3">

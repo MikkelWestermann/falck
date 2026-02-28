@@ -5,7 +5,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{Mutex, OnceLock};
@@ -577,6 +577,7 @@ pub fn run_prerequisite_install(
     prereq_index: usize,
     option_index: usize,
     backend: &BackendContext,
+    app_handle: Option<&AppHandle>,
 ) -> Result<String> {
     let prereqs = app
         .prerequisites
@@ -601,6 +602,15 @@ pub fn run_prerequisite_install(
 
     if let Some(condition) = &option.only_if {
         if !evaluate_condition(condition, &ctx)? {
+            emit_vm_log_entry(
+                app_handle,
+                backend,
+                "prereq",
+                &format!(
+                    "[prereq:{}] Skipped install option '{}'",
+                    prereq.name, option.name
+                ),
+            );
             return Ok("Install option skipped for this environment.".to_string());
         }
     }
@@ -608,7 +618,18 @@ pub fn run_prerequisite_install(
     let command = resolve_template(&option.command, &ctx)?;
     let timeout = option.timeout.unwrap_or(300);
     let silent = option.silent.unwrap_or(false);
-    let status = run_command_backend(backend, &command, &app_root, &env_map, Some(timeout), silent)?;
+    let label = format!("prereq:{}:{}", prereq.name, option.name);
+    let status = run_command_backend_with_vm_logs(
+        app_handle,
+        backend,
+        "prereq",
+        &label,
+        &command,
+        &app_root,
+        &env_map,
+        Some(timeout),
+        silent,
+    )?;
 
     if !status.success() {
         bail!("Prerequisite install option '{}' failed", option.name);
@@ -632,6 +653,7 @@ pub fn run_setup(
     config: &FalckConfig,
     app: &Application,
     backend: &BackendContext,
+    app_handle: Option<&AppHandle>,
 ) -> Result<String> {
     if !check_app_secrets_satisfied(app) {
         bail!("Required secrets not configured for this application");
@@ -655,6 +677,12 @@ pub fn run_setup(
                 }
                 if let Some(condition) = &step.only_if {
                     if !evaluate_condition(condition, &ctx)? {
+                        emit_vm_log_entry(
+                            app_handle,
+                            backend,
+                            "setup",
+                            &format!("[setup:{}] Skipped (condition unmet)", step.name),
+                        );
                         continue;
                     }
                 }
@@ -662,8 +690,12 @@ pub fn run_setup(
                 let command = resolve_template(&step.command, &ctx)?;
                 let timeout = step.timeout.unwrap_or(300);
                 let silent = step.silent.unwrap_or(false);
-                let status = run_command_backend(
+                let label = format!("setup:{}", step.name);
+                let status = run_command_backend_with_vm_logs(
+                    app_handle,
                     backend,
+                    "setup",
+                    &label,
                     &command,
                     &app_root,
                     &env_map,
@@ -673,6 +705,15 @@ pub fn run_setup(
 
                 if !status.success() {
                     if step.optional.unwrap_or(false) {
+                        emit_vm_log_entry(
+                            app_handle,
+                            backend,
+                            "setup",
+                            &format!(
+                                "[setup:{}] Failed but marked optional, continuing",
+                                step.name
+                            ),
+                        );
                         continue;
                     }
                     bail!("Setup step '{}' failed", step.name);
@@ -1212,6 +1253,175 @@ fn run_command_backend(
     } else {
         run_command(command, cwd, env_map, timeout_secs, silent)
     }
+}
+
+fn emit_vm_log_entry(
+    app: Option<&AppHandle>,
+    backend_ctx: &BackendContext,
+    phase: &str,
+    message: &str,
+) {
+    let Some(app) = app else {
+        return;
+    };
+    let Some(vm) = &backend_ctx.vm else {
+        return;
+    };
+    backend::emit_vm_log(
+        Some(app),
+        &vm.repo_path,
+        Some(&vm.name),
+        Some(vm.provider),
+        phase,
+        message,
+    );
+}
+
+fn run_command_backend_with_vm_logs(
+    app: Option<&AppHandle>,
+    backend_ctx: &BackendContext,
+    phase: &str,
+    label: &str,
+    command: &str,
+    cwd: &Path,
+    env_map: &HashMap<String, String>,
+    timeout_secs: Option<u32>,
+    silent: bool,
+) -> Result<ExitStatus> {
+    if silent || app.is_none() || backend_ctx.vm.is_none() {
+        return run_command_backend(
+            backend_ctx,
+            command,
+            cwd,
+            env_map,
+            timeout_secs,
+            silent,
+        );
+    }
+
+    let app = app.expect("app handle required");
+    let vm = backend_ctx.vm.as_ref().expect("vm required");
+    let vm_cwd = backend::vm_app_root(vm, cwd).map_err(|err| anyhow!(err))?;
+    let exports = backend::vm_env_exports(env_map);
+    let script = format!(
+        "{}cd {} && {}",
+        exports,
+        backend::shell_escape(&vm_cwd),
+        command
+    );
+    let mut cmd = backend::build_vm_command(vm, &script);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    emit_vm_log_entry(
+        Some(app),
+        backend_ctx,
+        phase,
+        &format!("[{}] Starting", label),
+    );
+
+    let mut child = cmd.spawn().context("Failed to spawn command")?;
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    let app_stdout = app.clone();
+    let vm_stdout = vm.clone();
+    let label_stdout = label.to_string();
+    let phase_stdout = phase.to_string();
+    let out_handle = std::thread::spawn(move || {
+        if let Some(out) = stdout {
+            let reader = BufReader::new(out);
+            for line in reader.lines().flatten() {
+                let line = line.trim_end();
+                if line.is_empty() {
+                    continue;
+                }
+                let message = format!("[{}] {}", label_stdout, line);
+                backend::emit_vm_log(
+                    Some(&app_stdout),
+                    &vm_stdout.repo_path,
+                    Some(&vm_stdout.name),
+                    Some(vm_stdout.provider),
+                    &phase_stdout,
+                    &message,
+                );
+            }
+        }
+    });
+
+    let app_stderr = app.clone();
+    let vm_stderr = vm.clone();
+    let label_stderr = label.to_string();
+    let phase_stderr = phase.to_string();
+    let err_handle = std::thread::spawn(move || {
+        if let Some(err) = stderr {
+            let reader = BufReader::new(err);
+            for line in reader.lines().flatten() {
+                let line = line.trim_end();
+                if line.is_empty() {
+                    continue;
+                }
+                let message = format!("[{}] ERROR: {}", label_stderr, line);
+                backend::emit_vm_log(
+                    Some(&app_stderr),
+                    &vm_stderr.repo_path,
+                    Some(&vm_stderr.name),
+                    Some(vm_stderr.provider),
+                    &phase_stderr,
+                    &message,
+                );
+            }
+        }
+    });
+
+    let status = if let Some(timeout) = timeout_secs {
+        let start = Instant::now();
+        let timeout_duration = Duration::from_secs(timeout as u64);
+        loop {
+            if let Some(status) = child
+                .try_wait()
+                .context("Failed to check command status")?
+            {
+                break status;
+            }
+            if start.elapsed() > timeout_duration {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = out_handle.join();
+                let _ = err_handle.join();
+                emit_vm_log_entry(
+                    Some(app),
+                    backend_ctx,
+                    phase,
+                    &format!("[{}] Timed out after {}s", label, timeout),
+                );
+                bail!("Command timed out after {} seconds", timeout);
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    } else {
+        child.wait().context("Failed to wait for command")?
+    };
+
+    let _ = out_handle.join();
+    let _ = err_handle.join();
+
+    let exit_code = status
+        .code()
+        .map(|code| code.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let outcome = if status.success() {
+        "Completed"
+    } else {
+        "Failed"
+    };
+    emit_vm_log_entry(
+        Some(app),
+        backend_ctx,
+        phase,
+        &format!("[{}] {} (exit {})", label, outcome, exit_code),
+    );
+
+    Ok(status)
 }
 
 fn run_command_capture_backend(
@@ -2060,6 +2270,7 @@ pub async fn run_falck_prerequisite_install(
             prereq_index,
             option_index,
             &backend,
+            Some(&app),
         )
             .map_err(|e| e.to_string())
     })
@@ -2144,7 +2355,8 @@ pub async fn run_falck_setup(
             .ok_or_else(|| "Application not found".to_string())?;
         let backend = resolve_backend_for_app(&app, path, app_config)?;
 
-        run_setup(path, &config, app_config, &backend).map_err(|e| e.to_string())
+        run_setup(path, &config, app_config, &backend, Some(&app))
+            .map_err(|e| e.to_string())
     })
     .await
 }

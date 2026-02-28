@@ -57,4 +57,8 @@ export const backendService = {
   async deleteVm(name: string): Promise<void> {
     return invoke<void>("delete_backend_vm", { name });
   },
+
+  async openVmShell(repoPath: string): Promise<void> {
+    return invoke<void>("open_vm_shell", { repoPath });
+  },
 };
