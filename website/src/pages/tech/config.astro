@@ -23,8 +23,8 @@ import Button from '../../components/Button.astro';
         </span>
         <h1 class="text-4xl sm:text-5xl font-semibold text-white">One file to set the rules</h1>
         <p class="text-lg text-slate-300">
-          Falck reads a `.falck/config.yaml` file in your repo. Define prerequisites, secrets, setup steps, launch
-          commands, and access URLs once. Falck enforces the workflow you already trust.
+          Falck reads a `.falck/config.yaml` file in your repo. Define setup steps with checks, secrets, launch commands,
+          and access URLs once. Falck enforces the workflow you already trust.
         </p>
         <div class="flex flex-col sm:flex-row gap-4">
           <Button href="https://github.com/MikkelWestermann/falck/blob/main/falck-spec.md" target="_blank" rel="noreferrer">
@@ -52,7 +52,7 @@ import Button from '../../components/Button.astro';
           </div>
           <div class="flex items-center gap-2">
             <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
-            `prerequisites` + `secrets` keep setup safe
+            Setup steps + checks keep setup safe
           </div>
           <div class="flex items-center gap-2">
             <span class="h-2 w-2 rounded-full bg-cyan-400"></span>
@@ -83,18 +83,22 @@ applications:
     name: "Web App"
     type: "web"
     root: "."
-    prerequisites:
-      - type: "runtime"
-        name: "Node.js"
-        command: "node --version"
-        version: "18.0.0"
     secrets:
       - name: "DATABASE_URL"
         required: true
     setup:
       steps:
+        - name: "Install Node 18"
+          command: "brew install node@18"
+          check:
+            command: "node --version"
+            expect_regex: "^v18"
+          teardown:
+            command: "brew uninstall node@18"
         - name: "Install dependencies"
           command: "bun install"
+          check:
+            command: "test -d node_modules"
     launch:
       command: "bun run dev"
       access:

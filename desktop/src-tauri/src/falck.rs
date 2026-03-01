@@ -1,7 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
@@ -136,7 +135,6 @@ pub struct Application {
     pub description: Option<String>,
     pub root: String,
     pub assets: Option<AssetsConfig>,
-    pub prerequisites: Option<Vec<Prerequisite>>,
     pub secrets: Option<Vec<Secret>>,
     pub setup: Option<SetupConfig>,
     pub launch: LaunchConfig,
@@ -147,25 +145,6 @@ pub struct Application {
 pub struct AssetsConfig {
     pub root: String,
     pub subdirectories: Option<Vec<String>>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Prerequisite {
-    #[serde(rename = "type")]
-    pub prereq_type: String,
-    pub name: String,
-    pub command: String,
-    pub version: Option<String>,
-    pub install_url: Option<String>,
-    pub install: Option<PrerequisiteInstall>,
-    pub optional: Option<bool>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(untagged)]
-pub enum PrerequisiteInstallInstructions {
-    Text(String),
-    List(Vec<String>),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -189,22 +168,6 @@ pub struct CommandOperationConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PrerequisiteInstallOption {
-    pub name: String,
-    pub command: CommandSequence,
-    pub description: Option<String>,
-    pub timeout: Option<u32>,
-    pub silent: Option<bool>,
-    pub only_if: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PrerequisiteInstall {
-    pub instructions: Option<PrerequisiteInstallInstructions>,
-    pub options: Option<Vec<PrerequisiteInstallOption>>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Secret {
     pub name: String,
     pub description: String,
@@ -214,7 +177,6 @@ pub struct Secret {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SetupConfig {
     pub steps: Option<Vec<SetupStep>>,
-    pub check: Option<SetupCheck>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -226,6 +188,8 @@ pub struct SetupStep {
     pub silent: Option<bool>,
     pub optional: Option<bool>,
     pub only_if: Option<String>,
+    pub check: Option<SetupCheck>,
+    pub teardown: Option<SetupTeardown>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -244,10 +208,21 @@ pub struct SetupCheck {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SetupCheckResult {
-    pub configured: bool,
-    pub complete: bool,
+pub struct SetupTeardown {
+    pub command: CommandSequence,
+    pub description: Option<String>,
+    pub timeout: Option<u32>,
+    pub silent: Option<bool>,
+    pub only_if: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SetupStepCheckResult {
+    pub step_index: usize,
+    pub name: String,
+    pub status: String,
     pub message: Option<String>,
+    pub optional: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -329,14 +304,9 @@ pub struct AppGroup {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PrerequisiteCheckResult {
-    pub name: String,
-    pub command: String,
-    pub installed: bool,
-    pub required_version: Option<String>,
-    pub current_version: Option<String>,
-    pub install_url: Option<String>,
-    pub optional: bool,
+pub struct SetupCheckResult {
+    pub status: String,
+    pub message: Option<String>,
 }
 
 // ============================================================================
@@ -537,66 +507,192 @@ pub fn clear_secrets() {
 }
 
 // ============================================================================
-// Prerequisite Checks
+// Setup Step Checks
 // ============================================================================
 
-fn check_prerequisites(
+fn run_setup_check(
     app_root: &Path,
-    prereq: &Prerequisite,
     ctx: &TemplateContext,
     env_map: &HashMap<String, String>,
     backend: &BackendContext,
-) -> Result<PrerequisiteCheckResult> {
-    let command = resolve_template(&prereq.command, ctx)?;
-    let (status, stdout, stderr) =
-        run_command_capture_backend(backend, &command, &app_root, env_map, None)
-            .context("Failed to run prerequisite command")?;
-
-    let mut installed = status.success();
-    let current_version = if installed {
-        parse_version(format!("{}\n{}", stdout, stderr).as_str())
-    } else {
-        None
-    };
-
-    if let Some(required) = &prereq.version {
-        let required_version =
-            Version::parse(required).context("Invalid semver version in prerequisite")?;
-        if let Some(ref current) = current_version {
-            let parsed_current =
-                Version::parse(current).context("Failed to parse installed version")?;
-            if parsed_current < required_version {
-                installed = false;
+    check: &SetupCheck,
+) -> SetupCheckResult {
+    if let Some(condition) = &check.only_if {
+        match evaluate_condition(condition, ctx) {
+            Ok(true) => {}
+            Ok(false) => {
+                return SetupCheckResult {
+                    status: "skipped".to_string(),
+                    message: Some("Setup check skipped for this environment.".to_string()),
+                };
             }
-        } else {
-            installed = false;
+            Err(err) => {
+                return SetupCheckResult {
+                    status: "error".to_string(),
+                    message: Some(err.to_string()),
+                };
+            }
         }
     }
 
-    Ok(PrerequisiteCheckResult {
-        name: prereq.name.clone(),
-        command,
-        installed,
-        required_version: prereq.version.clone(),
-        current_version,
-        install_url: prereq.install_url.clone(),
-        optional: prereq.optional.unwrap_or(false),
-    })
+    let expectation_count = check.expect.is_some() as u8
+        + check.expect_contains.is_some() as u8
+        + check.expect_regex.is_some() as u8;
+    if expectation_count > 1 {
+        return SetupCheckResult {
+            status: "error".to_string(),
+            message: Some(
+                "Setup check has multiple expectations. Use only one of expect, expect_contains, or expect_regex."
+                    .to_string(),
+            ),
+        };
+    }
+
+    let command = match resolve_template(&check.command, ctx) {
+        Ok(value) => value,
+        Err(err) => {
+            return SetupCheckResult {
+                status: "error".to_string(),
+                message: Some(err.to_string()),
+            };
+        }
+    };
+    let timeout = check.timeout.unwrap_or(30);
+    let ignore_exit = check.ignore_exit.unwrap_or(false);
+    let trim_output = check.trim.unwrap_or(true);
+    let output_mode = check.output.clone().unwrap_or_else(|| "stdout".to_string());
+
+    match run_command_capture_backend(backend, &command, &app_root, env_map, Some(timeout)) {
+        Ok((status, stdout, stderr)) => {
+            if !status.success() && !ignore_exit {
+                return SetupCheckResult {
+                    status: "error".to_string(),
+                    message: Some("Setup check command failed.".to_string()),
+                };
+            }
+
+            let mut output = match output_mode.as_str() {
+                "stderr" => stderr,
+                "combined" => {
+                    if stdout.is_empty() {
+                        stderr
+                    } else if stderr.is_empty() {
+                        stdout
+                    } else {
+                        format!("{}\n{}", stdout, stderr)
+                    }
+                }
+                _ => stdout,
+            };
+
+            if trim_output {
+                output = output.trim().to_string();
+            }
+
+            let matched = if let Some(expect) = &check.expect {
+                output == *expect
+            } else if let Some(expect_contains) = &check.expect_contains {
+                output.contains(expect_contains)
+            } else if let Some(expect_regex) = &check.expect_regex {
+                match Regex::new(expect_regex) {
+                    Ok(re) => re.is_match(&output),
+                    Err(err) => {
+                        return SetupCheckResult {
+                            status: "error".to_string(),
+                            message: Some(format!("Invalid setup check regex: {}", err)),
+                        };
+                    }
+                }
+            } else {
+                status.success()
+            };
+
+            let complete = if expectation_count == 0 {
+                status.success()
+            } else {
+                matched
+            };
+
+            let message = if complete {
+                check
+                    .description
+                    .clone()
+                    .or_else(|| Some("Setup check passed.".to_string()))
+            } else if expectation_count > 0 {
+                Some("Setup check did not match expected output.".to_string())
+            } else {
+                Some("Setup check failed.".to_string())
+            };
+
+            SetupCheckResult {
+                status: if complete {
+                    "complete".to_string()
+                } else {
+                    "incomplete".to_string()
+                },
+                message,
+            }
+        }
+        Err(err) => SetupCheckResult {
+            status: "error".to_string(),
+            message: Some(err.to_string()),
+        },
+    }
 }
 
-pub fn check_app_prerequisites(
+pub fn check_setup_steps(
     repo_path: &Path,
     config: &FalckConfig,
     app: &Application,
     backend: &BackendContext,
-) -> Result<Vec<PrerequisiteCheckResult>> {
+) -> Result<Vec<SetupStepCheckResult>> {
     let mut results = Vec::new();
-    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
-    if let Some(prereqs) = &app.prerequisites {
-        for prereq in prereqs {
-            results.push(check_prerequisites(&app_root, prereq, &ctx, &env_map, backend)?);
-        }
+    if backend.mode == backend::BackendMode::Host {
+        let _ = refresh_shell_env_cache();
     }
+    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
+    let Some(setup) = &app.setup else {
+        return Ok(results);
+    };
+    let Some(steps) = &setup.steps else {
+        return Ok(results);
+    };
+
+    for (index, step) in steps.iter().enumerate() {
+        if let Some(condition) = &step.only_if {
+            if !evaluate_condition(condition, &ctx)? {
+                results.push(SetupStepCheckResult {
+                    step_index: index,
+                    name: step.name.clone(),
+                    status: "skipped".to_string(),
+                    message: Some("Skipped for this environment.".to_string()),
+                    optional: step.optional.unwrap_or(false),
+                });
+                continue;
+            }
+        }
+
+        let Some(check) = &step.check else {
+            results.push(SetupStepCheckResult {
+                step_index: index,
+                name: step.name.clone(),
+                status: "missing_check".to_string(),
+                message: Some("No check configured for this step.".to_string()),
+                optional: step.optional.unwrap_or(false),
+            });
+            continue;
+        };
+
+        let check_result = run_setup_check(&app_root, &ctx, &env_map, backend, check);
+        results.push(SetupStepCheckResult {
+            step_index: index,
+            name: step.name.clone(),
+            status: check_result.status,
+            message: check_result.message,
+            optional: step.optional.unwrap_or(false),
+        });
+    }
+
     Ok(results)
 }
 
@@ -639,103 +735,6 @@ fn refresh_runtime_context(
     }
     let (_, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
     Ok((ctx, env_map))
-}
-
-pub fn run_prerequisite_install(
-    repo_path: &Path,
-    config: &FalckConfig,
-    app: &Application,
-    prereq_index: usize,
-    option_index: usize,
-    backend: &BackendContext,
-    app_handle: Option<&AppHandle>,
-) -> Result<String> {
-    let prereqs = app
-        .prerequisites
-        .as_ref()
-        .context("No prerequisites configured for this application")?;
-    let prereq = prereqs
-        .get(prereq_index)
-        .context("Prerequisite not found")?;
-    let install = prereq
-        .install
-        .as_ref()
-        .context("No install options configured for this prerequisite")?;
-    let options = install
-        .options
-        .as_ref()
-        .context("No install options configured for this prerequisite")?;
-    let option = options
-        .get(option_index)
-        .context("Install option not found")?;
-
-    let (app_root, mut ctx, mut env_map) =
-        prepare_runtime_context(repo_path, config, app, backend)?;
-
-    if let Some(condition) = &option.only_if {
-        if !evaluate_condition(condition, &ctx)? {
-            emit_vm_log_entry(
-                app_handle,
-                backend,
-                "prereq",
-                &format!(
-                    "[prereq:{}] Skipped install option '{}'",
-                    prereq.name, option.name
-                ),
-            );
-            return Ok("Install option skipped for this environment.".to_string());
-        }
-    }
-
-    let timeout = option.timeout.unwrap_or(300);
-    let silent = option.silent.unwrap_or(false);
-    let operations = expand_command_sequence(&option.command);
-    let has_multiple = operations.len() > 1;
-
-    for (operation_index, operation) in operations.iter().enumerate() {
-        let command = resolve_template(&operation.command, &ctx)?;
-        let label = if has_multiple {
-            format!(
-                "prereq:{}:{}:{}",
-                prereq.name,
-                option.name,
-                operation_index + 1
-            )
-        } else {
-            format!("prereq:{}:{}", prereq.name, option.name)
-        };
-
-        let status = run_command_backend_with_vm_logs(
-            app_handle,
-            backend,
-            "prereq",
-            &label,
-            &command,
-            &app_root,
-            &env_map,
-            Some(timeout),
-            silent,
-        )?;
-
-        if !status.success() {
-            bail!("Prerequisite install option '{}' failed", option.name);
-        }
-
-        if operation.refresh_shell {
-            let (refreshed_ctx, refreshed_env) =
-                refresh_runtime_context(repo_path, config, app, backend)?;
-            ctx = refreshed_ctx;
-            env_map = refreshed_env;
-        }
-    }
-
-    Ok(format!("Ran install option '{}'.", option.name))
-}
-
-fn parse_version(output: &str) -> Option<String> {
-    let re = Regex::new(r"v?(\d+\.\d+\.\d+)").ok()?;
-    re.captures(output)
-        .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
 }
 
 // ============================================================================
@@ -888,136 +887,201 @@ pub fn run_setup(
     Ok("Setup completed successfully".to_string())
 }
 
-pub fn check_setup_status(
+pub fn run_setup_step(
     repo_path: &Path,
     config: &FalckConfig,
     app: &Application,
+    step_index: usize,
     backend: &BackendContext,
-) -> Result<SetupCheckResult> {
+    app_handle: Option<&AppHandle>,
+) -> Result<String> {
+    if !check_app_secrets_satisfied(app) {
+        bail!("Required secrets not configured for this application");
+    }
+
     let Some(setup) = &app.setup else {
-        return Ok(SetupCheckResult {
-            configured: false,
-            complete: true,
-            message: None,
-        });
+        bail!("No setup configured for this application");
+    };
+    let Some(steps) = &setup.steps else {
+        bail!("No setup steps configured for this application");
+    };
+    let step = steps.get(step_index).context("Setup step not found")?;
+
+    let app_root = get_app_root(repo_path, app);
+    let (mut ctx, mut env_map) = {
+        let (_, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
+        (ctx, env_map)
     };
 
-    let Some(check) = &setup.check else {
-        return Ok(SetupCheckResult {
-            configured: false,
-            complete: true,
-            message: None,
-        });
-    };
-
-    let (app_root, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
-
-    if let Some(condition) = &check.only_if {
+    if let Some(condition) = &step.only_if {
         if !evaluate_condition(condition, &ctx)? {
-            return Ok(SetupCheckResult {
-                configured: true,
-                complete: true,
-                message: Some("Setup check skipped for this environment.".to_string()),
-            });
+            emit_setup_step_event(
+                app_handle,
+                repo_path,
+                &app.id,
+                step_index,
+                &step.name,
+                "skipped",
+                Some("Condition unmet.".to_string()),
+            );
+            return Ok("Setup step skipped for this environment.".to_string());
         }
     }
 
-    let expectation_count = check.expect.is_some() as u8
-        + check.expect_contains.is_some() as u8
-        + check.expect_regex.is_some() as u8;
-    if expectation_count > 1 {
-        return Ok(SetupCheckResult {
-            configured: true,
-            complete: false,
-            message: Some(
-                "Setup check has multiple expectations. Use only one of expect, expect_contains, or expect_regex."
-                    .to_string(),
-            ),
-        });
-    }
+    let timeout = step.timeout.unwrap_or(300);
+    let silent = step.silent.unwrap_or(false);
+    let operations = expand_command_sequence(&step.command);
+    let has_multiple = operations.len() > 1;
 
-    let command = resolve_template(&check.command, &ctx)?;
-    let timeout = check.timeout.unwrap_or(30);
-    let ignore_exit = check.ignore_exit.unwrap_or(false);
-    let trim_output = check.trim.unwrap_or(true);
-    let output_mode = check.output.clone().unwrap_or_else(|| "stdout".to_string());
+    emit_setup_step_event(
+        app_handle,
+        repo_path,
+        &app.id,
+        step_index,
+        &step.name,
+        "started",
+        None,
+    );
 
-    match run_command_capture_backend(backend, &command, &app_root, &env_map, Some(timeout)) {
-        Ok((status, stdout, stderr)) => {
-            if !status.success() && !ignore_exit {
-                return Ok(SetupCheckResult {
-                    configured: true,
-                    complete: false,
-                    message: Some("Setup check command failed.".to_string()),
-                });
+    for (operation_index, operation) in operations.iter().enumerate() {
+        let command = resolve_template(&operation.command, &ctx)?;
+        let label = if has_multiple {
+            format!("setup:{}:{}", step.name, operation_index + 1)
+        } else {
+            format!("setup:{}", step.name)
+        };
+        let status = run_command_backend_with_vm_logs(
+            app_handle,
+            backend,
+            "setup",
+            &label,
+            &command,
+            &app_root,
+            &env_map,
+            Some(timeout),
+            silent,
+        )?;
+
+        if !status.success() {
+            if step.optional.unwrap_or(false) {
+                emit_setup_step_event(
+                    app_handle,
+                    repo_path,
+                    &app.id,
+                    step_index,
+                    &step.name,
+                    "skipped",
+                    Some("Optional step failed.".to_string()),
+                );
+                return Ok("Optional step failed; skipping.".to_string());
             }
-
-            let mut output = match output_mode.as_str() {
-                "stderr" => stderr,
-                "combined" => {
-                    if stdout.is_empty() {
-                        stderr
-                    } else if stderr.is_empty() {
-                        stdout
-                    } else {
-                        format!("{}\n{}", stdout, stderr)
-                    }
-                }
-                _ => stdout,
-            };
-
-            if trim_output {
-                output = output.trim().to_string();
-            }
-
-            let matched = if let Some(expect) = &check.expect {
-                output == *expect
-            } else if let Some(expect_contains) = &check.expect_contains {
-                output.contains(expect_contains)
-            } else if let Some(expect_regex) = &check.expect_regex {
-                match Regex::new(expect_regex) {
-                    Ok(re) => re.is_match(&output),
-                    Err(err) => {
-                        return Ok(SetupCheckResult {
-                            configured: true,
-                            complete: false,
-                            message: Some(format!("Invalid setup check regex: {}", err)),
-                        });
-                    }
-                }
-            } else {
-                status.success()
-            };
-
-            let complete = if expectation_count == 0 {
-                status.success()
-            } else {
-                matched
-            };
-
-            let message = if complete {
-                check
-                    .description
-                    .clone()
-                    .or_else(|| Some("Setup check passed.".to_string()))
-            } else if expectation_count > 0 {
-                Some("Setup check did not match expected output.".to_string())
-            } else {
-                Some("Setup check failed.".to_string())
-            };
-
-            Ok(SetupCheckResult {
-                configured: true,
-                complete,
-                message,
-            })
+            emit_setup_step_event(
+                app_handle,
+                repo_path,
+                &app.id,
+                step_index,
+                &step.name,
+                "failed",
+                Some("Command failed.".to_string()),
+            );
+            bail!("Setup step '{}' failed", step.name);
         }
-        Err(err) => Ok(SetupCheckResult {
-            configured: true,
-            complete: false,
-            message: Some(err.to_string()),
-        }),
+
+        if operation.refresh_shell {
+            let (refreshed_ctx, refreshed_env) =
+                refresh_runtime_context(repo_path, config, app, backend)?;
+            ctx = refreshed_ctx;
+            env_map = refreshed_env;
+        }
     }
+
+    emit_setup_step_event(
+        app_handle,
+        repo_path,
+        &app.id,
+        step_index,
+        &step.name,
+        "completed",
+        None,
+    );
+
+    Ok(format!("Ran setup step '{}'.", step.name))
+}
+
+pub fn run_setup_step_teardown(
+    repo_path: &Path,
+    config: &FalckConfig,
+    app: &Application,
+    step_index: usize,
+    backend: &BackendContext,
+) -> Result<String> {
+    let Some(setup) = &app.setup else {
+        bail!("No setup configured for this application");
+    };
+    let Some(steps) = &setup.steps else {
+        bail!("No setup steps configured for this application");
+    };
+    let step = steps.get(step_index).context("Setup step not found")?;
+    let teardown = step
+        .teardown
+        .as_ref()
+        .context("No teardown configured for this step")?;
+
+    let app_root = get_app_root(repo_path, app);
+    let (mut ctx, mut env_map) = {
+        let (_, ctx, env_map) = prepare_runtime_context(repo_path, config, app, backend)?;
+        (ctx, env_map)
+    };
+
+    if let Some(condition) = &step.only_if {
+        if !evaluate_condition(condition, &ctx)? {
+            return Ok("Teardown skipped for this environment.".to_string());
+        }
+    }
+
+    if let Some(condition) = &teardown.only_if {
+        if !evaluate_condition(condition, &ctx)? {
+            return Ok("Teardown skipped for this environment.".to_string());
+        }
+    }
+
+    let timeout = teardown.timeout.unwrap_or(300);
+    let silent = teardown.silent.unwrap_or(false);
+    let operations = expand_command_sequence(&teardown.command);
+    let has_multiple = operations.len() > 1;
+
+    for (operation_index, operation) in operations.iter().enumerate() {
+        let command = resolve_template(&operation.command, &ctx)?;
+        let label = if has_multiple {
+            format!("teardown:{}:{}", step.name, operation_index + 1)
+        } else {
+            format!("teardown:{}", step.name)
+        };
+        let status = run_command_backend_with_vm_logs(
+            None,
+            backend,
+            "teardown",
+            &label,
+            &command,
+            &app_root,
+            &env_map,
+            Some(timeout),
+            silent,
+        )?;
+
+        if !status.success() {
+            bail!("Teardown for '{}' failed", step.name);
+        }
+
+        if operation.refresh_shell {
+            let (refreshed_ctx, refreshed_env) =
+                refresh_runtime_context(repo_path, config, app, backend)?;
+            ctx = refreshed_ctx;
+            env_map = refreshed_env;
+        }
+    }
+
+    Ok(format!("Ran teardown for '{}'.", step.name))
 }
 
 pub fn launch_app(
@@ -2427,59 +2491,6 @@ pub async fn load_falck_config(repo_path: String) -> Result<FalckConfig, String>
 }
 
 #[tauri::command]
-pub async fn check_falck_prerequisites(
-    app: AppHandle,
-    repo_path: String,
-    app_id: String,
-) -> Result<Vec<PrerequisiteCheckResult>, String> {
-    run_blocking(move || {
-        let path = Path::new(&repo_path);
-        let config = load_config(path).map_err(|e| e.to_string())?;
-        let app_config = config
-            .applications
-            .iter()
-            .find(|app| app.id == app_id)
-            .ok_or_else(|| "Application not found".to_string())?;
-        let backend = resolve_backend_for_app(&app, path, app_config)?;
-        check_app_prerequisites(path, &config, app_config, &backend)
-            .map_err(|e| e.to_string())
-    })
-    .await
-}
-
-#[tauri::command]
-pub async fn run_falck_prerequisite_install(
-    app: AppHandle,
-    repo_path: String,
-    app_id: String,
-    prereq_index: usize,
-    option_index: usize,
-) -> Result<String, String> {
-    run_blocking(move || {
-        let path = Path::new(&repo_path);
-        let config = load_config(path).map_err(|e| e.to_string())?;
-        let app_config = config
-            .applications
-            .iter()
-            .find(|app| app.id == app_id)
-            .ok_or_else(|| "Application not found".to_string())?;
-        let backend = resolve_backend_for_app(&app, path, app_config)?;
-
-        run_prerequisite_install(
-            path,
-            &config,
-            app_config,
-            prereq_index,
-            option_index,
-            &backend,
-            Some(&app),
-        )
-            .map_err(|e| e.to_string())
-    })
-    .await
-}
-
-#[tauri::command]
 pub async fn get_app_secrets_for_config(
     repo_path: String,
     app_id: String,
@@ -2521,11 +2532,11 @@ pub async fn check_secrets_satisfied(repo_path: String, app_id: String) -> Resul
 }
 
 #[tauri::command]
-pub async fn check_falck_setup(
+pub async fn check_falck_setup_steps(
     app: AppHandle,
     repo_path: String,
     app_id: String,
-) -> Result<SetupCheckResult, String> {
+) -> Result<Vec<SetupStepCheckResult>, String> {
     run_blocking(move || {
         let path = Path::new(&repo_path);
         let config = load_config(path).map_err(|e| e.to_string())?;
@@ -2536,7 +2547,7 @@ pub async fn check_falck_setup(
             .ok_or_else(|| "Application not found".to_string())?;
         let backend = resolve_backend_for_app(&app, path, app_config)?;
 
-        check_setup_status(path, &config, app_config, &backend).map_err(|e| e.to_string())
+        check_setup_steps(path, &config, app_config, &backend).map_err(|e| e.to_string())
     })
     .await
 }
@@ -2558,6 +2569,52 @@ pub async fn run_falck_setup(
         let backend = resolve_backend_for_app(&app, path, app_config)?;
 
         run_setup(path, &config, app_config, &backend, Some(&app))
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn run_falck_setup_step(
+    app: AppHandle,
+    repo_path: String,
+    app_id: String,
+    step_index: usize,
+) -> Result<String, String> {
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        let config = load_config(path).map_err(|e| e.to_string())?;
+        let app_config = config
+            .applications
+            .iter()
+            .find(|app| app.id == app_id)
+            .ok_or_else(|| "Application not found".to_string())?;
+        let backend = resolve_backend_for_app(&app, path, app_config)?;
+
+        run_setup_step(path, &config, app_config, step_index, &backend, Some(&app))
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn run_falck_setup_step_teardown(
+    app: AppHandle,
+    repo_path: String,
+    app_id: String,
+    step_index: usize,
+) -> Result<String, String> {
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        let config = load_config(path).map_err(|e| e.to_string())?;
+        let app_config = config
+            .applications
+            .iter()
+            .find(|app| app.id == app_id)
+            .ok_or_else(|| "Application not found".to_string())?;
+        let backend = resolve_backend_for_app(&app, path, app_config)?;
+
+        run_setup_step_teardown(path, &config, app_config, step_index, &backend)
             .map_err(|e| e.to_string())
     })
     .await

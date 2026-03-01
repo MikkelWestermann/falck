@@ -26,6 +26,7 @@ import {
   Play,
   RefreshCw,
   Square,
+  type LucideIcon,
 } from "lucide-react";
 import {
   Dialog,
@@ -38,11 +39,10 @@ import {
   falckService,
   FalckApplication,
   FalckConfig,
-  PrerequisiteCheckResult,
+  SetupStepCheckResult,
   LaunchResult,
 } from "@/services/falckService";
 import { containerService } from "@/services/containerService";
-import { PrerequisiteStatus } from "@/components/falck/PrerequisiteStatus";
 import { SecretsDialog } from "@/components/falck/SecretsDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -105,21 +105,15 @@ export function FalckDashboard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeAppId, setActiveAppId] = useState<string | null>(null);
-  const [prereqResults, setPrereqResults] = useState<
-    Record<string, PrerequisiteCheckResult[]>
+  const [setupStepChecksByApp, setSetupStepChecksByApp] = useState<
+    Record<string, SetupStepCheckResult[]>
   >({});
-  const [prereqLoading, setPrereqLoading] = useState<Record<string, boolean>>(
-    {},
-  );
+  const [setupCheckLoading, setSetupCheckLoading] = useState<
+    Record<string, boolean>
+  >({});
   const [setupRunning, setSetupRunning] = useState<Record<string, boolean>>({});
   const [setupMessage, setSetupMessage] = useState<Record<string, string>>({});
   const [setupError, setSetupError] = useState<Record<string, string>>({});
-  const [setupStatusByApp, setSetupStatusByApp] = useState<
-    Record<string, SetupStatus>
-  >({});
-  const [setupStatusMessage, setSetupStatusMessage] = useState<
-    Record<string, string>
-  >({});
   const [setupStepStatusByApp, setSetupStepStatusByApp] = useState<
     Record<string, SetupStepProgress[]>
   >({});
@@ -144,14 +138,20 @@ export function FalckDashboard({
   >({});
   const [secretsDialogApp, setSecretsDialogApp] =
     useState<FalckApplication | null>(null);
-  const [prereqInstallRunning, setPrereqInstallRunning] = useState<
+  const [setupStepTeardownRunning, setSetupStepTeardownRunning] = useState<
     Record<string, boolean>
   >({});
-  const [prereqInstallMessage, setPrereqInstallMessage] = useState<
+  const [autoSetupRunning, setAutoSetupRunning] = useState<
+    Record<string, boolean>
+  >({});
+  const [autoSetupMessage, setAutoSetupMessage] = useState<
     Record<string, string>
   >({});
-  const [prereqInstallError, setPrereqInstallError] = useState<
+  const [autoSetupError, setAutoSetupError] = useState<
     Record<string, string>
+  >({});
+  const [autoSetupOverlayByApp, setAutoSetupOverlayByApp] = useState<
+    Record<string, boolean>
   >({});
   const normalizeRepoPath = (path?: string | null) =>
     (path ?? "").replace(/[\\/]+$/, "");
@@ -172,6 +172,13 @@ export function FalckDashboard({
     setContainerLogsByApp({});
     setContainerLogsOpen(false);
     setSetupStepStatusByApp({});
+    setSetupStepChecksByApp({});
+    setSetupCheckLoading({});
+    setSetupStepTeardownRunning({});
+    setAutoSetupRunning({});
+    setAutoSetupMessage({});
+    setAutoSetupError({});
+    setAutoSetupOverlayByApp({});
   }, [repoPath]);
 
   useEffect(() => {
@@ -327,8 +334,7 @@ export function FalckDashboard({
       return;
     }
     config.applications.forEach((app) => {
-      void checkPrereqs(app.id);
-      void checkSetupStatus(app.id);
+      void checkSetupSteps(app.id);
       if (app.secrets && app.secrets.length > 0) {
         void checkSecrets(app.id);
       } else {
@@ -349,52 +355,24 @@ export function FalckDashboard({
     onActiveAppChange?.(activeApp);
   }, [activeApp, onActiveAppChange]);
 
-  const checkPrereqs = async (appId: string) => {
-    setPrereqLoading((prev) => ({ ...prev, [appId]: true }));
+  const checkSetupSteps = async (
+    appId: string,
+    options?: { throwOnError?: boolean },
+  ): Promise<SetupStepCheckResult[]> => {
+    setSetupCheckLoading((prev) => ({ ...prev, [appId]: true }));
     try {
-      const results = await falckService.checkPrerequisites(repoPath, appId);
-      setPrereqResults((prev) => ({ ...prev, [appId]: results }));
+      const results = await falckService.checkSetupSteps(repoPath, appId);
+      setSetupStepChecksByApp((prev) => ({ ...prev, [appId]: results }));
+      return results;
     } catch (err) {
-      setPrereqResults((prev) => ({ ...prev, [appId]: [] }));
-      setError(`Failed to check prerequisites: ${String(err)}`);
+      setSetupStepChecksByApp((prev) => ({ ...prev, [appId]: [] }));
+      setError(`Failed to check setup steps: ${String(err)}`);
+      if (options?.throwOnError) {
+        throw err;
+      }
+      return [];
     } finally {
-      setPrereqLoading((prev) => ({ ...prev, [appId]: false }));
-    }
-  };
-
-  const checkSetupStatus = async (appId: string) => {
-    const app = config?.applications.find(
-      (candidate) => candidate.id === appId,
-    );
-    if (!app?.setup?.check?.command) {
-      setSetupStatusByApp((prev) => ({
-        ...prev,
-        [appId]: "not_configured",
-      }));
-      setSetupStatusMessage((prev) => ({ ...prev, [appId]: "" }));
-      return;
-    }
-
-    setSetupStatusByApp((prev) => ({ ...prev, [appId]: "checking" }));
-    setSetupStatusMessage((prev) => ({ ...prev, [appId]: "" }));
-    try {
-      const result = await falckService.checkSetupStatus(repoPath, appId);
-      const status = result.configured
-        ? result.complete
-          ? "complete"
-          : "incomplete"
-        : "not_configured";
-      setSetupStatusByApp((prev) => ({ ...prev, [appId]: status }));
-      setSetupStatusMessage((prev) => ({
-        ...prev,
-        [appId]: result.message ?? "",
-      }));
-    } catch (err) {
-      setSetupStatusByApp((prev) => ({ ...prev, [appId]: "error" }));
-      setSetupStatusMessage((prev) => ({
-        ...prev,
-        [appId]: String(err),
-      }));
+      setSetupCheckLoading((prev) => ({ ...prev, [appId]: false }));
     }
   };
 
@@ -411,7 +389,9 @@ export function FalckDashboard({
     }
   };
 
-  const handleSetup = async (app: FalckApplication) => {
+  const runSetupWithState = async (
+    app: FalckApplication,
+  ): Promise<boolean> => {
     setSetupRunning((prev) => ({ ...prev, [app.id]: true }));
     setSetupError((prev) => ({ ...prev, [app.id]: "" }));
     setSetupMessage((prev) => ({ ...prev, [app.id]: "" }));
@@ -432,6 +412,7 @@ export function FalckDashboard({
           [app.id]: app.setup!.steps!.map(() => "complete"),
         }));
       }
+      return true;
     } catch (err) {
       setSetupError((prev) => ({ ...prev, [app.id]: String(err) }));
       setSetupStepStatusByApp((prev) => {
@@ -449,38 +430,82 @@ export function FalckDashboard({
         }
         return { ...prev, [app.id]: next };
       });
+      return false;
     } finally {
       setSetupRunning((prev) => ({ ...prev, [app.id]: false }));
-      void checkSetupStatus(app.id);
+      void checkSetupSteps(app.id);
     }
   };
 
-  const handlePrereqInstall = async (
-    appId: string,
-    prereqIndex: number,
-    optionIndex: number,
-  ) => {
-    const optionKey = `${appId}:${prereqIndex}:${optionIndex}`;
-    const prereqKey = `${appId}:${prereqIndex}`;
-    setPrereqInstallRunning((prev) => ({ ...prev, [optionKey]: true }));
-    setPrereqInstallMessage((prev) => ({ ...prev, [prereqKey]: "" }));
-    setPrereqInstallError((prev) => ({ ...prev, [prereqKey]: "" }));
+  const handleSetup = async (app: FalckApplication) => {
+    await runSetupWithState(app);
+  };
+
+  const runSetupStepWithState = async (
+    app: FalckApplication,
+    stepIndex: number,
+  ): Promise<boolean> => {
+    setSetupError((prev) => ({ ...prev, [app.id]: "" }));
+    setSetupMessage((prev) => ({ ...prev, [app.id]: "" }));
+    setSetupStepStatusByApp((prev) => {
+      const existing = prev[app.id] ?? [];
+      const next = [...existing];
+      if (next.length <= stepIndex) {
+        next.length = stepIndex + 1;
+        for (let i = 0; i < next.length; i += 1) {
+          if (!next[i]) {
+            next[i] = "pending";
+          }
+        }
+      }
+      next[stepIndex] = "running";
+      return { ...prev, [app.id]: next };
+    });
     try {
-      const message = await falckService.runPrerequisiteInstall(
+      const message = await falckService.runSetupStep(
         repoPath,
-        appId,
-        prereqIndex,
-        optionIndex,
+        app.id,
+        stepIndex,
       );
-      setPrereqInstallMessage((prev) => ({ ...prev, [prereqKey]: message }));
+      setSetupMessage((prev) => ({ ...prev, [app.id]: message }));
+      return true;
     } catch (err) {
-      setPrereqInstallError((prev) => ({
-        ...prev,
-        [prereqKey]: String(err),
-      }));
+      setSetupError((prev) => ({ ...prev, [app.id]: String(err) }));
+      setSetupStepStatusByApp((prev) => {
+        const existing = prev[app.id] ?? [];
+        const next = [...existing];
+        if (next.length <= stepIndex) {
+          next.length = stepIndex + 1;
+        }
+        next[stepIndex] = "failed";
+        return { ...prev, [app.id]: next };
+      });
+      return false;
     } finally {
-      setPrereqInstallRunning((prev) => ({ ...prev, [optionKey]: false }));
-      void checkPrereqs(appId);
+      void checkSetupSteps(app.id);
+    }
+  };
+
+  const runSetupStepTeardown = async (
+    app: FalckApplication,
+    stepIndex: number,
+  ) => {
+    const key = `${app.id}:${stepIndex}`;
+    setSetupError((prev) => ({ ...prev, [app.id]: "" }));
+    setSetupMessage((prev) => ({ ...prev, [app.id]: "" }));
+    setSetupStepTeardownRunning((prev) => ({ ...prev, [key]: true }));
+    try {
+      const message = await falckService.runSetupStepTeardown(
+        repoPath,
+        app.id,
+        stepIndex,
+      );
+      setSetupMessage((prev) => ({ ...prev, [app.id]: message }));
+    } catch (err) {
+      setSetupError((prev) => ({ ...prev, [app.id]: String(err) }));
+    } finally {
+      setSetupStepTeardownRunning((prev) => ({ ...prev, [key]: false }));
+      void checkSetupSteps(app.id);
     }
   };
 
@@ -540,7 +565,130 @@ export function FalckDashboard({
   };
 
   const handleLaunch = async (app: FalckApplication) => {
-    await performLaunch(app);
+    if (autoSetupRunning[app.id] || launchingApps[app.id]) {
+      return;
+    }
+
+    if (app.secrets && app.secrets.length > 0 && !secretsSatisfied[app.id]) {
+      setSecretsDialogApp(app);
+      return;
+    }
+
+    setLaunchError((prev) => ({ ...prev, [app.id]: "" }));
+    setAutoSetupError((prev) => ({ ...prev, [app.id]: "" }));
+    setAutoSetupMessage((prev) => ({
+      ...prev,
+      [app.id]: "Checking setup steps...",
+    }));
+    setAutoSetupRunning((prev) => ({ ...prev, [app.id]: true }));
+
+    const updateAutoSetupMessage = (message: string) =>
+      setAutoSetupMessage((prev) => ({ ...prev, [app.id]: message }));
+
+    try {
+      const steps = app.setup?.steps ?? [];
+      const stepChecks = await checkSetupSteps(app.id, { throwOnError: true });
+      const hasSteps = steps.length > 0;
+
+      if (!hasSteps) {
+        updateAutoSetupMessage("Starting the app...");
+        await performLaunch(app);
+        return;
+      }
+
+      const missingChecks = stepChecks.filter(
+        (result) => result.status === "missing_check",
+      );
+      if (missingChecks.length > 0) {
+        const names = missingChecks.map((result) => result.name).join(", ");
+        throw new Error(
+          `Setup checks are missing for: ${names}. Add step checks to continue.`,
+        );
+      }
+
+      const stepsToRun = steps
+        .map((step, index) => ({
+          step,
+          index,
+          result: stepChecks[index],
+        }))
+        .filter(
+          ({ step, result }) => {
+            if (!result) {
+              return true;
+            }
+            if (result.status === "complete" || result.status === "skipped") {
+              return false;
+            }
+            if (result.status === "missing_check") {
+              return false;
+            }
+            return true;
+          },
+        );
+
+      if (stepsToRun.length === 0) {
+        updateAutoSetupMessage("Starting the app...");
+        await performLaunch(app);
+        return;
+      }
+
+      setSetupStepStatusByApp((prev) => {
+        const existing = prev[app.id] ?? [];
+        const next = [...existing];
+        const indices = stepsToRun.map((entry) => entry.index);
+        const maxIndex = Math.max(-1, ...indices);
+        if (next.length <= maxIndex) {
+          next.length = maxIndex + 1;
+          for (let i = 0; i < next.length; i += 1) {
+            if (!next[i]) {
+              next[i] = "pending";
+            }
+          }
+        }
+        indices.forEach((index) => {
+          next[index] = "pending";
+        });
+        return { ...prev, [app.id]: next };
+      });
+      setAutoSetupOverlayByApp((prev) => ({ ...prev, [app.id]: true }));
+      updateAutoSetupMessage("Running setup steps...");
+
+      for (const entry of stepsToRun) {
+        updateAutoSetupMessage(`Running ${entry.step.name}...`);
+        const ok = await runSetupStepWithState(app, entry.index);
+        const optional = Boolean(entry.step.optional);
+        if (!ok && !optional) {
+          throw new Error(
+            `Setup step '${entry.step.name}' failed. Open setup steps to review.`,
+          );
+        }
+        const refreshed = await checkSetupSteps(app.id, { throwOnError: true });
+        const refreshedResult = refreshed[entry.index];
+        if (!optional) {
+          if (
+            !refreshedResult ||
+            (refreshedResult.status !== "complete" &&
+              refreshedResult.status !== "skipped")
+          ) {
+            throw new Error(
+              `Setup step '${entry.step.name}' did not pass its check.`,
+            );
+          }
+        }
+      }
+
+      updateAutoSetupMessage("Starting the app...");
+      await performLaunch(app);
+    } catch (err) {
+      setAutoSetupError((prev) => ({
+        ...prev,
+        [app.id]: String(err),
+      }));
+    } finally {
+      setAutoSetupRunning((prev) => ({ ...prev, [app.id]: false }));
+      setAutoSetupOverlayByApp((prev) => ({ ...prev, [app.id]: false }));
+    }
   };
 
   const handleStop = async (app: FalckApplication) => {
@@ -623,11 +771,35 @@ export function FalckDashboard({
     label: app.name,
   }));
 
-  const activeResults = activeApp ? prereqResults[activeApp.id] : [];
-  const activePrereqs = activeApp?.prerequisites ?? [];
-  const prereqsMissing = activeResults?.some(
-    (result) => !result.installed && !result.optional,
+  const activeSetupSteps = activeApp?.setup?.steps ?? [];
+  const activeStepChecks = activeApp
+    ? setupStepChecksByApp[activeApp.id] ?? []
+    : [];
+  const activeSetupCheckLoading = activeApp
+    ? Boolean(setupCheckLoading[activeApp.id])
+    : false;
+  const setupStepsConfigured = activeSetupSteps.length > 0;
+  const requiredStepCount = activeSetupSteps.filter(
+    (step) => !step.optional,
+  ).length;
+  const requiredStepChecks = activeStepChecks.filter(
+    (result) => !result.optional,
   );
+  const allStatuses = activeStepChecks.map((result) => result.status);
+  const missingCheckCount = allStatuses.filter(
+    (status) => status === "missing_check",
+  ).length;
+  const errorCheckCount = requiredStepChecks.filter(
+    (result) => result.status === "error",
+  ).length;
+  const incompleteCount = requiredStepChecks.filter(
+    (result) => result.status === "incomplete",
+  ).length;
+  const completeCount = requiredStepChecks.filter(
+    (result) => result.status === "complete" || result.status === "skipped",
+  ).length;
+  const setupChecksReady =
+    setupStepsConfigured && activeStepChecks.length === activeSetupSteps.length;
   const secretsOk = activeApp
     ? activeApp.secrets && activeApp.secrets.length > 0
       ? Boolean(secretsSatisfied[activeApp.id])
@@ -635,6 +807,25 @@ export function FalckDashboard({
     : true;
   const isRunning = activeApp ? Boolean(runningApps[activeApp.id]) : false;
   const isLaunching = activeApp ? Boolean(launchingApps[activeApp.id]) : false;
+  const autoSetupActive = activeApp
+    ? Boolean(autoSetupRunning[activeApp.id])
+    : false;
+  const autoSetupOverlayActive = activeApp
+    ? Boolean(autoSetupOverlayByApp[activeApp.id])
+    : false;
+  const autoSetupNote = activeApp ? autoSetupMessage[activeApp.id] : "";
+  const autoSetupFailure = activeApp ? autoSetupError[activeApp.id] : "";
+  const isSetupInstalling = activeApp ? Boolean(setupRunning[activeApp.id]) : false;
+  const isStepRunning = activeApp
+    ? (setupStepStatusByApp[activeApp.id] ?? []).some(
+        (status) => status === "running",
+      )
+    : false;
+  const isTeardownRunning = activeApp
+    ? Object.entries(setupStepTeardownRunning).some(
+        ([key, running]) => running && key.startsWith(`${activeApp.id}:`),
+      )
+    : false;
   const activeContainerStatus = activeApp
     ? containerStatusByApp[activeApp.id]
     : undefined;
@@ -734,10 +925,47 @@ export function FalckDashboard({
   const containerActivity =
     containerActivityMeta[containerActivityStatus] ??
     containerActivityMeta.idle;
-  const setupStatus: SetupStatus = activeApp
-    ? (setupStatusByApp[activeApp.id] ??
-      (activeApp.setup?.check?.command ? "checking" : "not_configured"))
-    : "unknown";
+  const setupStatus: SetupStatus = (() => {
+    if (!setupStepsConfigured) {
+      return "not_configured";
+    }
+    if (activeSetupCheckLoading || !setupChecksReady) {
+      return "checking";
+    }
+    if (errorCheckCount > 0) {
+      return "error";
+    }
+    if (missingCheckCount > 0 || incompleteCount > 0) {
+      return "incomplete";
+    }
+    if (completeCount >= requiredStepCount) {
+      return "complete";
+    }
+    return "unknown";
+  })();
+  const setupStatusMessage = (() => {
+    if (!setupStepsConfigured) {
+      return "";
+    }
+    if (activeSetupCheckLoading || !setupChecksReady) {
+      return "Checking setup steps...";
+    }
+    if (missingCheckCount > 0) {
+      return `${missingCheckCount} step${
+        missingCheckCount === 1 ? "" : "s"
+      } missing checks.`;
+    }
+    if (errorCheckCount > 0) {
+      return "Some setup checks failed.";
+    }
+    if (requiredStepCount === 0) {
+      return "No required setup steps.";
+    }
+    if (completeCount >= requiredStepCount) {
+      return "All required setup steps complete.";
+    }
+    return `${completeCount} of ${requiredStepCount} required steps complete.`;
+  })();
   const setupStatusMeta: Record<
     SetupStatus,
     { label: string; className: string }
@@ -745,12 +973,12 @@ export function FalckDashboard({
     complete: { label: "Setup complete", className: "bg-emerald-500" },
     incomplete: { label: "Setup incomplete", className: "bg-amber-500" },
     checking: {
-      label: "Checking setup",
+      label: "Checking setup steps",
       className: "bg-sky-500 animate-pulse",
     },
-    error: { label: "Setup check error", className: "bg-destructive" },
+    error: { label: "Setup checks failed", className: "bg-destructive" },
     not_configured: {
-      label: "Setup check not configured",
+      label: "No setup steps",
       className: "bg-muted-foreground/40",
     },
     unknown: {
@@ -759,12 +987,75 @@ export function FalckDashboard({
     },
   };
   const setupIndicator = setupStatusMeta[setupStatus];
-  const setupCheckConfigured = activeApp
-    ? Boolean(activeApp.setup?.check?.command)
-    : false;
-  const setupBlocked = setupCheckConfigured && setupStatus !== "complete";
-  const setupNeedsAttention =
-    setupStatus === "incomplete" || setupStatus === "error";
+  const autoSetupChecklist = activeSetupSteps.map((step, index) => {
+    const actionStatus = activeApp
+      ? setupStepStatusByApp[activeApp.id]?.[index]
+      : undefined;
+    const checkResult = activeStepChecks[index];
+    const checkStatus = checkResult?.status;
+    const isRunning = actionStatus === "running";
+    const isFailed = actionStatus === "failed";
+    const isComplete = checkStatus === "complete" || checkStatus === "skipped";
+    const isSkipped = checkStatus === "skipped";
+    const isCheckMissing = checkStatus === "missing_check";
+    const isCheckError = checkStatus === "error";
+
+    let state: "running" | "complete" | "failed" | "warning" | "pending" =
+      "pending";
+    let label = autoSetupOverlayActive ? "Queued" : "Waiting";
+
+    if (isRunning) {
+      state = "running";
+      label = "Running";
+    } else if (isComplete) {
+      state = "complete";
+      label = isSkipped ? "Skipped" : "Complete";
+    } else if (isFailed) {
+      state = "failed";
+      label = "Needs attention";
+    } else if (autoSetupOverlayActive) {
+      state = "pending";
+      label = "Queued";
+    } else if (isCheckMissing) {
+      state = "warning";
+      label = "Missing check";
+    } else if (isCheckError) {
+      state = "failed";
+      label = "Needs attention";
+    }
+
+    return { step, index, state, label };
+  });
+  const autoSetupStatusMeta: Record<
+    "running" | "complete" | "failed" | "warning" | "pending",
+    { icon: LucideIcon; iconClass: string; labelClass: string }
+  > = {
+    running: {
+      icon: Loader2,
+      iconClass: "text-sky-500 animate-spin",
+      labelClass: "text-sky-700",
+    },
+    complete: {
+      icon: CheckCircle2,
+      iconClass: "text-emerald-500",
+      labelClass: "text-emerald-700",
+    },
+    failed: {
+      icon: AlertCircle,
+      iconClass: "text-destructive",
+      labelClass: "text-destructive",
+    },
+    warning: {
+      icon: AlertCircle,
+      iconClass: "text-amber-500",
+      labelClass: "text-amber-700",
+    },
+    pending: {
+      icon: Circle,
+      iconClass: "text-muted-foreground/60",
+      labelClass: "text-muted-foreground",
+    },
+  };
 
   return (
     <div className="space-y-4">
@@ -867,29 +1158,25 @@ export function FalckDashboard({
                     className="gap-2"
                     onClick={() => handleLaunch(activeApp)}
                     disabled={
-                      Boolean(prereqsMissing) ||
                       !secretsOk ||
-                      setupBlocked ||
-                      isLaunching
+                      isLaunching ||
+                      autoSetupActive ||
+                      isSetupInstalling ||
+                      isStepRunning ||
+                      isTeardownRunning
                     }
                   >
                     <Play className="h-4 w-4" />
-                    {isLaunching ? "Starting..." : "Start"}
+                    {autoSetupActive
+                      ? "Setting up..."
+                      : isLaunching
+                        ? "Starting..."
+                        : "Start"}
                   </Button>
                 )}
               </div>
             </div>
             <div className="space-y-2 pt-0">
-              {!isRunning && prereqsMissing ? (
-                <div className="rounded-lg border-2 border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                  Missing prerequisites. Open setup steps to see what is needed.
-                </div>
-              ) : null}
-              {!isRunning && setupNeedsAttention ? (
-                <div className="rounded-lg border-2 border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  Setup is not complete. Open setup steps to finish.
-                </div>
-              ) : null}
               {!isRunning && !secretsOk && activeApp.secrets?.length ? (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-900">
                   <span>Secrets required to start this app.</span>
@@ -901,6 +1188,12 @@ export function FalckDashboard({
                     Configure
                   </Button>
                 </div>
+              ) : null}
+              {autoSetupFailure ? (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{autoSetupFailure}</AlertDescription>
+                </Alert>
               ) : null}
               {launchError[activeApp.id] && (
                 <Alert variant="destructive">
@@ -929,6 +1222,61 @@ export function FalckDashboard({
               </ScrollArea>
             </DialogContent>
           </Dialog>
+          <Dialog open={autoSetupOverlayActive} onOpenChange={() => {}}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Setting things up</DialogTitle>
+                <DialogDescription>
+                  We found setup steps that are not done yet. Falck is taking
+                  care of them now. You do not need to do anything.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                  <div className="flex items-start gap-2">
+                    <Loader2 className="mt-0.5 h-3.5 w-3.5 animate-spin text-sky-600" />
+                    <div>
+                      <p className="text-sm font-semibold">
+                        Automatic setup in progress
+                      </p>
+                      <p className="text-xs text-sky-900/80">
+                        {autoSetupNote ||
+                          "Running setup steps before starting the app."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {autoSetupChecklist.map((item) => {
+                    const meta = autoSetupStatusMeta[item.state];
+                    const Icon = meta.icon;
+                    return (
+                      <div
+                        key={`${item.step.name}-${item.index}`}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Icon className={`h-4 w-4 ${meta.iconClass}`} />
+                          <span className="text-sm font-medium">
+                            {item.step.name}
+                          </span>
+                          {item.step.optional ? (
+                            <Badge variant="outline">Optional</Badge>
+                          ) : null}
+                        </div>
+                        <span className={`text-xs ${meta.labelClass}`}>
+                          {item.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  We will start the app automatically once everything is ready.
+                </p>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={setupDialogOpen} onOpenChange={setSetupDialogOpen}>
             <DialogContent className="max-w-3xl">
@@ -946,27 +1294,25 @@ export function FalckDashboard({
                     </p>
                   )}
 
-                  {activeApp.setup?.check?.command ? (
+                  {setupStepsConfigured ? (
                     <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-border bg-muted/40 px-3 py-2">
                       <div>
                         <p className="text-sm font-semibold">
                           Setup status: {setupIndicator.label}
                         </p>
-                        {setupStatusMessage[activeApp.id] ? (
+                        {setupStatusMessage ? (
                           <p className="text-xs text-muted-foreground">
-                            {setupStatusMessage[activeApp.id]}
+                            {setupStatusMessage}
                           </p>
                         ) : null}
                       </div>
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => checkSetupStatus(activeApp.id)}
-                        disabled={setupStatus === "checking"}
+                        onClick={() => checkSetupSteps(activeApp.id)}
+                        disabled={activeSetupCheckLoading}
                       >
-                        {setupStatus === "checking"
-                          ? "Checking..."
-                          : "Re-check"}
+                        {activeSetupCheckLoading ? "Checking..." : "Re-check"}
                       </Button>
                     </div>
                   ) : null}
@@ -1004,134 +1350,96 @@ export function FalckDashboard({
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <h3 className="text-sm font-semibold">Prerequisites</h3>
+                        <h3 className="text-sm font-semibold">Setup steps</h3>
                         <p className="text-xs text-muted-foreground">
-                          Check required tools before running this app.
+                          Run each step in order. Checks decide what's already
+                          done.
                         </p>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => checkPrereqs(activeApp.id)}
-                        disabled={prereqLoading[activeApp.id]}
-                      >
-                        {prereqLoading[activeApp.id]
-                          ? "Checking..."
-                          : "Re-check"}
-                      </Button>
+                      {setupStepsConfigured ? (
+                        <Button
+                          size="sm"
+                          onClick={() => handleSetup(activeApp)}
+                          disabled={setupRunning[activeApp.id]}
+                        >
+                          {setupRunning[activeApp.id]
+                            ? "Running..."
+                            : "Run all"}
+                        </Button>
+                      ) : null}
                     </div>
 
-                    {activePrereqs.length > 0 ? (
-                      <div className="space-y-3">
-                        {activePrereqs.map((prereq, prereqIndex) => {
-                          const result = activeResults?.[prereqIndex];
-                          const prereqKey = `${activeApp.id}:${prereqIndex}`;
+                    {setupStepsConfigured ? (
+                      <div className="space-y-2">
+                        {activeSetupSteps.map((step, index) => {
+                          const stepKey = `${activeApp.id}:${index}`;
+                          const actionStatus =
+                            setupStepStatusByApp[activeApp.id]?.[index];
+                          const isRunning =
+                            actionStatus === "running" ||
+                            Boolean(setupStepTeardownRunning[stepKey]);
+                          const isFailed = actionStatus === "failed";
+                          const checkResult = activeStepChecks[index];
+                          const checkStatus = checkResult?.status;
+                          const isComplete =
+                            checkStatus === "complete" || checkStatus === "skipped";
+                          const isCheckMissing = checkStatus === "missing_check";
+                          const isCheckError = checkStatus === "error";
+                          const showWarning =
+                            !isRunning && !isFailed && (isCheckMissing || isCheckError);
+                          const showPending =
+                            !isRunning && !isFailed && !isComplete && !showWarning;
+                          const runLabel = isComplete ? "Re-run" : "Run";
+                          const statusMessage =
+                            checkResult?.message ??
+                            (checkStatus === "missing_check"
+                              ? "No check configured for this step."
+                              : checkStatus === "skipped"
+                                ? "Skipped for this environment."
+                                : checkStatus === "complete"
+                                  ? "Check passed."
+                                  : checkStatus === "error"
+                                    ? "Check failed."
+                                    : checkStatus === "incomplete"
+                                      ? "Not complete yet."
+                                      : "Check not run yet.");
+
                           return (
-                            <PrerequisiteStatus
-                              key={`${prereq.name}-${prereqIndex}`}
-                              prereq={prereq}
-                              result={result}
-                              isChecking={Boolean(prereqLoading[activeApp.id])}
-                              onOpenInstallUrl={handleOpenUrl}
-                              onRunInstallOption={(optionIndex) =>
-                                handlePrereqInstall(
-                                  activeApp.id,
-                                  prereqIndex,
-                                  optionIndex,
-                                )
-                              }
-                              isOptionRunning={(optionIndex) =>
-                                Boolean(
-                                  prereqInstallRunning[
-                                    `${activeApp.id}:${prereqIndex}:${optionIndex}`
-                                  ],
-                                )
-                              }
-                              installMessage={prereqInstallMessage[prereqKey]}
-                              installError={prereqInstallError[prereqKey]}
-                            />
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
-                        No prerequisites configured.
-                      </div>
-                    )}
-                  </div>
-
-                  {activeApp.setup?.steps &&
-                    activeApp.setup.steps.length > 0 && (
-                      <div className="space-y-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <h3 className="text-sm font-semibold">Install</h3>
-                            <p className="text-xs text-muted-foreground">
-                              Run the setup steps for this app.
-                            </p>
-                          </div>
-                          <Button
-                            size="sm"
-                            onClick={() => handleSetup(activeApp)}
-                            disabled={setupRunning[activeApp.id]}
-                          >
-                            {setupRunning[activeApp.id]
-                              ? "Installing..."
-                              : "Run setup"}
-                          </Button>
-                        </div>
-
-                        <div className="space-y-2">
-                          {activeApp.setup.steps.map((step, index) => {
-                            const rawStatus =
-                              setupStepStatusByApp[activeApp.id]?.[index] ??
-                              "pending";
-                            const hasRunning = (
-                              setupStepStatusByApp[activeApp.id] ?? []
-                            ).some((status) => status === "running");
-                            const derivedStatus =
-                              setupRunning[activeApp.id] &&
-                              !hasRunning &&
-                              rawStatus === "pending" &&
-                              index ===
-                                (setupStepStatusByApp[activeApp.id] ?? []).findIndex(
-                                  (status) => status === "pending",
-                                )
-                                ? "running"
-                                : rawStatus;
-                            const showRunning = derivedStatus === "running";
-                            const showComplete =
-                              derivedStatus === "complete" ||
-                              derivedStatus === "skipped";
-                            const showFailed = derivedStatus === "failed";
-                            const showPending = derivedStatus === "pending";
-
-                            return (
                             <div
                               key={`${step.name}-${index}`}
                               className="rounded-lg border-2 border-border bg-card/80 px-4 py-3"
                             >
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
-                                  {showRunning ? (
+                                  {isRunning ? (
                                     <Loader2
                                       className="h-4 w-4 animate-spin text-muted-foreground"
                                       aria-label="Running"
                                     />
                                   ) : null}
-                                  {showComplete ? (
+                                  {!isRunning && isComplete ? (
                                     <CheckCircle2
                                       className="h-4 w-4 text-emerald-500"
                                       aria-label="Completed"
                                     />
                                   ) : null}
-                                  {showFailed ? (
+                                  {!isRunning && isFailed ? (
                                     <AlertCircle
                                       className="h-4 w-4 text-destructive"
                                       aria-label="Failed"
                                     />
                                   ) : null}
-                                  {showPending ? (
+                                  {!isRunning && !isFailed && showWarning ? (
+                                    <AlertCircle
+                                      className={`h-4 w-4 ${
+                                        isCheckError
+                                          ? "text-destructive"
+                                          : "text-amber-500"
+                                      }`}
+                                      aria-label="Needs attention"
+                                    />
+                                  ) : null}
+                                  {!isRunning && showPending ? (
                                     <Circle
                                       className="h-4 w-4 text-muted-foreground/60"
                                       aria-label="Pending"
@@ -1141,10 +1449,44 @@ export function FalckDashboard({
                                     {step.name}
                                   </span>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                   {step.optional && (
                                     <Badge variant="outline">Optional</Badge>
                                   )}
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() =>
+                                      runSetupStepWithState(activeApp, index)
+                                    }
+                                    disabled={
+                                      isRunning ||
+                                      setupRunning[activeApp.id] ||
+                                      autoSetupActive
+                                    }
+                                  >
+                                    {isRunning && !setupStepTeardownRunning[stepKey]
+                                      ? "Running..."
+                                      : runLabel}
+                                  </Button>
+                                  {step.teardown ? (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() =>
+                                        runSetupStepTeardown(activeApp, index)
+                                      }
+                                      disabled={
+                                        isRunning ||
+                                        setupRunning[activeApp.id] ||
+                                        autoSetupActive
+                                      }
+                                    >
+                                      {setupStepTeardownRunning[stepKey]
+                                        ? "Tearing down..."
+                                        : "Teardown"}
+                                    </Button>
+                                  ) : null}
                                 </div>
                               </div>
                               {step.description && (
@@ -1152,27 +1494,43 @@ export function FalckDashboard({
                                   {step.description}
                                 </p>
                               )}
+                              {statusMessage ? (
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                  {statusMessage}
+                                </p>
+                              ) : null}
+                              {step.check?.description && (
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                  Check: {step.check.description}
+                                </p>
+                              )}
                             </div>
-                          )})}
-                        </div>
-                        {setupMessage[activeApp.id] && (
-                          <Alert>
-                            <CheckCircle2 className="h-4 w-4" />
-                            <AlertDescription>
-                              {setupMessage[activeApp.id]}
-                            </AlertDescription>
-                          </Alert>
-                        )}
-                        {setupError[activeApp.id] && (
-                          <Alert variant="destructive">
-                            <AlertCircle className="h-4 w-4" />
-                            <AlertDescription>
-                              {setupError[activeApp.id]}
-                            </AlertDescription>
-                          </Alert>
-                        )}
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border-2 border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
+                        No setup steps configured.
                       </div>
                     )}
+
+                    {setupMessage[activeApp.id] && (
+                      <Alert>
+                        <CheckCircle2 className="h-4 w-4" />
+                        <AlertDescription>
+                          {setupMessage[activeApp.id]}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    {setupError[activeApp.id] && (
+                      <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>
+                          {setupError[activeApp.id]}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
 
                   {activeApp.launch.access?.url && (
                     <div className="rounded-lg border-2 border-border bg-muted/40 px-3 py-2 text-xs">

@@ -1,6 +1,6 @@
 # Falck
 
-Falck is a local-first AI IDE/desktop app that helps non-technical teammates contribute to real codebases with guardrails, setup guidance, and friendly Git workflows. The desktop app reads a `.falck/config.yaml` file in a repo to understand prerequisites, secrets, setup steps, and launch commands.
+Falck is a local-first AI IDE/desktop app that helps non-technical teammates contribute to real codebases with guardrails, setup guidance, and friendly Git workflows. The desktop app reads a `.falck/config.yaml` file in a repo to understand setup steps with checks, secrets, and launch commands.
 
 ## Repository layout
 
@@ -67,6 +67,8 @@ applications:
       steps:
         - name: "Install dependencies"
           command: "bun install"
+          check:
+            command: "test -d node_modules"
     launch:
       command: "bun run dev"
       access:

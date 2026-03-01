@@ -28,7 +28,6 @@ export interface FalckApplication {
   description?: string;
   root: string;
   assets?: AssetsConfig;
-  prerequisites?: Prerequisite[];
   secrets?: Secret[];
   setup?: SetupConfig;
   launch: LaunchConfig;
@@ -40,35 +39,9 @@ export interface AssetsConfig {
   subdirectories?: string[];
 }
 
-export interface Prerequisite {
-  type: string;
-  name: string;
-  command: string;
-  version?: string;
-  install_url?: string;
-  install?: PrerequisiteInstall;
-  optional?: boolean;
-}
-
-export type PrerequisiteInstallInstructions = string | string[];
-
 export type CommandOperation = string | { command: string; refresh_shell?: boolean };
 
 export type CommandSequence = string | CommandOperation[];
-
-export interface PrerequisiteInstallOption {
-  name: string;
-  command: CommandSequence;
-  description?: string;
-  timeout?: number;
-  silent?: boolean;
-  only_if?: string;
-}
-
-export interface PrerequisiteInstall {
-  instructions?: PrerequisiteInstallInstructions;
-  options?: PrerequisiteInstallOption[];
-}
 
 export interface Secret {
   name: string;
@@ -78,7 +51,6 @@ export interface Secret {
 
 export interface SetupConfig {
   steps?: SetupStep[];
-  check?: SetupCheck;
 }
 
 export interface SetupStep {
@@ -89,6 +61,8 @@ export interface SetupStep {
   silent?: boolean;
   optional?: boolean;
   only_if?: string;
+  check?: SetupCheck;
+  teardown?: SetupTeardown;
 }
 
 export interface SetupCheck {
@@ -105,10 +79,27 @@ export interface SetupCheck {
   ignore_exit?: boolean;
 }
 
-export interface SetupCheckResult {
-  configured: boolean;
-  complete: boolean;
+export interface SetupTeardown {
+  command: CommandSequence;
+  description?: string;
+  timeout?: number;
+  silent?: boolean;
+  only_if?: string;
+}
+
+export type SetupStepCheckStatus =
+  | "complete"
+  | "incomplete"
+  | "skipped"
+  | "missing_check"
+  | "error";
+
+export interface SetupStepCheckResult {
+  step_index: number;
+  name: string;
+  status: SetupStepCheckStatus;
   message?: string;
+  optional: boolean;
 }
 
 export interface ContainerHandle {
@@ -180,15 +171,6 @@ export interface AppGroup {
   apps: string[];
 }
 
-export interface PrerequisiteCheckResult {
-  name: string;
-  command: string;
-  installed: boolean;
-  required_version?: string;
-  current_version?: string;
-  install_url?: string;
-  optional: boolean;
-}
 
 export const falckService = {
   async loadConfig(repoPath: string): Promise<FalckConfig> {
@@ -218,30 +200,6 @@ export const falckService = {
     });
   },
 
-  async checkPrerequisites(
-    repoPath: string,
-    appId: string,
-  ): Promise<PrerequisiteCheckResult[]> {
-    return invoke<PrerequisiteCheckResult[]>("check_falck_prerequisites", {
-      repoPath,
-      appId,
-    });
-  },
-
-  async runPrerequisiteInstall(
-    repoPath: string,
-    appId: string,
-    prereqIndex: number,
-    optionIndex: number,
-  ): Promise<string> {
-    return invoke<string>("run_falck_prerequisite_install", {
-      repoPath,
-      appId,
-      prereqIndex,
-      optionIndex,
-    });
-  },
-
   async runSetup(repoPath: string, appId: string): Promise<string> {
     return invoke<string>("run_falck_setup", {
       repoPath,
@@ -249,11 +207,35 @@ export const falckService = {
     });
   },
 
-  async checkSetupStatus(
+  async runSetupStep(
     repoPath: string,
     appId: string,
-  ): Promise<SetupCheckResult> {
-    return invoke<SetupCheckResult>("check_falck_setup", {
+    stepIndex: number,
+  ): Promise<string> {
+    return invoke<string>("run_falck_setup_step", {
+      repoPath,
+      appId,
+      stepIndex,
+    });
+  },
+
+  async runSetupStepTeardown(
+    repoPath: string,
+    appId: string,
+    stepIndex: number,
+  ): Promise<string> {
+    return invoke<string>("run_falck_setup_step_teardown", {
+      repoPath,
+      appId,
+      stepIndex,
+    });
+  },
+
+  async checkSetupSteps(
+    repoPath: string,
+    appId: string,
+  ): Promise<SetupStepCheckResult[]> {
+    return invoke<SetupStepCheckResult[]>("check_falck_setup_steps", {
       repoPath,
       appId,
     });

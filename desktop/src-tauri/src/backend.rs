@@ -501,6 +501,48 @@ fn sanitize_name(value: &str) -> String {
     }
 }
 
+const UNIX_PATH_MAX: usize = 104;
+const LIMA_SSH_SOCKET_SUFFIX_LEN: usize = "/ssh.sock.".len() + 16;
+
+fn lima_home_base_len() -> Option<usize> {
+    let read_env = |key: &str| std::env::var(key).ok().map(|value| value.trim().to_string());
+    let mut base = read_env("FALCK_LIMA_HOME").filter(|value| !value.is_empty());
+    if base.is_none() {
+        base = read_env("LIMA_HOME").filter(|value| !value.is_empty());
+    }
+    let base = if let Some(value) = base {
+        value
+    } else if let Ok(home) = std::env::var("HOME") {
+        let trimmed = home.trim_end_matches(|ch| ch == '/' || ch == '\\');
+        if trimmed.is_empty() {
+            return None;
+        }
+        format!("{}/.falck/lima", trimmed)
+    } else {
+        return None;
+    };
+    let trimmed = base.trim_end_matches(|ch| ch == '/' || ch == '\\');
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.as_bytes().len())
+    }
+}
+
+fn max_vm_name_len() -> Option<usize> {
+    if cfg!(target_os = "windows") {
+        return None;
+    }
+    let base_len = lima_home_base_len()?;
+    let needed = base_len + 1 + LIMA_SSH_SOCKET_SUFFIX_LEN;
+    let limit = UNIX_PATH_MAX.saturating_sub(1); // must be strictly less than UNIX_PATH_MAX
+    if limit <= needed {
+        Some(0)
+    } else {
+        Some(limit - needed)
+    }
+}
+
 fn vm_name_for_repo(repo_path: &Path) -> String {
     let base = repo_path
         .file_name()
@@ -508,7 +550,46 @@ fn vm_name_for_repo(repo_path: &Path) -> String {
         .unwrap_or("repo");
     let hash = fnv1a_hash(&repo_path.to_string_lossy());
     let suffix = format!("{:08x}", (hash & 0xffff_ffff) as u32);
-    format!("falck-{}-{}", sanitize_name(base), suffix)
+    let prefix = "falck-";
+    let suffix_part = format!("-{}", suffix);
+    let mut sanitized = sanitize_name(base);
+
+    if let Some(max_len) = max_vm_name_len() {
+        if max_len == 0 {
+            let mut fallback = suffix.clone();
+            fallback.truncate(1);
+            return fallback;
+        }
+        let min_len = prefix.len() + suffix_part.len();
+        if max_len <= min_len {
+            let fallback = format!("{}{}", prefix, suffix);
+            if fallback.len() <= max_len {
+                return fallback;
+            }
+            let mut final_name = suffix.clone();
+            final_name.truncate(max_len);
+            return final_name;
+        }
+
+        let allowed_base_len = max_len - min_len;
+        if sanitized.len() > allowed_base_len {
+            sanitized.truncate(allowed_base_len);
+        }
+        sanitized = sanitized.trim_matches('-').to_string();
+        if sanitized.is_empty() {
+            let fallback = "repo";
+            if allowed_base_len > 0 {
+                sanitized = fallback[..allowed_base_len.min(fallback.len())].to_string();
+            }
+        }
+
+        let candidate = format!("{}{}{}", prefix, sanitized, suffix_part);
+        if candidate.len() <= max_len {
+            return candidate;
+        }
+    }
+
+    format!("{}{}{}", prefix, sanitized, suffix_part)
 }
 
 fn lima_mount_target(repo_path: &Path) -> String {

@@ -9,8 +9,9 @@ A configuration format for defining how web applications should be installed, co
 ## Overview
 
 Falck enables non-technical users to:
-- Automatically check system prerequisites
-- Install application dependencies
+- Run ordered setup steps with explicit checks
+- Install dependencies and tooling consistently
+- Tear down setup artifacts when needed
 - Configure environment variables and secrets
 - Launch applications with proper process management
 - Access running applications via browser
@@ -48,32 +49,6 @@ applications:
         - "images"
         - "docs"
     
-    prerequisites:
-      - type: "runtime"
-        name: "Node.js"
-        command: "node --version"
-        version: "18.0.0"
-        install_url: "https://nodejs.org"
-        install:
-          instructions: "Install Node.js 18+ before continuing."
-          options:
-            - name: "Homebrew (macOS)"
-              command: "brew install node@18"
-              only_if: "os == 'macos'"
-            - name: "Scripted installer"
-              command: "./scripts/install-node.sh"
-        install:
-          instructions:
-            - "Install Node.js 18+ before running setup."
-          options:
-            - name: "Homebrew (macOS)"
-              command: "brew install node@18"
-              only_if: "os == 'macos'"
-            - name: "nvm (cross-platform)"
-              command: "nvm install 18 && nvm use 18"
-            - name: "Scripted installer"
-              command: "./scripts/install-node.sh"
-    
     secrets:
       - name: "DATABASE_URL"
         description: "PostgreSQL connection string"
@@ -86,16 +61,31 @@ applications:
     
     setup:
       steps:
+        - name: "Install Node.js"
+          command: "brew install node@18"
+          only_if: "os == 'macos'"
+          check:
+            command: "node --version"
+            expect_regex: "^v18"
+          teardown:
+            command: "brew uninstall node@18"
+            only_if: "os == 'macos'"
+
         - name: "Install Dependencies"
           command: "npm install"
           timeout: 300
           description: "Install npm packages"
+          check:
+            command: "test -d node_modules"
         
         - name: "Run Database Migrations"
           command: "npm run migrate"
           timeout: 60
           optional: true
           description: "Initialize database schema"
+          check:
+            command: "npm run migrate:status"
+            expect_contains: "up to date"
     
     launch:
       command: "npm start"
@@ -115,18 +105,13 @@ applications:
     type: "web"
     root: "./frontend"
     
-    prerequisites:
-      - type: "runtime"
-        name: "Node.js"
-        command: "node --version"
-        version: "18.0.0"
-        install_url: "https://nodejs.org"
-    
     setup:
       steps:
         - name: "Install Dependencies"
           command: "npm install"
           timeout: 300
+          check:
+            command: "test -d node_modules"
     
     launch:
       command: "npm run dev"
@@ -198,7 +183,6 @@ groups:
 | `description` | string | ✗ | What this application does |
 | `root` | string | ✓ | Relative path to application root (use "." for repo root) |
 | `assets` | object | ✗ | Asset upload configuration for this application |
-| `prerequisites` | array | ✗ | System requirements to check |
 | `secrets` | array | ✗ | Secret environment variables to prompt for |
 | `setup` | object | ✗ | Setup/installation configuration |
 | `launch` | object | ✓ | How to launch the application |
@@ -213,36 +197,6 @@ Asset configuration controls where Falck will place uploaded files for an applic
 | `root` | string | ✓ | Relative path to the asset root (relative to `applications[].root`) |
 | `subdirectories` | array | ✗ | Allowed subdirectories within the asset root (relative paths) |
 
-### Prerequisite Object
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `type` | string | ✓ | "runtime", "package_manager", "binary", or "service" |
-| `name` | string | ✓ | Display name |
-| `command` | string | ✓ | Shell command to check if installed |
-| `version` | string | ✗ | Minimum required version (semver) |
-| `install_url` | string | ✗ | URL to download/install |
-| `install` | object | ✗ | Install instructions and runnable install options |
-| `optional` | boolean | ✗ | Whether this is optional (default: false) |
-
-### Prerequisite Install Object
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `instructions` | string or array | ✗ | Human-readable install guidance to show in the UI |
-| `options` | array | ✗ | Install options that can be run as commands/scripts |
-
-### Prerequisite Install Option Object
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | ✓ | Display name for the option |
-| `command` | string or array | ✓ | Shell command to install, or a list of command operations (run sequentially) |
-| `description` | string | ✗ | What this option does |
-| `timeout` | integer | ✗ | Maximum seconds to wait (default: 300) |
-| `silent` | boolean | ✗ | Whether to suppress output (default: false) |
-| `only_if` | string | ✗ | Conditional execution (e.g., "os == 'macos'") |
-
 ### Secret Object
 
 | Field | Type | Required | Description |
@@ -256,7 +210,6 @@ Asset configuration controls where Falck will place uploaded files for an applic
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `steps` | array | ✗ | List of setup commands to execute |
-| `check` | object | ✗ | Command used to validate if setup is complete |
 
 ### Setup Step Object
 
@@ -269,10 +222,12 @@ Asset configuration controls where Falck will place uploaded files for an applic
 | `silent` | boolean | ✗ | Whether to suppress output (default: false) |
 | `optional` | boolean | ✗ | Whether to skip on failure (default: false) |
 | `only_if` | string | ✗ | Conditional execution (e.g., "os == 'macos'") |
+| `check` | object | ✓ | Command used to validate if this step is complete |
+| `teardown` | object | ✗ | Optional teardown command for this step |
 
 ### Command Operation Object
 
-When a `command` field accepts an array, each entry is a command operation. Entries can be plain strings or objects with `command`/`refresh_shell`. Operations run sequentially. Timeout and `silent` settings on the parent step/option apply to each operation. If any operation fails, the parent step/option fails (unless the setup step is marked `optional`).
+When a `command` field accepts an array, each entry is a command operation. Entries can be plain strings or objects with `command`/`refresh_shell`. Operations run sequentially. Timeout and `silent` settings on the parent step or teardown apply to each operation. If any operation fails, the parent step fails (unless the setup step is marked `optional`).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -292,13 +247,13 @@ setup:
         - "npm install"
 ```
 
-### Setup Check Object
+### Setup Step Check Object
 
-The setup check command should exit with status `0` when setup is complete and a non-zero status otherwise.
+The setup step check command should exit with status `0` when the step is complete and a non-zero status otherwise.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `command` | string | ✓ | Shell command to check setup completion |
+| `command` | string | ✓ | Shell command to check step completion |
 | `description` | string | ✗ | What the check validates (for UI display) |
 | `timeout` | integer | ✗ | Maximum seconds to wait (default: 30) |
 | `silent` | boolean | ✗ | Whether to suppress output (default: true) |
@@ -312,7 +267,17 @@ The setup check command should exit with status `0` when setup is complete and a
 
 If any `expect*` field is provided, Falck compares the selected output stream against that expectation and marks setup complete only when it matches.
 
-If configured, Falck uses the setup check during setup validation to determine whether the app is ready to launch.
+Falck uses each step check to decide whether the step needs to run (and to show status in the UI).
+
+### Setup Step Teardown Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string or array | ✓ | Shell command to remove or undo this step |
+| `description` | string | ✗ | What the teardown does (for UI display) |
+| `timeout` | integer | ✗ | Maximum seconds to wait (default: 300) |
+| `silent` | boolean | ✗ | Whether to suppress output (default: false) |
+| `only_if` | string | ✗ | Conditional execution (e.g., "os == 'macos'") |
 
 ### Launch Object
 
@@ -426,7 +391,7 @@ launch:
 
 ## Conditional Execution
 
-The `only_if` field supports conditions to make setup steps, setup checks, prerequisite install options, and cleanup steps conditional.
+The `only_if` field supports conditions to make setup steps, step checks, step teardowns, and cleanup steps conditional.
 
 ### Operators
 
@@ -482,22 +447,15 @@ applications:
     type: "web"
     root: "."
     
-    prerequisites:
-      - type: "runtime"
-        name: "Node.js"
-        command: "node --version"
-        version: "18.0.0"
-        install_url: "https://nodejs.org"
-    
     setup:
       steps:
         - name: "Install Dependencies"
           command: "npm install"
           timeout: 300
-      check:
-        command: "node -e \"console.log(require('fs').existsSync('node_modules'))\""
-        expect: "true"
-        description: "Node modules installed"
+          check:
+            command: "node -e \"console.log(require('fs').existsSync('node_modules'))\""
+            expect: "true"
+            description: "Node modules installed"
     
     launch:
       command: "npm start"
@@ -523,13 +481,6 @@ applications:
     type: "web"
     root: "."
     
-    prerequisites:
-      - type: "binary"
-        name: "PostgreSQL"
-        command: "psql --version"
-        version: "12.0"
-        install_url: "https://www.postgresql.org/download/"
-    
     secrets:
       - name: "POSTGRES_PASSWORD"
         description: "Database admin password"
@@ -547,13 +498,6 @@ applications:
     type: "web"
     root: "./server"
     
-    prerequisites:
-      - type: "runtime"
-        name: "Node.js"
-        command: "node --version"
-        version: "18.0.0"
-        install_url: "https://nodejs.org"
-    
     secrets:
       - name: "DATABASE_URL"
         description: "PostgreSQL connection string"
@@ -570,10 +514,15 @@ applications:
         - name: "Install Dependencies"
           command: "npm install"
           timeout: 300
+          check:
+            command: "test -d node_modules"
         
         - name: "Run Migrations"
           command: "npm run migrate"
           timeout: 60
+          check:
+            command: "npm run migrate:status"
+            expect_contains: "up to date"
     
     launch:
       command: "npm start"
@@ -591,18 +540,13 @@ applications:
     type: "web"
     root: "./client"
     
-    prerequisites:
-      - type: "runtime"
-        name: "Node.js"
-        command: "node --version"
-        version: "18.0.0"
-        install_url: "https://nodejs.org"
-    
     setup:
       steps:
         - name: "Install Dependencies"
           command: "npm install"
           timeout: 300
+          check:
+            command: "test -d node_modules"
     
     launch:
       command: "npm start"
@@ -640,17 +584,12 @@ applications:
     type: "web"
     root: "./services/api-go"
     
-    prerequisites:
-      - type: "runtime"
-        name: "Go"
-        command: "go version"
-        version: "1.20.0"
-        install_url: "https://golang.org/dl/"
-    
     setup:
       steps:
         - name: "Download Dependencies"
           command: "go mod download"
+          check:
+            command: "test -d $GOMODCACHE"
     
     launch:
       command: "go run main.go"
@@ -664,17 +603,12 @@ applications:
     type: "web"
     root: "./services/worker-python"
     
-    prerequisites:
-      - type: "runtime"
-        name: "Python"
-        command: "python3 --version"
-        version: "3.9.0"
-        install_url: "https://www.python.org/downloads/"
-    
     setup:
       steps:
         - name: "Install Dependencies"
           command: "pip install -r requirements.txt"
+          check:
+            command: "python3 -c \"import pkg_resources\""
     
     secrets:
       - name: "REDIS_URL"
@@ -689,18 +623,13 @@ applications:
     type: "web"
     root: "./services/web-rust"
     
-    prerequisites:
-      - type: "runtime"
-        name: "Rust"
-        command: "rustc --version"
-        version: "1.70.0"
-        install_url: "https://rustup.rs/"
-    
     setup:
       steps:
         - name: "Build Project"
           command: "cargo build --release"
           timeout: 600
+          check:
+            command: "test -d target/release"
     
     launch:
       command: "cargo run --release"
@@ -783,11 +712,11 @@ applications:
 
 7. **Document secrets**: Write clear descriptions for secrets so users know what values to provide
 
-8. **Make prerequisites optional when possible**: Use `optional: true` for nice-to-have tools
+8. **Make setup steps optional when possible**: Use `optional: true` for nice-to-have steps
 
-9. **Provide install options**: Add `install.options` with commands/scripts whenever possible and use `only_if` for OS-specific installers
+9. **Add checks for every setup step**: Use `check.command` so Falck knows when a step is complete
 
-10. **Provide install URLs**: Always include download links for required prerequisites
+10. **Include teardown commands when helpful**: Use `teardown.command` to remove generated artifacts (like `node_modules`)
 
 11. **Test on target platforms**: If supporting multiple OSes, test conditional steps with `only_if`
 
