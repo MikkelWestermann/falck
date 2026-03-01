@@ -653,12 +653,13 @@ if (!cliReady) {
         packageManager?: string
       }
       const manager = repoPkg.packageManager ?? ""
-      const match = manager.match(/bun@([0-9]+\\.[0-9]+\\.[0-9]+)/)
+      const match = manager.match(/bun@([0-9]+\.[0-9]+\.[0-9]+)/)
       if (match) {
         const required = match[1]!
-        if (!satisfiesCaret(process.versions.bun, required)) {
+        const currentBun = process.versions.bun ?? ""
+        if (!satisfiesCaret(currentBun, required)) {
           console.warn(
-            `Skipping opencode repo build: requires bun@^${required}, current bun@${process.versions.bun}`,
+            `Skipping opencode repo build: requires bun@^${required}, current bun@${currentBun}`,
           )
           repoOk = false
         }
