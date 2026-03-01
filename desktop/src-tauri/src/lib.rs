@@ -252,6 +252,14 @@ async fn set_default_repo_directory(app: tauri::AppHandle, path: String) -> Resu
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
+        .setup(|app| {
+            #[cfg(desktop)]
+            {
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+            }
+            Ok(())
+        })
         .plugin(tauri_plugin_stronghold::Builder::new(|_pass| todo!()).build())
         .plugin(tauri_plugin_dialog::init())
         .manage(Client::new())

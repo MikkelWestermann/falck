@@ -38,3 +38,4 @@ open = "5.0"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 dotenvy = "0.15"
 tauri-plugin-stronghold = "2"
+tauri-plugin-updater = "2.10.0"

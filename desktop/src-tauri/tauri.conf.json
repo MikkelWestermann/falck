@@ -9,6 +9,14 @@
     "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFENDgwMkM2NDM1QUREMjQKUldRazNWcER4Z0pJSGZDakhITmpsTitCaVk1MlRyK1lpaVVtOWpWbjZ5TGtkenB1cjhuOWZhQzUK",
+      "endpoints": [
+        "https://github.com/MikkelWestermann/falck/releases/latest/download/latest.json"
+      ]
+    }
+  },
   "app": {
     "windows": [
       {
@@ -29,15 +37,13 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "externalBin": [
       "sidecars/opencode-cli",
       "sidecars/opencode-sidecar",
       "sidecars/limactl"
     ],
-    "resources": [
-      "share/lima",
-      "sidecars/limactl-*"
-    ],
+    "resources": ["share/lima", "sidecars/limactl-*"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
