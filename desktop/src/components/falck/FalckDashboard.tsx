@@ -613,7 +613,7 @@ export function FalckDashboard({
           result: stepChecks[index],
         }))
         .filter(
-          ({ step, result }) => {
+          ({ result }) => {
             if (!result) {
               return true;
             }
