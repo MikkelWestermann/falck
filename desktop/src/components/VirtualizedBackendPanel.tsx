@@ -10,17 +10,24 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   backendService,
   type BackendMode,
   type BackendPrereqStatus,
+  type BackendVmDetails,
   type BackendVmInfo,
 } from "@/services/backendService";
 import { cn } from "@/lib/utils";
@@ -31,7 +38,7 @@ interface VirtualizedBackendPanelProps {
 
 const MODE_LABELS: Record<BackendMode, string> = {
   host: "On this computer",
-  virtualized: "In a virtual workspace",
+  virtualized: "In a safe workspace",
 };
 
 function normalizeStatus(status: string) {
@@ -45,24 +52,13 @@ function normalizeStatus(status: string) {
   return "unknown";
 }
 
-function statusBadgeVariant(status: string) {
-  const normalized = normalizeStatus(status);
-  if (normalized === "running") {
-    return "secondary" as const;
-  }
-  if (normalized === "stopped") {
-    return "outline" as const;
-  }
-  return "destructive" as const;
-}
-
 function vmStatusLabel(status: string) {
   const normalized = normalizeStatus(status);
   if (normalized === "running") {
-    return "Running";
+    return "Active";
   }
   if (normalized === "stopped") {
-    return "Stopped";
+    return "Paused";
   }
   return "Needs attention";
 }
@@ -91,6 +87,12 @@ export function VirtualizedBackendPanel({
   const [vmsLoading, setVmsLoading] = useState(true);
   const [vmsError, setVmsError] = useState<string | null>(null);
   const [vmAction, setVmAction] = useState<Record<string, boolean>>({});
+  const [manageOpen, setManageOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsVm, setDetailsVm] = useState<BackendVmInfo | null>(null);
+  const [detailsData, setDetailsData] = useState<BackendVmDetails | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
 
   const loadMode = useCallback(async () => {
     setModeError(null);
@@ -98,7 +100,7 @@ export function VirtualizedBackendPanel({
       const nextMode = await backendService.getMode();
       setMode(nextMode);
     } catch (err) {
-      setModeError(`Failed to load backend mode: ${String(err)}`);
+      setModeError(`Failed to load workspace setting: ${String(err)}`);
     }
   }, []);
 
@@ -109,7 +111,7 @@ export function VirtualizedBackendPanel({
       const status = await backendService.checkPrereq();
       setPrereq(status);
     } catch (err) {
-      setPrereqError(`Failed to check virtualized backend: ${String(err)}`);
+      setPrereqError(`Failed to check workspace support: ${String(err)}`);
       setPrereq(null);
     } finally {
       setPrereqLoading(false);
@@ -123,7 +125,7 @@ export function VirtualizedBackendPanel({
       const list = await backendService.listVms();
       setVms(list);
     } catch (err) {
-      setVmsError(`Failed to load VMs: ${String(err)}`);
+      setVmsError(`Failed to load workspaces: ${String(err)}`);
       setVms([]);
     } finally {
       setVmsLoading(false);
@@ -136,6 +138,38 @@ export function VirtualizedBackendPanel({
     void loadVms();
   }, [loadMode, loadPrereq, loadVms]);
 
+  useEffect(() => {
+    if (!detailsOpen || !detailsVm) {
+      return;
+    }
+    let active = true;
+    setDetailsLoading(true);
+    setDetailsError(null);
+    backendService
+      .getVmDetails(detailsVm.name)
+      .then((data) => {
+        if (!active) {
+          return;
+        }
+        setDetailsData(data);
+      })
+      .catch((err) => {
+        if (!active) {
+          return;
+        }
+        setDetailsError(`Failed to load details: ${String(err)}`);
+      })
+      .finally(() => {
+        if (!active) {
+          return;
+        }
+        setDetailsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [detailsOpen, detailsVm]);
+
   const handleModeChange = async (nextMode: BackendMode) => {
     setModeSaving(true);
     setModeError(null);
@@ -145,7 +179,7 @@ export function VirtualizedBackendPanel({
       await backendService.setMode(nextMode);
     } catch (err) {
       setMode(previous);
-      setModeError(`Failed to update backend mode: ${String(err)}`);
+      setModeError(`Failed to update workspace setting: ${String(err)}`);
     } finally {
       setModeSaving(false);
     }
@@ -170,10 +204,31 @@ export function VirtualizedBackendPanel({
       }
       await loadVms();
     } catch (err) {
-      setVmsError(`VM action failed: ${String(err)}`);
+      setVmsError(`Workspace action failed: ${String(err)}`);
     } finally {
       setVmAction((prev) => ({ ...prev, [key]: false }));
     }
+  };
+
+  const handleDetailsOpenChange = (open: boolean) => {
+    setDetailsOpen(open);
+    if (!open) {
+      setDetailsVm(null);
+      setDetailsData(null);
+      setDetailsError(null);
+      setDetailsLoading(false);
+    }
+  };
+
+  const handleOpenDetails = (vm: BackendVmInfo) => {
+    setDetailsVm(vm);
+    setDetailsData(null);
+    setDetailsError(null);
+    setDetailsOpen(true);
+  };
+
+  const handleManageOpenChange = (open: boolean) => {
+    setManageOpen(open);
   };
 
   const groupedVms = useMemo(() => {
@@ -211,136 +266,179 @@ export function VirtualizedBackendPanel({
   }, [vms]);
 
   const prereqInstalled = prereq?.installed ?? false;
-  const toolLabel = prereq?.tool ?? "Virtualization";
+  const toolLabel = prereq?.tool ?? "Support tool";
+  const detailsRepoName = detailsVm?.repo_path
+    ? repoLabel(detailsVm.repo_path)
+    : null;
+  const detailRepoPath = detailsData?.repo_path ?? detailsVm?.repo_path ?? null;
+  const detailRepoMount = detailsData?.repo_mount ?? null;
+  const detailStatus = detailsData?.status ?? detailsVm?.status ?? "unknown";
+  const detailMounts = detailsData?.mounts ?? [];
+  const detailPorts = detailsData?.port_forwards ?? [];
+  const workspaceSummary =
+    vmSummary.total > 0
+      ? `${vmSummary.total} workspace${
+          vmSummary.total === 1 ? "" : "s"
+        } for ${vmSummary.projects} project${vmSummary.projects === 1 ? "" : "s"}`
+      : "No workspaces yet.";
+  const workspaceStateSummary =
+    vmSummary.total > 0
+      ? `Active: ${vmSummary.running} · Paused: ${vmSummary.stopped}`
+      : null;
 
   return (
-    <Card className={cn("border-border/60 bg-background/85", className)}>
-      <CardHeader className="border-b border-border/60 pb-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <CardTitle className="text-xl">Virtualized apps</CardTitle>
-            <CardDescription>
-              Use a safe workspace when a project needs it. Most users can leave
-              this alone.
-            </CardDescription>
+    <>
+      <Card className={cn("border-border/60 bg-background/85", className)}>
+        <CardHeader className="border-b border-border/60 pb-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1">
+              <CardTitle className="text-xl">Safe workspaces</CardTitle>
+              <CardDescription>
+                Some projects need a separate workspace so they don't change
+                your computer. Falck uses this only when needed.
+              </CardDescription>
+            </div>
           </div>
-          <Badge variant="outline" className="h-6">
-            Optional
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6 pt-6">
-        <Alert className="border-border/60 bg-background/60">
-          <AlertDescription>
-            If you are not sure, keep the default. Falck will tell you when a
-            project needs a virtual workspace.
-          </AlertDescription>
-        </Alert>
+        </CardHeader>
+        <CardContent className="space-y-6 pt-6">
+          <div className="flex flex-col gap-4">
+            <div className="rounded-lg border border-border/60 bg-background/60 p-4">
+              <div className="flex flex-col gap-3">
+                <div className="space-y-1 text-sm">
+                  <div className="font-semibold">Default for new projects</div>
+                  <div className="text-xs text-muted-foreground">
+                    Default is {MODE_LABELS.host}. Switch only if a project asks
+                    for it.
+                  </div>
+                </div>
+                <Select
+                  value={mode}
+                  onValueChange={(value) =>
+                    handleModeChange(value as BackendMode)
+                  }
+                  disabled={modeSaving}
+                >
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="Select mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="host">{MODE_LABELS.host}</SelectItem>
+                    <SelectItem value="virtualized">
+                      {MODE_LABELS.virtualized}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {modeSaving ? (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Saving...
+                </div>
+              ) : null}
+            </div>
 
-        <div className="flex flex-col gap-4">
-          <div className="rounded-lg border border-border/60 bg-background/60 p-4">
-            <div className="flex gap-3 flex-col">
-              <div className="space-y-1 text-sm">
-                <div className="font-semibold">Where apps run</div>
-                <div className="text-xs text-muted-foreground">
-                  Default is {MODE_LABELS.host}. Switch only if a project asks
-                  for it.
+            <div className="rounded-lg border border-border/60 bg-background/60 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1 text-sm">
+                  <div className="font-semibold">System readiness</div>
+                  <div className="text-xs text-muted-foreground">
+                    Keeps safe workspaces working when needed.
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      void loadPrereq();
+                      void loadVms();
+                      void loadMode();
+                    }}
+                    disabled={prereqLoading || vmsLoading}
+                    className="normal-case tracking-normal"
+                  >
+                    Refresh
+                  </Button>
                 </div>
               </div>
-              <Select
-                value={mode}
-                onValueChange={(value) =>
-                  handleModeChange(value as BackendMode)
-                }
-                disabled={modeSaving}
-              >
-                <SelectTrigger className="w-[220px]">
-                  <SelectValue placeholder="Select mode" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="host">{MODE_LABELS.host}</SelectItem>
-                  <SelectItem value="virtualized">
-                    {MODE_LABELS.virtualized}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <Badge variant={prereqInstalled ? "secondary" : "destructive"}>
+                  {prereqLoading
+                    ? "Checking"
+                    : prereqInstalled
+                      ? "Ready"
+                      : "Needs setup"}
+                </Badge>
+                {!prereqInstalled && !prereqLoading ? (
+                  <span>Support tools are missing.</span>
+                ) : null}
+              </div>
             </div>
-            {modeSaving ? (
-              <div className="mt-2 text-xs text-muted-foreground">
-                Saving...
+          </div>
+
+          {modeError ? (
+            <Alert variant="destructive">
+              <AlertDescription>{modeError}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {prereqError ? (
+            <Alert variant="destructive">
+              <AlertDescription>{prereqError}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <div className="rounded-lg border border-border/60 bg-background/60 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="space-y-1 text-sm">
+                <div className="font-semibold">Workspaces for your projects</div>
+                <div className="text-xs text-muted-foreground">
+                  {workspaceSummary}
+                </div>
+                {workspaceStateSummary ? (
+                  <div className="text-xs text-muted-foreground">
+                    {workspaceStateSummary}
+                    {vmSummary.attention > 0
+                      ? ` · Needs help: ${vmSummary.attention}`
+                      : ""}
+                  </div>
+                ) : null}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setManageOpen(true)}
+                disabled={vmsLoading}
+                className="normal-case tracking-normal"
+              >
+                Manage workspaces
+              </Button>
+            </div>
+            {!prereqInstalled && !prereqLoading ? (
+              <div className="mt-2 text-xs text-destructive">
+                System readiness needs attention.
               </div>
             ) : null}
           </div>
 
-          <div className="rounded-lg border border-border/60 bg-background/60 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1 text-sm">
-                <div className="font-semibold">{toolLabel} helper</div>
-                <div className="text-xs text-muted-foreground">
-                  Bundled with Falck and used automatically when needed.
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    void loadPrereq();
-                    void loadVms();
-                    void loadMode();
-                  }}
-                  disabled={prereqLoading || vmsLoading}
-                  className="normal-case tracking-normal"
-                >
-                  Refresh
-                </Button>
-              </div>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <Badge variant={prereqInstalled ? "secondary" : "destructive"}>
-                {prereqLoading
-                  ? "Checking"
-                  : prereqInstalled
-                    ? "Ready"
-                    : "Missing"}
-              </Badge>
-              {prereq?.message ? <span>{prereq.message}</span> : null}
-            </div>
-          </div>
-        </div>
+          {vmsError ? (
+            <Alert variant="destructive">
+              <AlertDescription>{vmsError}</AlertDescription>
+            </Alert>
+          ) : null}
+        </CardContent>
+      </Card>
 
-        {modeError ? (
-          <Alert variant="destructive">
-            <AlertDescription>{modeError}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        {prereqError ? (
-          <Alert variant="destructive">
-            <AlertDescription>{prereqError}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="space-y-1">
-              <div className="text-sm font-semibold">Virtual workspaces</div>
-              <div className="text-xs text-muted-foreground">
-                {vmSummary.projects > 0
-                  ? `${vmSummary.projects} project${
-                      vmSummary.projects === 1 ? "" : "s"
-                    }`
-                  : "No projects yet."}
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">{vmSummary.total} total</Badge>
-              <Badge variant="secondary">{vmSummary.running} running</Badge>
-              <Badge variant="outline">{vmSummary.stopped} stopped</Badge>
-              {vmSummary.attention > 0 ? (
-                <Badge variant="destructive">
-                  {vmSummary.attention} needs attention
-                </Badge>
-              ) : null}
+      <Dialog open={manageOpen} onOpenChange={handleManageOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Manage workspaces</DialogTitle>
+            <DialogDescription>
+              Start, pause, or remove safe workspaces. Use details for advanced
+              information.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+              <div className="text-muted-foreground">{workspaceSummary}</div>
               <Button
                 size="sm"
                 variant="outline"
@@ -348,91 +446,45 @@ export function VirtualizedBackendPanel({
                 disabled={vmsLoading}
                 className="normal-case tracking-normal"
               >
-                {vmsLoading ? "Loading..." : "Reload"}
+                {vmsLoading ? "Loading..." : "Refresh"}
               </Button>
             </div>
-          </div>
 
-          {!prereqInstalled ? (
-            <div className="rounded-lg border border-dashed border-border/60 px-3 py-3 text-xs text-muted-foreground">
-              The {toolLabel} helper is missing from this build. Reinstall
-              Falck or use a build that bundles it.
-            </div>
-          ) : vmsLoading ? (
-            <div className="rounded-lg border border-dashed border-border/60 px-3 py-3 text-xs text-muted-foreground">
-              Loading virtual workspaces...
-            </div>
-          ) : groupedVms.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border/60 px-3 py-3 text-xs text-muted-foreground">
-              No virtual workspaces yet. They appear after you run a project
-              that needs them.
-            </div>
-          ) : (
-            <ScrollArea className="max-h-[420px] pr-2">
-              <div className="space-y-3">
-                {groupedVms.map(([repoPath, repoVms]) => {
-                  const runningCount = repoVms.filter(
-                    (vm) => normalizeStatus(vm.status) === "running",
-                  ).length;
-                  const stoppedCount = repoVms.filter(
-                    (vm) => normalizeStatus(vm.status) === "stopped",
-                  ).length;
-                  const attentionCount = Math.max(
-                    repoVms.length - runningCount - stoppedCount,
-                    0,
-                  );
-
-                  return (
+            {!prereqInstalled ? (
+              <div className="rounded-lg border border-dashed border-border/60 px-3 py-3 text-xs text-muted-foreground">
+                Support tools are missing from this build. Reinstall Falck to
+                restore them.
+              </div>
+            ) : vmsLoading ? (
+              <div className="rounded-lg border border-dashed border-border/60 px-3 py-3 text-xs text-muted-foreground">
+                Loading workspaces...
+              </div>
+            ) : groupedVms.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border/60 px-3 py-3 text-xs text-muted-foreground">
+                No workspaces yet. They appear after you run a project that
+                needs them.
+              </div>
+            ) : (
+              <div className="max-h-[55vh] overflow-y-auto pr-2">
+                <div className="space-y-3">
+                  {groupedVms.map(([repoPath, repoVms]) => (
                     <div
                       key={repoPath || "unknown"}
                       className="rounded-lg border border-border/60 bg-background/60 p-4"
                     >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="space-y-1">
-                          <div className="text-sm font-semibold">
-                            {repoPath
-                              ? repoLabel(repoPath)
-                              : "Unlinked project"}
-                          </div>
-                          {repoPath ? (
-                            <details className="text-xs text-muted-foreground">
-                              <summary className="cursor-pointer">
-                                Show folder
-                              </summary>
-                              <div className="mt-1 font-mono break-all">
-                                {repoPath}
-                              </div>
-                            </details>
-                          ) : (
-                            <div className="text-xs text-muted-foreground">
-                              No project folder linked.
-                            </div>
-                          )}
+                      <div className="space-y-1">
+                        <div className="text-sm font-semibold">
+                          {repoPath
+                            ? repoLabel(repoPath)
+                            : "Project not linked yet"}
                         </div>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <Badge variant="outline">
-                            {repoVms.length} workspace
-                            {repoVms.length === 1 ? "" : "s"}
-                          </Badge>
-                          {runningCount > 0 ? (
-                            <Badge variant="secondary">
-                              {runningCount} running
-                            </Badge>
-                          ) : null}
-                          {stoppedCount > 0 ? (
-                            <Badge variant="outline">
-                              {stoppedCount} stopped
-                            </Badge>
-                          ) : null}
-                          {attentionCount > 0 ? (
-                            <Badge variant="destructive">
-                              {attentionCount} needs attention
-                            </Badge>
-                          ) : null}
+                        <div className="text-xs text-muted-foreground">
+                          {repoVms.length} workspace
+                          {repoVms.length === 1 ? "" : "s"}
                         </div>
                       </div>
                       <div className="mt-4 space-y-2">
-                        {repoVms.map((vm) => {
+                        {repoVms.map((vm, vmIndex) => {
                           const normalizedStatus = normalizeStatus(vm.status);
                           const running = normalizedStatus === "running";
                           return (
@@ -441,14 +493,11 @@ export function VirtualizedBackendPanel({
                               className="flex flex-col gap-2 rounded-lg border border-border/60 bg-background/80 p-3 sm:flex-row sm:items-center sm:justify-between"
                             >
                               <div className="space-y-1 text-sm">
-                                <div className="font-semibold">{vm.name}</div>
-                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                  <Badge
-                                    variant={statusBadgeVariant(vm.status)}
-                                  >
-                                    {vmStatusLabel(vm.status)}
-                                  </Badge>
-                                  <span>Engine: {vm.provider}</span>
+                                <div className="font-semibold">
+                                  Workspace {vmIndex + 1}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {vmStatusLabel(vm.status)}
                                 </div>
                               </div>
                               <div className="flex flex-wrap gap-2">
@@ -456,7 +505,9 @@ export function VirtualizedBackendPanel({
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => handleVmAction(vm, "start")}
+                                    onClick={() =>
+                                      handleVmAction(vm, "start")
+                                    }
                                     disabled={vmAction[`${vm.name}:start`]}
                                     className="normal-case tracking-normal"
                                   >
@@ -476,12 +527,20 @@ export function VirtualizedBackendPanel({
                                 ) : null}
                                 <Button
                                   size="sm"
-                                  variant="ghost"
+                                  variant="outline"
                                   onClick={() => handleVmAction(vm, "delete")}
                                   disabled={vmAction[`${vm.name}:delete`]}
                                   className="normal-case tracking-normal"
                                 >
-                                  Delete
+                                  Remove
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleOpenDetails(vm)}
+                                  className="normal-case tracking-normal"
+                                >
+                                  See details
                                 </Button>
                               </div>
                             </div>
@@ -489,19 +548,183 @@ export function VirtualizedBackendPanel({
                         })}
                       </div>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
-            </ScrollArea>
-          )}
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
-          {vmsError ? (
-            <Alert variant="destructive">
-              <AlertDescription>{vmsError}</AlertDescription>
-            </Alert>
-          ) : null}
-        </div>
-      </CardContent>
-    </Card>
+      <Dialog open={detailsOpen} onOpenChange={handleDetailsOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Workspace details</DialogTitle>
+            <DialogDescription>
+              Full technical info for this workspace.
+            </DialogDescription>
+          </DialogHeader>
+          {!detailsVm ? (
+            <div className="text-sm text-muted-foreground">
+              Select a workspace to see details.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {detailsLoading ? (
+                <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                  Loading details...
+                </div>
+              ) : null}
+              {detailsError ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{detailsError}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <div className="text-xs text-muted-foreground">Project</div>
+                  <div className="text-sm font-medium">
+                    {detailsRepoName ?? "Unknown project"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Status</div>
+                  <div className="text-sm font-medium">
+                    {vmStatusLabel(detailStatus)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">
+                    Workspace name
+                  </div>
+                  <div className="text-xs font-mono break-all">
+                    {detailsVm.name}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Provider</div>
+                  <div className="text-sm font-medium">
+                    {detailsData?.provider ?? detailsVm.provider}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">
+                    Support tool
+                  </div>
+                  <div className="text-sm font-medium">{toolLabel}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">
+                    Project folder
+                  </div>
+                  <div className="text-xs font-mono break-all">
+                    {detailRepoPath ?? "Not linked"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">
+                    Workspace folder
+                  </div>
+                  <div className="text-xs font-mono break-all">
+                    {detailRepoMount ?? "Not available"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">
+                    Config file
+                  </div>
+                  <div className="text-xs font-mono break-all">
+                    {detailsData?.config_path ?? "Not available"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-semibold">Mounts</div>
+                {detailMounts.length > 0 ? (
+                  <div className="space-y-2">
+                    {detailMounts.map((mount, index) => (
+                      <div
+                        key={`${mount.location ?? "mount"}-${index}`}
+                        className="rounded-lg border border-border/60 bg-background/60 p-3 text-xs"
+                      >
+                        <div className="text-muted-foreground">From</div>
+                        <div className="font-mono break-all">
+                          {mount.location ?? "Unknown"}
+                        </div>
+                        <div className="mt-2 text-muted-foreground">To</div>
+                        <div className="font-mono break-all">
+                          {mount.mount_point ?? "Unknown"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                    No mount details available.
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-semibold">Ports</div>
+                {detailPorts.length > 0 ? (
+                  <div className="space-y-2">
+                    {detailPorts.map((port, index) => (
+                      <div
+                        key={`${port.host_port ?? "host"}-${port.guest_port ?? "guest"}-${index}`}
+                        className="rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-xs"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-muted-foreground">
+                            Computer
+                          </span>
+                          <span className="font-mono">
+                            {port.host_port ?? port.guest_port ?? "?"}
+                          </span>
+                          <span className="text-muted-foreground">→</span>
+                          <span className="text-muted-foreground">
+                            Workspace
+                          </span>
+                          <span className="font-mono">
+                            {port.guest_port ?? port.host_port ?? "?"}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                    No port forwards configured.
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-2">
+                {detailRepoPath ? (
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      backendService.openVmShell(detailRepoPath)
+                    }
+                    className="normal-case tracking-normal"
+                  >
+                    Open workspace terminal
+                  </Button>
+                ) : null}
+                <Button
+                  variant="outline"
+                  onClick={() => handleDetailsOpenChange(false)}
+                  className="normal-case tracking-normal"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

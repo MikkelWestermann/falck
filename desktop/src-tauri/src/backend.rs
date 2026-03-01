@@ -207,6 +207,30 @@ pub struct BackendVmInfo {
     pub repo_path: Option<String>,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct BackendVmMountInfo {
+    pub location: Option<String>,
+    pub mount_point: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct BackendVmPortForwardInfo {
+    pub guest_port: Option<u16>,
+    pub host_port: Option<u16>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct BackendVmDetails {
+    pub name: String,
+    pub provider: String,
+    pub status: String,
+    pub repo_path: Option<String>,
+    pub repo_mount: Option<String>,
+    pub mounts: Vec<BackendVmMountInfo>,
+    pub port_forwards: Vec<BackendVmPortForwardInfo>,
+    pub config_path: Option<String>,
+}
+
 fn vm_provider() -> Result<VmProvider, String> {
     if cfg!(target_os = "windows") {
         Ok(VmProvider::Wsl)
@@ -684,6 +708,8 @@ struct LimaMount {
 struct LimaPortForward {
     #[serde(rename = "guestPort")]
     guest_port: Option<u16>,
+    #[serde(rename = "hostPort")]
+    host_port: Option<u16>,
 }
 
 fn entries_from_array(items: Vec<serde_json::Value>) -> Result<Vec<LimaListEntry>, String> {
@@ -2518,9 +2544,77 @@ fn list_backend_vms_inner(app: &AppHandle) -> Result<Vec<BackendVmInfo>, String>
     }
 }
 
+fn get_backend_vm_details_inner(
+    app: &AppHandle,
+    name: &str,
+) -> Result<BackendVmDetails, String> {
+    let vms = list_backend_vms_inner(app)?;
+    let vm = vms
+        .into_iter()
+        .find(|entry| entry.name == name)
+        .ok_or_else(|| format!("Workspace '{}' not found.", name))?;
+
+    let mut details = BackendVmDetails {
+        name: vm.name.clone(),
+        provider: vm.provider.clone(),
+        status: vm.status.clone(),
+        repo_path: vm.repo_path.clone(),
+        repo_mount: None,
+        mounts: Vec::new(),
+        port_forwards: Vec::new(),
+        config_path: None,
+    };
+
+    if vm.provider == "lima" {
+        if let Some(config) = read_lima_config(&vm.name) {
+            if let Some(mounts) = config.mounts {
+                for mount in mounts {
+                    if details.repo_mount.is_none() {
+                        if let (Some(repo_path), Some(location), Some(mount_point)) = (
+                            details.repo_path.as_ref(),
+                            mount.location.as_ref(),
+                            mount.mount_point.as_ref(),
+                        ) {
+                            if paths_equivalent(Path::new(repo_path), location) {
+                                details.repo_mount = Some(mount_point.clone());
+                            }
+                        }
+                    }
+                    details.mounts.push(BackendVmMountInfo {
+                        location: mount.location,
+                        mount_point: mount.mount_point,
+                    });
+                }
+            }
+
+            if let Some(port_forwards) = config.port_forwards {
+                details.port_forwards = port_forwards
+                    .into_iter()
+                    .map(|entry| BackendVmPortForwardInfo {
+                        guest_port: entry.guest_port,
+                        host_port: entry.host_port,
+                    })
+                    .collect();
+            }
+        }
+        details.config_path =
+            lima_config_path(&vm.name).map(|path| path.to_string_lossy().to_string());
+    }
+
+    Ok(details)
+}
+
 #[tauri::command]
 pub async fn list_backend_vms(app: AppHandle) -> Result<Vec<BackendVmInfo>, String> {
     run_blocking(move || list_backend_vms_inner(&app)).await
+}
+
+#[tauri::command]
+pub async fn get_backend_vm_details(
+    app: AppHandle,
+    name: String,
+) -> Result<BackendVmDetails, String> {
+    run_blocking(move || get_backend_vm_details_inner(&app, &name)).await
 }
 
 #[tauri::command]

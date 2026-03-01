@@ -40,6 +40,41 @@ pub struct ContainerInfo {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ContainerMountDetail {
+    pub source: Option<String>,
+    pub destination: Option<String>,
+    pub mode: Option<String>,
+    pub rw: Option<bool>,
+    pub kind: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ContainerPortDetail {
+    pub container_port: Option<String>,
+    pub host_port: Option<String>,
+    pub protocol: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ContainerDetails {
+    pub id: String,
+    pub repo_path: String,
+    pub app_id: Option<String>,
+    pub name: String,
+    pub vm: String,
+    pub image: Option<String>,
+    pub status: Option<String>,
+    pub state: String,
+    pub last_used: i64,
+    pub created: Option<String>,
+    pub mounts: Vec<ContainerMountDetail>,
+    pub ports: Vec<ContainerPortDetail>,
+    pub workdir: Option<String>,
+    pub env: Vec<String>,
+    pub inspect_error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ContainerHandle {
     pub id: String,
     pub repo_path: String,
@@ -745,6 +780,97 @@ fn status_to_state(status: Option<&str>) -> String {
     }
 }
 
+fn parse_inspect_value(raw: &[u8]) -> Option<serde_json::Value> {
+    let value = serde_json::from_slice::<serde_json::Value>(raw).ok()?;
+    if let Some(array) = value.as_array() {
+        array.first().cloned()
+    } else {
+        Some(value)
+    }
+}
+
+fn parse_container_mounts(value: &serde_json::Value) -> Vec<ContainerMountDetail> {
+    let mut mounts = Vec::new();
+    let Some(items) = value.get("Mounts").and_then(|value| value.as_array()) else {
+        return mounts;
+    };
+    for item in items {
+        mounts.push(ContainerMountDetail {
+            source: item
+                .get("Source")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string()),
+            destination: item
+                .get("Destination")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string()),
+            mode: item
+                .get("Mode")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string()),
+            rw: item.get("RW").and_then(|value| value.as_bool()),
+            kind: item
+                .get("Type")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string()),
+        });
+    }
+    mounts
+}
+
+fn parse_container_ports(value: &serde_json::Value) -> Vec<ContainerPortDetail> {
+    let mut ports = Vec::new();
+    let Some(port_map) = value
+        .get("NetworkSettings")
+        .and_then(|value| value.get("Ports"))
+        .and_then(|value| value.as_object())
+    else {
+        return ports;
+    };
+
+    for (container_port, bindings) in port_map {
+        let (port, protocol) = container_port
+            .split_once('/')
+            .map(|(left, right)| (left.to_string(), Some(right.to_string())))
+            .unwrap_or_else(|| (container_port.clone(), None));
+
+        if bindings.is_null() {
+            ports.push(ContainerPortDetail {
+                container_port: Some(port),
+                host_port: None,
+                protocol,
+            });
+            continue;
+        }
+
+        let Some(binding_list) = bindings.as_array() else {
+            continue;
+        };
+        if binding_list.is_empty() {
+            ports.push(ContainerPortDetail {
+                container_port: Some(port.clone()),
+                host_port: None,
+                protocol: protocol.clone(),
+            });
+            continue;
+        }
+
+        for binding in binding_list {
+            let host_port = binding
+                .get("HostPort")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string());
+            ports.push(ContainerPortDetail {
+                container_port: Some(port.clone()),
+                host_port,
+                protocol: protocol.clone(),
+            });
+        }
+    }
+
+    ports
+}
+
 #[tauri::command]
 pub async fn check_lima_installed(app: AppHandle) -> Result<LimaStatus, String> {
     run_blocking(move || {
@@ -1036,6 +1162,103 @@ pub async fn list_containers(
         }
 
         Ok(list)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_container_details(
+    app: AppHandle,
+    id: String,
+    vm: String,
+    name: String,
+) -> Result<ContainerDetails, String> {
+    run_blocking(move || {
+        let record = storage::list_containers(&app, None)?
+            .into_iter()
+            .find(|record| record.id == id)
+            .ok_or_else(|| "Container not found.".to_string())?;
+
+        let mut details = ContainerDetails {
+            id: record.id.clone(),
+            repo_path: record.repo_path.clone(),
+            app_id: record.app_id.clone(),
+            name: record.name.clone(),
+            vm: record.vm.clone(),
+            image: record.image.clone(),
+            status: None,
+            state: "unknown".to_string(),
+            last_used: record.last_used,
+            created: None,
+            mounts: Vec::new(),
+            ports: Vec::new(),
+            workdir: None,
+            env: Vec::new(),
+            inspect_error: None,
+        };
+
+        let Some(limactl) = limactl_path(&app) else {
+            details.inspect_error = Some(
+                "Support tools are unavailable. Reinstall Falck or use a build that bundles them."
+                    .to_string(),
+            );
+            return Ok(details);
+        };
+
+        let _ = (&vm, &name);
+        let args = vec!["inspect".to_string(), record.name.clone()];
+        let output = nerdctl_command(&limactl, &record.vm, &args).output();
+        match output {
+            Ok(output) if output.status.success() => {
+                if let Some(value) = parse_inspect_value(&output.stdout) {
+                    if let Some(status) = value
+                        .get("State")
+                        .and_then(|state| state.get("Status"))
+                        .and_then(|status| status.as_str())
+                    {
+                        details.status = Some(status.to_string());
+                        details.state = status_to_state(Some(status));
+                    }
+
+                    details.mounts = parse_container_mounts(&value);
+                    details.ports = parse_container_ports(&value);
+
+                    details.workdir = value
+                        .pointer("/Config/WorkingDir")
+                        .and_then(|value| value.as_str())
+                        .map(|value| value.to_string());
+                    details.env = value
+                        .pointer("/Config/Env")
+                        .and_then(|value| value.as_array())
+                        .map(|values| {
+                            values
+                                .iter()
+                                .filter_map(|value| value.as_str().map(|text| text.to_string()))
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    details.created = value
+                        .get("Created")
+                        .and_then(|value| value.as_str())
+                        .map(|value| value.to_string());
+                } else {
+                    details.inspect_error =
+                        Some("Unable to read package details.".to_string());
+                }
+            }
+            Ok(_) => {
+                details.inspect_error = Some(
+                    "Unable to read package details. Start the package and try again."
+                        .to_string(),
+                );
+            }
+            Err(err) => {
+                details.inspect_error =
+                    Some(format!("Unable to read package details: {err}"));
+            }
+        }
+
+        Ok(details)
     })
     .await
 }

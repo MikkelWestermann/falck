@@ -21,6 +21,27 @@ export interface BackendVmInfo {
   repo_path?: string | null;
 }
 
+export interface BackendVmMountInfo {
+  location?: string | null;
+  mount_point?: string | null;
+}
+
+export interface BackendVmPortForwardInfo {
+  guest_port?: number | null;
+  host_port?: number | null;
+}
+
+export interface BackendVmDetails {
+  name: string;
+  provider: string;
+  status: string;
+  repo_path?: string | null;
+  repo_mount?: string | null;
+  mounts: BackendVmMountInfo[];
+  port_forwards: BackendVmPortForwardInfo[];
+  config_path?: string | null;
+}
+
 export const backendService = {
   async getMode(): Promise<BackendMode> {
     return invoke<BackendMode>("get_backend_mode");
@@ -48,6 +69,10 @@ export const backendService = {
 
   async listVms(): Promise<BackendVmInfo[]> {
     return invoke<BackendVmInfo[]>("list_backend_vms");
+  },
+
+  async getVmDetails(name: string): Promise<BackendVmDetails> {
+    return invoke<BackendVmDetails>("get_backend_vm_details", { name });
   },
 
   async stopVm(name: string): Promise<void> {
