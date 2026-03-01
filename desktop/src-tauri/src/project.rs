@@ -1,8 +1,9 @@
 use crate::blocking::run_blocking;
-use crate::{git, github, opencode};
+use crate::{falck, git, github, opencode};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -192,6 +193,14 @@ pub async fn create_astro_project(
             &monorepo_install_command,
         )
         .await?;
+        run_initial_setup_steps(
+            &app,
+            root_path,
+            &local_path,
+            &progress_id,
+            true,
+        )
+        .await?;
         emit_progress(&app, &progress_id, "Finalizing project", None);
         let repo_name = root_path
             .file_name()
@@ -206,6 +215,15 @@ pub async fn create_astro_project(
             branch: None,
         });
     }
+
+    run_initial_setup_steps(
+        &app,
+        &local_path,
+        &local_path,
+        &progress_id,
+        false,
+    )
+    .await?;
 
     emit_progress(&app, &progress_id, "Initializing Git repository", None);
     run_blocking({
@@ -626,6 +644,134 @@ fn run_bun_create(bun_path: &Path, parent_dir: &Path, args: &[String]) -> Result
     } else {
         Err(format!("Bun create failed: {}", details))
     }
+}
+
+fn normalize_root_path(value: &str) -> String {
+    let trimmed = value.trim().replace('\\', "/");
+    let trimmed = trimmed.trim_start_matches("./");
+    let trimmed = trimmed.trim_matches('/');
+    if trimmed.is_empty() || trimmed == "." {
+        ".".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn target_root_for_app(repo_root: &Path, app_path: &Path) -> String {
+    let relative = app_path.strip_prefix(repo_root).unwrap_or(app_path);
+    let value = relative.to_string_lossy();
+    normalize_root_path(value.as_ref())
+}
+
+fn app_has_setup_steps(app: &falck::Application) -> bool {
+    app.setup
+        .as_ref()
+        .and_then(|setup| setup.steps.as_ref())
+        .map(|steps| !steps.is_empty())
+        .unwrap_or(false)
+}
+
+fn build_setup_app_ids(
+    config: &falck::FalckConfig,
+    target_root: Option<&str>,
+) -> Vec<String> {
+    let mut candidates: Vec<&falck::Application> = config
+        .applications
+        .iter()
+        .filter(|app| app_has_setup_steps(app))
+        .collect();
+
+    if let Some(root) = target_root {
+        let target = normalize_root_path(root);
+        candidates.retain(|app| normalize_root_path(&app.root) == target);
+    }
+
+    if candidates.is_empty() {
+        return Vec::new();
+    }
+
+    let mut ordered = Vec::new();
+    let mut seen = HashSet::new();
+
+    if let Some(order) = &config.install_order {
+        for id in order {
+            if candidates.iter().any(|app| app.id == *id) && seen.insert(id.clone()) {
+                ordered.push(id.clone());
+            }
+        }
+    }
+
+    for app in candidates {
+        if seen.insert(app.id.clone()) {
+            ordered.push(app.id.clone());
+        }
+    }
+
+    ordered
+}
+
+async fn run_initial_setup_steps(
+    app: &AppHandle,
+    repo_root: &Path,
+    app_path: &Path,
+    progress_id: &Option<String>,
+    monorepo_enabled: bool,
+) -> Result<(), String> {
+    let config = match falck::load_config(repo_root) {
+        Ok(config) => config,
+        Err(err) => {
+            emit_progress(
+                app,
+                progress_id,
+                "Skipping setup steps (no Falck config)",
+                Some(err.to_string()),
+            );
+            return Ok(());
+        }
+    };
+
+    let target_root = if monorepo_enabled {
+        Some(target_root_for_app(repo_root, app_path))
+    } else {
+        None
+    };
+
+    let app_ids = build_setup_app_ids(&config, target_root.as_deref());
+    if app_ids.is_empty() {
+        emit_progress(app, progress_id, "No setup steps configured", None);
+        return Ok(());
+    }
+
+    let repo_path = repo_root.to_string_lossy().to_string();
+    for app_id in app_ids {
+        let app_config = config
+            .applications
+            .iter()
+            .find(|app| app.id == app_id)
+            .ok_or_else(|| format!("Application '{}' not found in Falck config.", app_id))?;
+
+        if !falck::check_app_secrets_satisfied(app_config) {
+            emit_progress(
+                app,
+                progress_id,
+                "Skipping setup steps (missing secrets)",
+                Some(app_config.name.clone()),
+            );
+            continue;
+        }
+
+        emit_progress(
+            app,
+            progress_id,
+            "Running setup steps",
+            Some(app_config.name.clone()),
+        );
+        falck::run_falck_setup(app.clone(), repo_path.clone(), app_id.clone())
+            .await
+            .map_err(|err| format!("Setup failed for {}: {}", app_config.name, err))?;
+    }
+
+    Ok(())
 }
 
 fn command_exists(command: &str) -> bool {
