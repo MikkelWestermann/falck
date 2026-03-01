@@ -16,7 +16,8 @@ use git::{
     push_to_remote, reset_to_commit as reset_git_to_commit, stage_file, unstage_file,
 };
 use opencode::{
-    check_command_exists, check_opencode_installed, install_opencode, opencode_send, OpencodeState,
+    check_command_exists, check_opencode_installed, ensure_opencode_fix_plugin, install_opencode,
+    opencode_send, OpencodeState,
 };
 use reqwest::Client;
 use storage::{
@@ -289,6 +290,7 @@ pub fn run() {
             opencode_send,
             check_opencode_installed,
             install_opencode,
+            ensure_opencode_fix_plugin,
             check_command_exists,
             ssh::generate_new_ssh_key,
             ssh::list_ssh_keys,

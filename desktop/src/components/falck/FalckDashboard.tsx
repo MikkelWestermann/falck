@@ -25,6 +25,7 @@ import {
   ListChecks,
   Play,
   RefreshCw,
+  Sparkles,
   Square,
   type LucideIcon,
 } from "lucide-react";
@@ -45,6 +46,29 @@ import {
 import { containerService } from "@/services/containerService";
 import { SecretsDialog } from "@/components/falck/SecretsDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useAIChat } from "@/contexts/AIChatContext";
+import { opencodeService } from "@/services/opencodeService";
+
+const FIX_WITH_AI_SYSTEM_PROMPT = `
+You are Falck Fixer, an assistant inside Falck.
+
+Goal: get the selected app's setup to green and make the dev environment usable.
+
+You can use the Falck Fix tools:
+- falck.spec
+- falck.setup.list
+- falck.setup.run
+- falck.setup.teardown
+- falck.backend.detect
+- falck.vm.exec
+- falck.vm.logs
+- falck.vm.start
+- falck.vm.stop
+- falck.vm.update
+
+Use tools instead of asking the user to run commands. Prefer VM tools when backend is virtualized.
+If secrets are missing, ask the user to add them in Falck. Summarize what changed and how to verify.
+`.trim();
 
 interface FalckDashboardProps {
   repoPath: string;
@@ -153,6 +177,9 @@ export function FalckDashboard({
   const [autoSetupOverlayByApp, setAutoSetupOverlayByApp] = useState<
     Record<string, boolean>
   >({});
+  const [fixingWithAI, setFixingWithAI] = useState(false);
+  const [fixAiError, setFixAiError] = useState<string | null>(null);
+  const { createSession } = useAIChat();
   const normalizeRepoPath = (path?: string | null) =>
     (path ?? "").replace(/[\\/]+$/, "");
 
@@ -179,6 +206,8 @@ export function FalckDashboard({
     setAutoSetupMessage({});
     setAutoSetupError({});
     setAutoSetupOverlayByApp({});
+    setFixingWithAI(false);
+    setFixAiError(null);
   }, [repoPath]);
 
   useEffect(() => {
@@ -987,6 +1016,12 @@ export function FalckDashboard({
     },
   };
   const setupIndicator = setupStatusMeta[setupStatus];
+  const showFixWithAI =
+    setupStepsConfigured &&
+    (setupStatus === "incomplete" ||
+      setupStatus === "error" ||
+      Boolean(setupError[activeApp?.id ?? ""]) ||
+      Boolean(autoSetupFailure));
   const autoSetupChecklist = activeSetupSteps.map((step, index) => {
     const actionStatus = activeApp
       ? setupStepStatusByApp[activeApp.id]?.[index]
@@ -1055,6 +1090,66 @@ export function FalckDashboard({
       iconClass: "text-muted-foreground/60",
       labelClass: "text-muted-foreground",
     },
+  };
+
+  const buildFixPrompt = () => {
+    if (!activeApp) {
+      return "Falck setup needs attention.";
+    }
+    const lines: string[] = [];
+    lines.push(`Repo: ${repoPath}`);
+    lines.push(`App: ${activeApp.name} (${activeApp.id})`);
+    lines.push(`Setup status: ${setupIndicator.label}`);
+    if (setupStatusMessage) {
+      lines.push(`Setup summary: ${setupStatusMessage}`);
+    }
+    if (!secretsOk) {
+      lines.push("Secrets: missing required values.");
+    }
+    if (setupError[activeApp.id]) {
+      lines.push(`Setup error: ${setupError[activeApp.id]}`);
+    }
+    if (autoSetupFailure) {
+      lines.push(`Auto-setup error: ${autoSetupFailure}`);
+    }
+    if (launchError[activeApp.id]) {
+      lines.push(`Launch error: ${launchError[activeApp.id]}`);
+    }
+    lines.push("Setup steps:");
+    activeSetupSteps.forEach((step, index) => {
+      const check = activeStepChecks[index];
+      const status = check?.status ?? "unknown";
+      const message = check?.message ? ` - ${check.message}` : "";
+      lines.push(
+        `  [${index}] ${step.name} (${step.optional ? "optional" : "required"}) -> ${status}${message}`,
+      );
+    });
+    return lines.join("\n");
+  };
+
+  const handleFixWithAI = async () => {
+    if (!activeApp) {
+      return;
+    }
+    setFixAiError(null);
+    setFixingWithAI(true);
+    try {
+      await opencodeService.ensureFixPlugin();
+      const prompt = buildFixPrompt();
+      const session = await createSession({
+        name: `Fix setup - ${activeApp.name}`,
+        description: `Fixing setup for ${activeApp.name} in ${repoPath}`,
+        prompt,
+        system: FIX_WITH_AI_SYSTEM_PROMPT,
+      });
+      if (!session) {
+        setFixAiError("Failed to start Fix with AI session.");
+      }
+    } catch (err) {
+      setFixAiError(`Failed to start Fix with AI: ${String(err)}`);
+    } finally {
+      setFixingWithAI(false);
+    }
   };
 
   return (
@@ -1129,6 +1224,18 @@ export function FalckDashboard({
                     {activeApp.launch.access?.url}
                   </Button>
                 ) : null}
+                {showFixWithAI ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="gap-2"
+                    onClick={handleFixWithAI}
+                    disabled={fixingWithAI}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    {fixingWithAI ? "Starting AI..." : "Fix with AI"}
+                  </Button>
+                ) : null}
                 <Button
                   size="sm"
                   variant="ghost"
@@ -1193,6 +1300,12 @@ export function FalckDashboard({
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>{autoSetupFailure}</AlertDescription>
+                </Alert>
+              ) : null}
+              {fixAiError ? (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{fixAiError}</AlertDescription>
                 </Alert>
               ) : null}
               {launchError[activeApp.id] && (

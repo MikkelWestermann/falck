@@ -10,6 +10,7 @@ import {
   AISession,
   Message,
   Provider,
+  type OpenCodePartInput,
   opencodeService,
 } from "@/services/opencodeService";
 
@@ -32,7 +33,15 @@ type AIChatContextValue = {
   setHistoryOpen: (open: boolean) => void;
   creatingSession: boolean;
   loadingSession: boolean;
-  createSession: (options?: { closeHistory?: boolean }) => Promise<void>;
+  createSession: (options?: {
+    closeHistory?: boolean;
+    name?: string;
+    description?: string;
+    model?: string;
+    prompt?: string;
+    system?: string;
+    parts?: OpenCodePartInput[];
+  }) => Promise<AISession | null>;
   selectSession: (
     session: AISession,
     options?: { closeHistory?: boolean },
@@ -141,8 +150,20 @@ export function AIChatProvider({
   );
 
   const createSession = useCallback(
-    async (options?: { closeHistory?: boolean }) => {
-      const name = `AI Session - ${new Date().toLocaleString()}`;
+    async (options?: {
+      closeHistory?: boolean;
+      name?: string;
+      description?: string;
+      model?: string;
+      prompt?: string;
+      system?: string;
+      parts?: OpenCodePartInput[];
+    }) => {
+      const name =
+        options?.name || `AI Session - ${new Date().toLocaleString()}`;
+      const description =
+        options?.description || `Chat session for ${repoPath}`;
+      const model = options?.model || selectedModel;
       if (options?.closeHistory) {
         setHistoryOpen(false);
       }
@@ -150,21 +171,38 @@ export function AIChatProvider({
       try {
         const session = await opencodeService.createSession(
           name,
-          `Chat session for ${repoPath}`,
-          selectedModel,
+          description,
+          model,
           repoPath,
         );
         setSessions((prev) => [...prev, session]);
         setCurrentSession(session);
         setMessages([]);
+        if (model && model !== selectedModel) {
+          setSelectedModel(model);
+          persistModel(model);
+        }
+        if (options?.prompt) {
+          await opencodeService.sendPromptAsync(
+            session.path,
+            options.prompt,
+            model,
+            undefined,
+            repoPath,
+            options.system,
+            options.parts,
+          );
+        }
         setError("");
+        return session;
       } catch (err) {
         setError(`Failed to create session: ${String(err)}`);
+        return null;
       } finally {
         setCreatingSession(false);
       }
     },
-    [repoPath, selectedModel],
+    [repoPath, selectedModel, setSelectedModel],
   );
 
   const deleteSession = useCallback(

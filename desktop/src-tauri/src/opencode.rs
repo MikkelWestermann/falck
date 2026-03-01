@@ -10,6 +10,7 @@ use tauri::{AppHandle, Manager, Runtime, State};
 
 use crate::blocking::run_blocking;
 use crate::falck::load_shell_env;
+use crate::{containers, storage};
 
 pub struct OpencodeState(pub Mutex<Option<SidecarProcess>>);
 
@@ -23,6 +24,12 @@ pub struct SidecarProcess {
     _child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OpenCodeFixPluginResult {
+    pub plugin_path: String,
+    pub spec_path: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -74,6 +81,16 @@ pub async fn install_opencode(app: AppHandle) -> Result<String, String> {
     }
 
     Err("OpenCode CLI bundle not found. Reinstall Falck or run the sidecar build.".to_string())
+}
+
+#[tauri::command]
+pub async fn ensure_opencode_fix_plugin(
+    app: AppHandle,
+    state: State<'_, OpencodeState>,
+) -> Result<OpenCodeFixPluginResult, String> {
+    let result = run_blocking(move || ensure_fix_plugin_files(&app)).await?;
+    stop_sidecar(&state);
+    Ok(result)
 }
 
 #[tauri::command]
@@ -171,6 +188,95 @@ fn apply_shell_env(cmd: &mut Command) {
     }
 }
 
+fn opencode_config_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    if let Ok(path) = env::var("XDG_CONFIG_HOME") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed).join("opencode"));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    if let Ok(path) = env::var("APPDATA") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed).join("opencode"));
+        }
+    }
+
+    let home = app.path().home_dir().map_err(|e| e.to_string())?;
+    Ok(home.join(".config").join("opencode"))
+}
+
+fn resolve_spec_path<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
+    if let Ok(path) = env::var("FALCK_SPEC_PATH") {
+        let path = PathBuf::from(path);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    if let Ok(config_dir) = opencode_config_dir(app) {
+        let candidate = config_dir.join("falck-spec.md");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let candidate = resource_dir.join("falck-spec.md");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    let cwd = env::current_dir().ok();
+    let candidates = [
+        cwd.as_ref().map(|dir| dir.join("falck-spec.md")),
+        cwd.as_ref().map(|dir| dir.join("..").join("falck-spec.md")),
+        cwd.as_ref().map(|dir| dir.join("..").join("..").join("falck-spec.md")),
+    ];
+    for candidate in candidates.into_iter().flatten() {
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
+fn apply_falck_env<R: Runtime>(app: &AppHandle<R>, cmd: &mut Command) {
+    if let Ok(app_data_dir) = app.path().app_data_dir() {
+        cmd.env("FALCK_APP_DATA_DIR", app_data_dir);
+    }
+
+    if let Ok(home_dir) = app.path().home_dir() {
+        cmd.env("FALCK_HOME_DIR", home_dir);
+    }
+
+    if let Ok(mode) = storage::get_backend_mode_raw(app) {
+        if let Some(mode) = mode {
+            let value = match mode {
+                storage::BackendMode::Host => "host",
+                storage::BackendMode::Virtualized => "virtualized",
+            };
+            cmd.env("FALCK_BACKEND_MODE", value);
+        }
+    }
+
+    if let Some(limactl) = containers::limactl_path(app) {
+        cmd.env("FALCK_LIMACTL_PATH", limactl);
+    }
+
+    if let Ok(lima_home) = containers::falck_lima_home(app) {
+        cmd.env("FALCK_LIMA_HOME", lima_home);
+    }
+
+    if let Some(spec_path) = resolve_spec_path(app) {
+        cmd.env("FALCK_SPEC_PATH", spec_path);
+    }
+}
+
 fn command_exists(command: &str) -> bool {
     #[cfg(target_os = "windows")]
     let output = Command::new("where").arg(command).output();
@@ -183,22 +289,93 @@ fn command_exists(command: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn ensure_fix_plugin_files<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<OpenCodeFixPluginResult, String> {
+    let config_dir = opencode_config_dir(app)?;
+    let plugins_dir = config_dir.join("plugins");
+    std::fs::create_dir_all(&plugins_dir).map_err(|e| e.to_string())?;
+
+    let plugin_path = plugins_dir.join("falck-fix.js");
+    let plugin_contents = include_str!("../resources/opencode/falck-fix-plugin.js");
+    write_if_changed(&plugin_path, plugin_contents)?;
+
+    let spec_path = config_dir.join("falck-spec.md");
+    let spec_contents = include_str!("../../../falck-spec.md");
+    write_if_changed(&spec_path, spec_contents)?;
+
+    let package_path = config_dir.join("package.json");
+    ensure_package_json(&package_path)?;
+
+    Ok(OpenCodeFixPluginResult {
+        plugin_path: plugin_path.to_string_lossy().to_string(),
+        spec_path: spec_path.to_string_lossy().to_string(),
+    })
+}
+
+fn ensure_package_json(path: &Path) -> Result<(), String> {
+    let mut value: Value = if path.exists() {
+        let contents = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&contents).unwrap_or(Value::Object(Map::new()))
+    } else {
+        Value::Object(Map::new())
+    };
+
+    if !value.is_object() {
+        value = Value::Object(Map::new());
+    }
+
+    let obj = value.as_object_mut().unwrap();
+    let deps = obj
+        .entry("dependencies".to_string())
+        .or_insert_with(|| Value::Object(Map::new()));
+
+    if !deps.is_object() {
+        *deps = Value::Object(Map::new());
+    }
+
+    if let Some(dep_map) = deps.as_object_mut() {
+        dep_map.insert("yaml".to_string(), Value::String("^2.4.5".to_string()));
+    }
+
+    let contents = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
+    write_if_changed(path, &contents)?;
+    Ok(())
+}
+
+fn write_if_changed(path: &Path, contents: &str) -> Result<(), String> {
+    if let Ok(existing) = std::fs::read_to_string(path) {
+        if existing == contents {
+            return Ok(());
+        }
+    }
+    std::fs::write(path, contents).map_err(|e| e.to_string())
+}
+
+fn stop_sidecar(state: &State<'_, OpencodeState>) {
+    if let Ok(mut guard) = state.0.lock() {
+        if let Some(mut process) = guard.take() {
+            let _ = process._child.kill();
+        }
+    }
+}
+
 fn spawn_sidecar<R: Runtime>(app: &AppHandle<R>) -> Result<SidecarProcess, String> {
     let cli_path = find_opencode_cli(app);
 
     if let Ok(path) = std::env::var("OPENCODE_SIDECAR_PATH") {
         let path = PathBuf::from(path);
         if path.exists() {
-            return spawn_process(path, cli_path.as_deref());
+            return spawn_process(app, path, cli_path.as_deref());
         }
     }
 
     if let Some(binary) = find_sidecar_binary(app) {
-        return spawn_process(binary, cli_path.as_deref());
+        return spawn_process(app, binary, cli_path.as_deref());
     }
 
     if let Some(script) = find_sidecar_script(app) {
-        return spawn_bun(script, cli_path.as_deref());
+        return spawn_bun(app, script, cli_path.as_deref());
     }
 
     Err(
@@ -207,9 +384,14 @@ fn spawn_sidecar<R: Runtime>(app: &AppHandle<R>) -> Result<SidecarProcess, Strin
     )
 }
 
-fn spawn_process(path: PathBuf, cli_path: Option<&Path>) -> Result<SidecarProcess, String> {
+fn spawn_process<R: Runtime>(
+    app: &AppHandle<R>,
+    path: PathBuf,
+    cli_path: Option<&Path>,
+) -> Result<SidecarProcess, String> {
     let mut cmd = Command::new(&path);
     apply_shell_env(&mut cmd);
+    apply_falck_env(app, &mut cmd);
     if let Some(cli_path) = cli_path {
         cmd.env("OPENCODE_CLI_PATH", cli_path);
     }
@@ -231,9 +413,14 @@ fn spawn_process(path: PathBuf, cli_path: Option<&Path>) -> Result<SidecarProces
     })
 }
 
-fn spawn_bun(script: PathBuf, cli_path: Option<&Path>) -> Result<SidecarProcess, String> {
+fn spawn_bun<R: Runtime>(
+    app: &AppHandle<R>,
+    script: PathBuf,
+    cli_path: Option<&Path>,
+) -> Result<SidecarProcess, String> {
     let mut cmd = Command::new("bun");
     apply_shell_env(&mut cmd);
+    apply_falck_env(app, &mut cmd);
     if let Some(cli_path) = cli_path {
         cmd.env("OPENCODE_CLI_PATH", cli_path);
     }

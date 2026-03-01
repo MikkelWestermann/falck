@@ -79,6 +79,11 @@ export interface OpenCodeServerInfo {
   startedAt: number | null;
 }
 
+export interface OpenCodeFixPluginResult {
+  plugin_path: string;
+  spec_path: string;
+}
+
 export type OpenCodeTextPartInput = {
   type: "text";
   text: string;
@@ -393,6 +398,10 @@ export const opencodeService = {
         message: `Installation failed: ${errorMsg}`,
       };
     }
+  },
+
+  async ensureFixPlugin(): Promise<OpenCodeFixPluginResult> {
+    return invoke<OpenCodeFixPluginResult>("ensure_opencode_fix_plugin");
   },
 
   async openInstallDocs(): Promise<void> {
