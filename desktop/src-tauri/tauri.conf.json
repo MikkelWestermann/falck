@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Falck",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "identifier": "com.mikkelwestermann.falck",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -43,7 +43,10 @@
       "sidecars/opencode-sidecar",
       "sidecars/limactl"
     ],
-    "resources": ["share/lima", "sidecars/limactl-*"],
+    "resources": [
+      "share/lima",
+      "sidecars/limactl-*"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
