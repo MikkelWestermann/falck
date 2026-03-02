@@ -286,6 +286,12 @@ async fn set_default_repo_directory(app: tauri::AppHandle, path: String) -> Resu
     run_blocking(move || set_default_repo_dir(&app, &path)).await
 }
 
+#[tauri::command]
+async fn restart_app(app: AppHandle) -> Result<(), String> {
+    app.request_restart();
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default()
@@ -345,6 +351,7 @@ pub fn run() {
             remove_repo_entry,
             get_default_repo_directory,
             set_default_repo_directory,
+            restart_app,
             opencode_send,
             check_opencode_installed,
             install_opencode,

@@ -1,4 +1,4 @@
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
 import { confirm, message } from "@tauri-apps/plugin-dialog";
 
@@ -8,6 +8,7 @@ export type UpdatePhase =
   | "available"
   | "downloading"
   | "installing"
+  | "restarting"
   | "installed"
   | "up-to-date"
   | "error"
@@ -81,6 +82,10 @@ const handleDownloadEvent = (
   }
 };
 
+const requestRestart = async () => {
+  await invoke("restart_app");
+};
+
 export const runUpdateFlow = async (
   options: UpdateFlowOptions = {},
 ): Promise<UpdateState> => {
@@ -150,14 +155,36 @@ export const runUpdateFlow = async (
       handleDownloadEvent(event, availableUpdate.version, progress, onState);
     });
 
-    await message("Update installed. Restart Falck to apply it.", {
-      title: UPDATER_TITLE,
-    });
-
-    return reportState(onState, {
-      phase: "installed",
+    reportState(onState, {
+      phase: "restarting",
       version: availableUpdate.version,
     });
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await requestRestart();
+      return reportState(onState, {
+        phase: "restarting",
+        version: availableUpdate.version,
+      });
+    } catch (error) {
+      console.warn("Failed to restart after update:", error);
+
+      const fallbackMessage =
+        "Automatic restart failed. Please restart Falck to apply the update.";
+      if (userInitiated) {
+        await message(fallbackMessage, {
+          title: UPDATER_TITLE,
+          kind: "info",
+        });
+      }
+
+      return reportState(onState, {
+        phase: "installed",
+        version: availableUpdate.version,
+        message: fallbackMessage,
+      });
+    }
   } catch (error) {
     const messageText = formatError(error);
     console.error("Update check failed:", error);

@@ -23,7 +23,9 @@ const formatBytes = (bytes: number) => {
 
 export function UpdateProgressOverlay({ state }: { state: UpdateState }) {
   const isVisible =
-    state.phase === "downloading" || state.phase === "installing";
+    state.phase === "downloading" ||
+    state.phase === "installing" ||
+    state.phase === "restarting";
 
   if (!isVisible) {
     return null;
@@ -45,9 +47,17 @@ export function UpdateProgressOverlay({ state }: { state: UpdateState }) {
       : null;
 
   const statusLabel =
-    state.phase === "downloading" ? "Downloading update" : "Installing update";
+    state.phase === "downloading"
+      ? "Downloading update"
+      : state.phase === "installing"
+        ? "Installing update"
+        : "Restarting Falck";
   const badgeLabel =
-    state.phase === "downloading" ? "Downloading" : "Installing";
+    state.phase === "downloading"
+      ? "Downloading"
+      : state.phase === "installing"
+        ? "Installing"
+        : "Restarting";
 
   return (
     <div
@@ -89,9 +99,13 @@ export function UpdateProgressOverlay({ state }: { state: UpdateState }) {
                 Starting download...
               </div>
             )
-          ) : (
+          ) : state.phase === "installing" ? (
             <div className="text-xs text-muted-foreground">
               Applying update files...
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">
+              Restarting with the latest update...
             </div>
           )}
         </div>

@@ -197,7 +197,7 @@ export function SettingsPage({
     connectMutation.isPending || disconnectMutation.isPending;
   const repoDirSaving = updateRepoDirMutation.isPending;
   const repoDirErrorMessage = repoDirError ?? repoDirLoadError;
-  const updateBusy = ["checking", "downloading", "installing"].includes(
+  const updateBusy = ["checking", "downloading", "installing", "restarting"].includes(
     updateState.phase,
   );
 
@@ -207,6 +207,8 @@ export function SettingsPage({
       case "downloading":
       case "installing":
         return { label: "Checking…", variant: "secondary" as const };
+      case "restarting":
+        return { label: "Restarting…", variant: "secondary" as const };
       case "available":
         return { label: "Update available", variant: "default" as const };
       case "installed":
@@ -236,8 +238,13 @@ export function SettingsPage({
         return `Downloading update${updateVersionLabel}…`;
       case "installing":
         return `Installing update${updateVersionLabel}…`;
+      case "restarting":
+        return `Restarting Falck to apply update${updateVersionLabel}…`;
       case "installed":
-        return `Update${updateVersionLabel} installed. Restart Falck to apply it.`;
+        return (
+          updateState.message ??
+          `Update${updateVersionLabel} installed. Restart Falck to apply it.`
+        );
       case "up-to-date":
         return "You are already on the latest version.";
       case "error":
@@ -256,7 +263,9 @@ export function SettingsPage({
       ? "Downloading…"
       : updateState.phase === "installing"
         ? "Installing…"
-        : "Checking…"
+        : updateState.phase === "restarting"
+          ? "Restarting…"
+          : "Checking…"
     : updateState.phase === "available"
       ? "Install update"
       : "Check for updates";
