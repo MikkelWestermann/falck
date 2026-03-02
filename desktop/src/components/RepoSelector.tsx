@@ -55,6 +55,14 @@ interface RepoSelectorProps {
 const SAVED_PREVIEW_COUNT = 6;
 const GITHUB_PREVIEW_COUNT = 6;
 
+type CloneRepoInput = {
+  name: string;
+  url: string;
+  repoLabel: string;
+  source: "form" | "github";
+  repoId?: number;
+};
+
 export function RepoSelector({
   onRepoSelect,
   onOpenSettings,
@@ -128,11 +136,7 @@ export function RepoSelector({
   });
 
   const cloneRepoMutation = useMutation({
-    mutationFn: async (input: {
-      name: string;
-      url: string;
-      repoLabel: string;
-    }) => {
+    mutationFn: async (input: CloneRepoInput) => {
       if (!defaultRepoDir) {
         throw new Error("Set a default clone folder in settings first.");
       }
@@ -174,6 +178,7 @@ export function RepoSelector({
   });
 
   const cloning = cloneRepoMutation.isPending;
+  const activeClone = cloning ? cloneRepoMutation.variables : null;
   const openingRepo = saveRepoMutation.isPending;
   const busy = cloning || openingRepo;
   const githubAuthBusy = connectMutation.isPending;
@@ -215,6 +220,7 @@ export function RepoSelector({
           name: value.name,
           url: value.url,
           repoLabel: value.name,
+          source: "form",
         });
         onRepoSelect(localPath);
         cloneForm.reset();
@@ -282,6 +288,8 @@ export function RepoSelector({
         name: repo.name,
         url: repo.ssh_url,
         repoLabel: repo.full_name,
+        source: "github",
+        repoId: repo.id,
       });
       onRepoSelect(localPath);
     } catch (err) {
@@ -592,7 +600,10 @@ export function RepoSelector({
                               disabled={busy || defaultRepoDirLoading}
                               className="normal-case tracking-normal"
                             >
-                              {cloning ? "Cloning…" : "Clone"}
+                              {activeClone?.source === "github" &&
+                              activeClone.repoId === repo.id
+                                ? "Cloning…"
+                                : "Clone"}
                             </Button>
                           </div>
                         ))}
@@ -743,7 +754,7 @@ export function RepoSelector({
                         }
                         className="w-full normal-case tracking-normal"
                       >
-                        {cloning ? "Cloning…" : "Clone"}
+                        {activeClone?.source === "form" ? "Cloning…" : "Clone"}
                       </Button>
                     </form>
                   </TabsContent>
