@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
+import { isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { OpenCodeInstallPanel } from "@/components/OpenCodeManager";
 import { OpenCodeSettingsPanel } from "@/components/OpenCodeSettings";
 import { LimaContainersPanel } from "@/components/LimaContainersPanel";
@@ -38,6 +42,7 @@ import { useAppState } from "@/router/app-state";
 import { githubKeys, settingsKeys } from "@/queries/keys";
 import { useGithubHasToken, useGithubUser } from "@/queries/github";
 import { useDefaultRepoDir } from "@/queries/settings";
+import { runUpdateFlow, type UpdateState } from "@/lib/updates";
 
 interface SettingsPageProps {
   sshKey: SSHKey;
@@ -68,6 +73,10 @@ export function SettingsPage({
   const [resetConfirm, setResetConfirm] = useState("");
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [updateState, setUpdateState] = useState<UpdateState>({
+    phase: "idle",
+  });
 
   const defaultRepoDirQuery = useDefaultRepoDir();
   const defaultRepoDir = defaultRepoDirQuery.data ?? null;
@@ -92,6 +101,30 @@ export function SettingsPage({
       ? String(githubUserQuery.error)
       : null;
   const githubErrorMessage = githubError ?? githubQueryError;
+
+  useEffect(() => {
+    if (!isTauri()) {
+      setAppVersion(null);
+      return;
+    }
+
+    let active = true;
+
+    void (async () => {
+      try {
+        const version = await getVersion();
+        if (active) {
+          setAppVersion(version);
+        }
+      } catch (error) {
+        console.warn("Failed to load app version:", error);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const win = window as Window & {
@@ -164,6 +197,69 @@ export function SettingsPage({
     connectMutation.isPending || disconnectMutation.isPending;
   const repoDirSaving = updateRepoDirMutation.isPending;
   const repoDirErrorMessage = repoDirError ?? repoDirLoadError;
+  const updateBusy = ["checking", "downloading", "installing"].includes(
+    updateState.phase,
+  );
+
+  const updateBadge = (() => {
+    switch (updateState.phase) {
+      case "checking":
+      case "downloading":
+      case "installing":
+        return { label: "Checking…", variant: "secondary" as const };
+      case "available":
+        return { label: "Update available", variant: "default" as const };
+      case "installed":
+        return { label: "Update ready", variant: "default" as const };
+      case "up-to-date":
+        return { label: "Up to date", variant: "secondary" as const };
+      case "error":
+        return { label: "Update failed", variant: "destructive" as const };
+      case "unsupported":
+        return { label: "Unavailable", variant: "outline" as const };
+      default:
+        return { label: "Not checked", variant: "outline" as const };
+    }
+  })();
+
+  const updateVersionLabel = updateState.version
+    ? ` ${updateState.version}`
+    : "";
+
+  const updateStatus = (() => {
+    switch (updateState.phase) {
+      case "checking":
+        return "Checking for updates…";
+      case "available":
+        return `Update${updateVersionLabel} is available.`;
+      case "downloading":
+        return `Downloading update${updateVersionLabel}…`;
+      case "installing":
+        return `Installing update${updateVersionLabel}…`;
+      case "installed":
+        return `Update${updateVersionLabel} installed. Restart Falck to apply it.`;
+      case "up-to-date":
+        return "You are already on the latest version.";
+      case "error":
+        return updateState.message
+          ? `Update check failed: ${updateState.message}`
+          : "Update check failed.";
+      case "unsupported":
+        return updateState.message ?? "Updates are only available in the desktop app.";
+      default:
+        return "Check for updates to see if anything new is available.";
+    }
+  })();
+
+  const updateButtonLabel = updateBusy
+    ? updateState.phase === "downloading"
+      ? "Downloading…"
+      : updateState.phase === "installing"
+        ? "Installing…"
+        : "Checking…"
+    : updateState.phase === "available"
+      ? "Install update"
+      : "Check for updates";
 
   const handleGithubConnect = async () => {
     setGithubError(null);
@@ -225,6 +321,14 @@ export function SettingsPage({
     }
   };
 
+  const handleCheckForUpdates = async () => {
+    const finalState = await runUpdateFlow({
+      userInitiated: true,
+      onState: (state) => setUpdateState(state),
+    });
+    setUpdateState(finalState);
+  };
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-page-background text-foreground">
       <div className="relative mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10 lg:py-14">
@@ -259,6 +363,67 @@ export function SettingsPage({
 
         <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="flex flex-col gap-6">
+            <Card
+              className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4"
+              style={{ animationDuration: "640ms" }}
+            >
+              <CardHeader className="border-b border-border/60 pb-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-xl">Updates</CardTitle>
+                    <CardDescription>
+                      Keep Falck up to date with the latest fixes.
+                    </CardDescription>
+                  </div>
+                  <Badge variant={updateBadge.variant}>{updateBadge.label}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-6">
+                <div className="space-y-2 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-semibold">Current version</span>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {appVersion ?? "Unknown"}
+                    </span>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {updateStatus}
+                  </div>
+                </div>
+
+                {updateState.phase === "downloading" &&
+                  updateState.progress?.percent !== undefined && (
+                    <div className="space-y-2">
+                      <Progress value={updateState.progress.percent} />
+                      <div className="text-xs text-muted-foreground">
+                        {updateState.progress.percent}% downloaded
+                      </div>
+                    </div>
+                  )}
+
+                {updateState.notes && (
+                  <div className="rounded-lg border border-border/60 bg-muted/40 p-3 text-sm text-muted-foreground">
+                    <div className="text-xs font-semibold uppercase tracking-wide">
+                      What's new
+                    </div>
+                    <p className="mt-2 whitespace-pre-wrap text-foreground/90">
+                      {updateState.notes}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => void handleCheckForUpdates()}
+                    disabled={updateBusy}
+                    className="normal-case tracking-normal"
+                  >
+                    {updateButtonLabel}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
             <VirtualizedBackendPanel className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4" />
             <LimaContainersPanel className="border-border/60 bg-background/85 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur animate-in fade-in slide-in-from-bottom-4" />
             <Card

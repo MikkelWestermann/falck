@@ -27,6 +27,43 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use blocking::run_blocking;
 
+#[cfg(desktop)]
+use tauri::Emitter;
+#[cfg(desktop)]
+use tauri::menu::{Menu, MenuItem, MenuItemKind, Submenu, HELP_SUBMENU_ID};
+
+#[cfg(desktop)]
+const CHECK_UPDATES_EVENT: &str = "falck://check-for-updates";
+#[cfg(desktop)]
+const CHECK_UPDATES_MENU_ID: &str = "falck.check_for_updates";
+
+#[cfg(desktop)]
+fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let menu = Menu::default(app)?;
+    let check_item = MenuItem::with_id(
+        app,
+        CHECK_UPDATES_MENU_ID,
+        "Check for Updates...",
+        true,
+        None::<&str>,
+    )?;
+
+    if let Some(MenuItemKind::Submenu(help_menu)) = menu.get(HELP_SUBMENU_ID) {
+        help_menu.append(&check_item)?;
+    } else {
+        let help_menu = Submenu::with_id_and_items(
+            app,
+            HELP_SUBMENU_ID,
+            "Help",
+            true,
+            &[&check_item],
+        )?;
+        menu.append(&help_menu)?;
+    }
+
+    Ok(menu)
+}
+
 // ============================================================================
 // Tauri Commands
 // ============================================================================
@@ -251,7 +288,7 @@ async fn set_default_repo_directory(app: tauri::AppHandle, path: String) -> Resu
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .setup(|app| {
             #[cfg(desktop)]
             {
@@ -272,7 +309,20 @@ pub fn run() {
                 falck::stop_all_running_apps(&state);
                 backend::stop_all_repo_backends(&window.app_handle());
             }
-        })
+        });
+
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .menu(|app| build_menu(app))
+            .on_menu_event(|app, event| {
+                if event.id() == CHECK_UPDATES_MENU_ID {
+                    let _ = app.emit(CHECK_UPDATES_EVENT, ());
+                }
+            });
+    }
+
+    let app = builder
         .invoke_handler(tauri::generate_handler![
             clone_repo,
             get_repo_info,
