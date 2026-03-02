@@ -1,10 +1,20 @@
 use anyhow::{anyhow, bail, Context, Result};
+use image::{
+    codecs::jpeg::JpegEncoder,
+    codecs::png::{CompressionType, FilterType as PngFilterType, PngEncoder},
+    codecs::webp::{WebPEncoder, WebPQuality},
+    imageops::FilterType,
+    ColorType,
+    GenericImageView,
+    ImageEncoder,
+    ImageFormat,
+};
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Cursor, Read};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{Mutex, OnceLock};
@@ -145,6 +155,13 @@ pub struct Application {
 pub struct AssetsConfig {
     pub root: String,
     pub subdirectories: Option<Vec<String>>,
+    pub image_processing: Option<ImageProcessingConfig>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ImageProcessingConfig {
+    pub max_width: Option<u32>,
+    pub max_height: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -343,6 +360,119 @@ pub fn get_app_root(repo_path: &Path, app: &Application) -> PathBuf {
 // Asset Uploads
 // ============================================================================
 
+const DEFAULT_JPEG_QUALITY: u8 = 85;
+const DEFAULT_WEBP_QUALITY: u8 = 80;
+
+fn resolve_resize_dimensions(
+    width: u32,
+    height: u32,
+    max_width: Option<u32>,
+    max_height: Option<u32>,
+) -> Option<(u32, u32)> {
+    let max_width = max_width.filter(|value| *value > 0).unwrap_or(width);
+    let max_height = max_height.filter(|value| *value > 0).unwrap_or(height);
+    if width <= max_width && height <= max_height {
+        return None;
+    }
+
+    let width_ratio = max_width as f32 / width as f32;
+    let height_ratio = max_height as f32 / height as f32;
+    let ratio = width_ratio.min(height_ratio);
+    let resized_width = (width as f32 * ratio).round().max(1.0) as u32;
+    let resized_height = (height as f32 * ratio).round().max(1.0) as u32;
+
+    Some((resized_width, resized_height))
+}
+
+fn process_image_bytes(
+    bytes: &[u8],
+    config: Option<&ImageProcessingConfig>,
+) -> Option<Vec<u8>> {
+    let format = image::guess_format(bytes).ok()?;
+    let mut image = image::load_from_memory_with_format(bytes, format).ok()?;
+    let (max_width, max_height) = config
+        .map(|settings| (settings.max_width, settings.max_height))
+        .unwrap_or((None, None));
+
+    let mut resized = false;
+    if let Some((resized_width, resized_height)) =
+        resolve_resize_dimensions(image.width(), image.height(), max_width, max_height)
+    {
+        image = image.resize(resized_width, resized_height, FilterType::Lanczos3);
+        resized = true;
+    }
+
+    let (width, height) = image.dimensions();
+    let mut cursor = Cursor::new(Vec::new());
+
+    match format {
+        ImageFormat::Jpeg => {
+            let rgb = image.to_rgb8();
+            let mut encoder = JpegEncoder::new_with_quality(&mut cursor, DEFAULT_JPEG_QUALITY);
+            encoder
+                .write_image(rgb.as_raw(), width, height, ColorType::Rgb8)
+                .ok()?;
+        }
+        ImageFormat::Png => {
+            let color = image.color();
+            let (buffer, color) = if !color.has_color() {
+                if color.has_alpha() {
+                    let la = image.to_luma_alpha8();
+                    (la.into_raw(), ColorType::La8)
+                } else {
+                    let luma = image.to_luma8();
+                    (luma.into_raw(), ColorType::L8)
+                }
+            } else if color.has_alpha() {
+                let rgba = image.to_rgba8();
+                (rgba.into_raw(), ColorType::Rgba8)
+            } else {
+                let rgb = image.to_rgb8();
+                (rgb.into_raw(), ColorType::Rgb8)
+            };
+            let encoder = PngEncoder::new_with_quality(
+                &mut cursor,
+                CompressionType::Best,
+                PngFilterType::Adaptive,
+            );
+            encoder.write_image(&buffer, width, height, color).ok()?;
+        }
+        ImageFormat::WebP => {
+            let color = image.color();
+            let (buffer, color) = if !color.has_color() {
+                if color.has_alpha() {
+                    let la = image.to_luma_alpha8();
+                    (la.into_raw(), ColorType::La8)
+                } else {
+                    let luma = image.to_luma8();
+                    (luma.into_raw(), ColorType::L8)
+                }
+            } else if color.has_alpha() {
+                let rgba = image.to_rgba8();
+                (rgba.into_raw(), ColorType::Rgba8)
+            } else {
+                let rgb = image.to_rgb8();
+                (rgb.into_raw(), ColorType::Rgb8)
+            };
+            #[allow(deprecated)]
+            let encoder =
+                WebPEncoder::new_with_quality(&mut cursor, WebPQuality::lossy(DEFAULT_WEBP_QUALITY));
+            encoder.write_image(&buffer, width, height, color).ok()?;
+        }
+        _ => return None,
+    }
+
+    let processed = cursor.into_inner();
+    if resized {
+        return Some(processed);
+    }
+    if processed.len() < bytes.len() {
+        Some(processed)
+    } else {
+        None
+    }
+}
+
 fn normalize_relative_path(value: &str) -> Result<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() || trimmed == "." {
@@ -460,7 +590,15 @@ pub fn upload_assets(
     for file in files {
         let file_name = validate_file_name(&file.name)?;
         let destination = destination_dir.join(&file_name);
-        std::fs::write(&destination, file.bytes)
+        let mut bytes = file.bytes;
+        if let Some(assets) = app.assets.as_ref() {
+            if let Some(processed) =
+                process_image_bytes(&bytes, assets.image_processing.as_ref())
+            {
+                bytes = processed;
+            }
+        }
+        std::fs::write(&destination, bytes)
             .with_context(|| format!("Failed to write asset {:?}", destination))?;
 
         let relative = destination

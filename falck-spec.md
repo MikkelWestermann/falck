@@ -48,6 +48,9 @@ applications:
       subdirectories:
         - "images"
         - "docs"
+      image_processing:
+        max_width: 1600
+        max_height: 1600
     
     secrets:
       - name: "DATABASE_URL"
@@ -196,6 +199,16 @@ Asset configuration controls where Falck will place uploaded files for an applic
 |-------|------|----------|-------------|
 | `root` | string | ✓ | Relative path to the asset root (relative to `applications[].root`) |
 | `subdirectories` | array | ✗ | Allowed subdirectories within the asset root (relative paths) |
+| `image_processing` | object | ✗ | Optional image resizing settings (images are always compressed on upload) |
+
+### Image Processing Object
+
+Image processing is applied only to uploaded image files. Non-image uploads are left untouched. Uploaded images are re-encoded with compression (JPEG quality 85; PNG best compression; WebP lossy quality 80).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `max_width` | number | ✗ | Maximum width in pixels (images larger than this are scaled down) |
+| `max_height` | number | ✗ | Maximum height in pixels (images larger than this are scaled down) |
 
 ### Secret Object
 

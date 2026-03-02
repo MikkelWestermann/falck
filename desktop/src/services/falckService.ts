@@ -37,6 +37,12 @@ export interface FalckApplication {
 export interface AssetsConfig {
   root: string;
   subdirectories?: string[];
+  image_processing?: ImageProcessingConfig;
+}
+
+export interface ImageProcessingConfig {
+  max_width?: number;
+  max_height?: number;
 }
 
 export type CommandOperation = string | { command: string; refresh_shell?: boolean };
