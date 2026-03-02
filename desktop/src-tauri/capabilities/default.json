@@ -9,6 +9,7 @@
     "core:default",
     "dialog:default",
     "dialog:allow-open",
+    "notification:default",
     "stronghold:default",
     "updater:default",
     "updater:allow-check",

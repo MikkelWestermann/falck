@@ -82,6 +82,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { notifyUser } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
 import { AssetUploadDialog } from "@/components/falck/AssetUploadDialog";
 import {
@@ -133,6 +134,18 @@ type MentionOption = {
 type MentionItem = {
   id: string;
   path: string;
+};
+
+type PendingNotification = {
+  requestId: string;
+  sessionName: string;
+};
+
+const truncateNotificationText = (value: string, maxLength = 160) => {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
 };
 
 const normalizeMentionPath = (value: string) => {
@@ -685,6 +698,7 @@ export function AIChat({ activeApp }: AIChatProps) {
   const [lastAbortAt, setLastAbortAt] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const errorRef = useRef(error);
+  const pendingNotification = useRef<PendingNotification | null>(null);
   const partsByMessage = useRef<Map<string, Map<string, PartSnapshot>>>(
     new Map(),
   );
@@ -698,6 +712,40 @@ export function AIChat({ activeApp }: AIChatProps) {
   useEffect(() => {
     errorRef.current = error;
   }, [error]);
+
+  const clearPendingNotification = useCallback(() => {
+    pendingNotification.current = null;
+  }, []);
+
+  const notifyCompletion = useCallback(() => {
+    const pending = pendingNotification.current;
+    if (!pending) {
+      return;
+    }
+    pendingNotification.current = null;
+    const sessionLabel = pending.sessionName
+      ? `Session "${pending.sessionName}"`
+      : "Your AI session";
+    void notifyUser(
+      "Falck AI response ready",
+      `${sessionLabel} finished responding.`,
+    );
+  }, []);
+
+  const notifyFailure = useCallback((detail?: string) => {
+    const pending = pendingNotification.current;
+    if (!pending) {
+      return;
+    }
+    pendingNotification.current = null;
+    const sessionLabel = pending.sessionName
+      ? `Session "${pending.sessionName}"`
+      : "Your AI session";
+    const summary = truncateNotificationText(
+      detail?.trim() || "An unexpected error occurred.",
+    );
+    void notifyUser("Falck AI error", `${sessionLabel}: ${summary}`);
+  }, []);
 
   const assetConfig = activeApp?.assets;
   const canUploadAssets = Boolean(activeApp && assetConfig?.root);
@@ -1578,6 +1626,7 @@ export function AIChat({ activeApp }: AIChatProps) {
         setStreamingMessageId(null);
         setAwaitingResponse(false);
         setToolActivity([]);
+        notifyCompletion();
         return;
       }
 
@@ -1600,6 +1649,7 @@ export function AIChat({ activeApp }: AIChatProps) {
           setNotice(CANCELLED_MESSAGE);
           setLastAbortAt(new Date().toISOString());
           setLastAssistantCompletion(null);
+          clearPendingNotification();
           return;
         }
         setNotice(null);
@@ -1607,7 +1657,9 @@ export function AIChat({ activeApp }: AIChatProps) {
         const detail =
           props.message ??
           (props.error ? JSON.stringify(props.error) : "Unknown error");
-        setError(`OpenCode error: ${detail}`);
+        const failureMessage = `OpenCode error: ${detail}`;
+        setError(failureMessage);
+        notifyFailure(failureMessage);
         return;
       }
 
@@ -1792,6 +1844,7 @@ export function AIChat({ activeApp }: AIChatProps) {
           setAwaitingResponse(false);
           setSessionStatus({ type: "idle" });
           refreshToolActivity();
+          notifyCompletion();
         }
       }
 
@@ -2010,7 +2063,14 @@ export function AIChat({ activeApp }: AIChatProps) {
       }
       flush();
     };
-  }, [currentSession?.path, eventStreamUrl, repoPath]);
+  }, [
+    clearPendingNotification,
+    currentSession?.path,
+    eventStreamUrl,
+    notifyCompletion,
+    notifyFailure,
+    repoPath,
+  ]);
 
   const formatMessageTime = (value: string) =>
     new Date(value).toLocaleTimeString([], {
@@ -2037,6 +2097,7 @@ export function AIChat({ activeApp }: AIChatProps) {
     setSessionStatus({ type: "idle" });
     setToolActivity([]);
     clearPendingUserMessages();
+    clearPendingNotification();
 
     try {
       await opencodeService.abortSession(currentSession.path, repoPath);
@@ -2048,6 +2109,7 @@ export function AIChat({ activeApp }: AIChatProps) {
       setError(`Failed to stop request: ${String(err)}`);
     }
   }, [
+    clearPendingNotification,
     clearPendingUserMessages,
     currentSession,
     repoPath,
@@ -2068,6 +2130,10 @@ export function AIChat({ activeApp }: AIChatProps) {
     setAwaitingResponse(true);
     setStreamingMessageId(null);
     const messageId = createMessageId();
+    pendingNotification.current = {
+      requestId: messageId,
+      sessionName: currentSession.name || "",
+    };
     const userMessage: ChatMessage = {
       id: messageId,
       role: "user",
@@ -2110,6 +2176,7 @@ export function AIChat({ activeApp }: AIChatProps) {
     } catch (err) {
       if (matchesAbort(err)) {
         clearPendingUserMessages();
+        clearPendingNotification();
         setError("");
         setNotice(CANCELLED_MESSAGE);
         setLastAbortAt(new Date().toISOString());
@@ -2121,7 +2188,9 @@ export function AIChat({ activeApp }: AIChatProps) {
         setToolActivity([]);
         return;
       }
-      setError(`Failed to get response: ${String(err)}`);
+      const failureMessage = `Failed to get response: ${String(err)}`;
+      setError(failureMessage);
+      notifyFailure(failureMessage);
       pendingUserIds.current.delete(messageId);
       roleByMessage.current.delete(messageId);
       setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
@@ -2136,7 +2205,10 @@ export function AIChat({ activeApp }: AIChatProps) {
   };
 
   useEffect(() => {
-    if (!currentSession) return;
+    if (!currentSession) {
+      clearPendingNotification();
+      return;
+    }
     partsByMessage.current.clear();
     roleByMessage.current.clear();
     pendingUserIds.current.clear();
@@ -2152,7 +2224,7 @@ export function AIChat({ activeApp }: AIChatProps) {
     setMentionQuery("");
     setMentionAnchor(null);
     setMentionOptions([]);
-  }, [currentSession?.path]);
+  }, [clearPendingNotification, currentSession?.path]);
 
   useEffect(() => {
     if (!currentSession) return;

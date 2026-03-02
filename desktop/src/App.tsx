@@ -1,12 +1,10 @@
 import { RouterProvider, createRouter } from "@tanstack/react-router";
+import { isTauri } from "@tauri-apps/api/core";
 import { check } from "@tauri-apps/plugin-updater";
 import { useEffect } from "react";
 import { routeTree } from "./routeTree.gen";
 
 const router = createRouter({ routeTree });
-
-const isTauri = () =>
-  typeof window !== "undefined" && "__TAURI__" in window;
 
 const checkForUpdates = async () => {
   if (!isTauri() || import.meta.env.DEV) {

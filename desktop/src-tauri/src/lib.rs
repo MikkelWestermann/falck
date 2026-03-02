@@ -262,6 +262,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_stronghold::Builder::new(|_pass| todo!()).build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(Client::new())
         .manage(OpencodeState::default())
         .manage(falck::FalckProcessState::default())
