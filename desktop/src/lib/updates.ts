@@ -120,39 +120,44 @@ export const runUpdateFlow = async (
       return reportState(onState, { phase: "up-to-date" });
     }
 
+    const availableUpdate = update;
+
     reportState(onState, {
       phase: "available",
-      version: update.version,
-      notes: update.body ?? undefined,
-      date: update.date ?? undefined,
+      version: availableUpdate.version,
+      notes: availableUpdate.body ?? undefined,
+      date: availableUpdate.date ?? undefined,
     });
 
     const shouldInstall = await confirm(
-      `Update ${update.version} is available. Install now?`,
+      `Update ${availableUpdate.version} is available. Install now?`,
       { title: UPDATER_TITLE, kind: "info" },
     );
 
     if (!shouldInstall) {
       return reportState(onState, {
         phase: "available",
-        version: update.version,
-        notes: update.body ?? undefined,
-        date: update.date ?? undefined,
+        version: availableUpdate.version,
+        notes: availableUpdate.body ?? undefined,
+        date: availableUpdate.date ?? undefined,
         message: "Update available.",
       });
     }
 
     const progress: UpdateProgress = { downloaded: 0 };
-    reportState(onState, { phase: "downloading", version: update.version });
-    await update.downloadAndInstall((event) => {
-      handleDownloadEvent(event, update.version, progress, onState);
+    reportState(onState, { phase: "downloading", version: availableUpdate.version });
+    await availableUpdate.downloadAndInstall((event) => {
+      handleDownloadEvent(event, availableUpdate.version, progress, onState);
     });
 
     await message("Update installed. Restart Falck to apply it.", {
       title: UPDATER_TITLE,
     });
 
-    return reportState(onState, { phase: "installed", version: update.version });
+    return reportState(onState, {
+      phase: "installed",
+      version: availableUpdate.version,
+    });
   } catch (error) {
     const messageText = formatError(error);
     console.error("Update check failed:", error);
