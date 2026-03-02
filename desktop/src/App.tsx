@@ -1,15 +1,12 @@
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { routeTree } from "./routeTree.gen";
-import { runUpdateFlow } from "@/lib/updates";
+import { runUpdateFlow, type UpdateState } from "@/lib/updates";
+import { UpdateProgressOverlay } from "@/components/UpdateProgressOverlay";
 
 const router = createRouter({ routeTree });
-
-const checkForUpdates = async (userInitiated = false) => {
-  await runUpdateFlow({ userInitiated });
-};
 
 declare module "@tanstack/react-router" {
   interface Register {
@@ -18,9 +15,21 @@ declare module "@tanstack/react-router" {
 }
 
 export default function App() {
+  const [updateState, setUpdateState] = useState<UpdateState>({
+    phase: "idle",
+  });
+
+  const checkForUpdates = useCallback(async (userInitiated = false) => {
+    const finalState = await runUpdateFlow({
+      userInitiated,
+      onState: (state) => setUpdateState(state),
+    });
+    setUpdateState(finalState);
+  }, []);
+
   useEffect(() => {
     void checkForUpdates(false);
-  }, []);
+  }, [checkForUpdates]);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -38,7 +47,12 @@ export default function App() {
     return () => {
       unlisten?.();
     };
-  }, []);
+  }, [checkForUpdates]);
 
-  return <RouterProvider router={router} />;
+  return (
+    <>
+      <UpdateProgressOverlay state={updateState} />
+      <RouterProvider router={router} />
+    </>
+  );
 }
