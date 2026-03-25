@@ -386,20 +386,20 @@ export function OpenCodeImageSettingsSection({
               placeholder={
                 resolvedAzureDeploymentName
                   ? "Leave blank to reuse the detected image deployment"
-                  : "gpt-image-1.5 deployment"
+                  : "Leave blank to use gpt-image-1.5"
               }
               disabled={loading || saving}
             />
             <p className="text-xs text-muted-foreground">
               {resolvedAzureDeploymentName ? (
                 <>
-                  Detected image deployment:{" "}
+                  Resolved image deployment:{" "}
                   <span className="font-mono text-foreground">
                     {resolvedAzureDeploymentName}
                   </span>
                 </>
               ) : (
-                "Azure image generation still needs a gpt-image-1.5 deployment if OpenCode has not already configured one."
+                "Leave this blank unless you want a Falck-only Azure deployment override."
               )}
             </p>
           </div>

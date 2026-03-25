@@ -167,11 +167,13 @@ function resolveAzureEndpoint() {
 }
 
 function resolveAzureDeployment() {
-  return trimToNull(
+  return (
+    trimToNull(
     process.env.FALCK_OPENCODE_IMAGE_AZURE_DEPLOYMENT ??
       process.env.AZURE_OPENAI_IMAGE_DEPLOYMENT ??
       process.env.AZURE_OPENAI_DEPLOYMENT ??
       process.env.AZURE_DEPLOYMENT_NAME,
+    ) ?? OPENAI_MODEL
   );
 }
 
@@ -1245,7 +1247,8 @@ fn resolve_effective_image_config(
             .or_else(|| sources.opencode_config.azure_endpoint.clone()),
         azure_deployment_name: normalize_optional(stored.azure_deployment_name.as_deref())
             .or_else(|| sources.env.azure_deployment_name.clone())
-            .or_else(|| sources.opencode_config.azure_deployment_name.clone()),
+            .or_else(|| sources.opencode_config.azure_deployment_name.clone())
+            .or_else(|| Some(GPT_IMAGE_MODEL.to_string())),
     }
 }
 
