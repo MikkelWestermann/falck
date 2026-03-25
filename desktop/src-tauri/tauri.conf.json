@@ -45,6 +45,7 @@
     ],
     "resources": [
       "share/lima",
+      "share/opencode-tool-runtime",
       "sidecars/limactl-*"
     ],
     "icon": [

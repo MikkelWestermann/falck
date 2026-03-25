@@ -567,6 +567,54 @@ const repoCliRoot = path.join(repoRoot, "packages", "opencode")
 const repoBinary = windowsify(
   path.join(repoCliRoot, "dist", sidecarConfig.ocBinary, "bin", "opencode"),
 )
+const sidecarRoot = path.join(appRoot, "sidecar-opencode")
+const opencodeToolRuntimePackages = ["@opencode-ai/plugin", "@opencode-ai/sdk", "zod"]
+
+function packagePath(root: string, packageName: string) {
+  return path.join(root, "node_modules", ...packageName.split("/"))
+}
+
+function readPackageVersion(packageJsonPath: string) {
+  if (!fs.existsSync(packageJsonPath)) {
+    return null
+  }
+
+  try {
+    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as { version?: string }
+    return pkg.version ?? null
+  } catch {
+    return null
+  }
+}
+
+function installedPackageMatches(root: string, packageName: string, expectedVersion?: string) {
+  if (!expectedVersion) {
+    return false
+  }
+
+  const packageJsonPath = path.join(packagePath(root, packageName), "package.json")
+  return readPackageVersion(packageJsonPath) === expectedVersion
+}
+
+async function ensureSidecarNodeModules(root: string) {
+  const pkgPath = path.join(root, "package.json")
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as {
+    dependencies?: Record<string, string>
+  }
+  const nodeModules = path.join(root, "node_modules")
+
+  const dependenciesReady =
+    fs.existsSync(nodeModules) &&
+    installedPackageMatches(root, "@opencode-ai/plugin", pkg.dependencies?.["@opencode-ai/plugin"]) &&
+    installedPackageMatches(root, "@opencode-ai/sdk", pkg.dependencies?.["@opencode-ai/sdk"]) &&
+    opencodeToolRuntimePackages.every((packageName) =>
+      fs.existsSync(path.join(packagePath(root, packageName), "package.json")),
+    )
+
+  if (!dependenciesReady) {
+    await $`bun install`.cwd(root)
+  }
+}
 
 async function ensureRepoDeps() {
   const pluginPath = path.join(
@@ -766,16 +814,12 @@ async function ensureOpencodeSidecar() {
     return
   }
 
-  const sidecarRoot = path.join(appRoot, "sidecar-opencode")
   const pkgPath = path.join(sidecarRoot, "package.json")
   if (!fs.existsSync(pkgPath)) {
     throw new Error("sidecar-opencode package not found")
   }
 
-  const nodeModules = path.join(sidecarRoot, "node_modules")
-  if (!fs.existsSync(nodeModules)) {
-    await $`bun install`.cwd(sidecarRoot)
-  }
+  await ensureSidecarNodeModules(sidecarRoot)
 
   await $`bun run build`.cwd(sidecarRoot)
 
@@ -792,4 +836,38 @@ async function ensureOpencodeSidecar() {
   console.log(`Copied ${built} to ${opencodeSidecarDest}`)
 }
 
+async function ensureOpencodeToolRuntime() {
+  const pkgPath = path.join(sidecarRoot, "package.json")
+  if (!fs.existsSync(pkgPath)) {
+    throw new Error("sidecar-opencode package not found")
+  }
+
+  await ensureSidecarNodeModules(sidecarRoot)
+
+  const runtimeRoot = path.join(
+    appRoot,
+    "src-tauri",
+    "share",
+    "opencode-tool-runtime",
+    "node_modules",
+  )
+
+  for (const packageName of opencodeToolRuntimePackages) {
+    const source = packagePath(sidecarRoot, packageName)
+    const destination = path.join(runtimeRoot, ...packageName.split("/"))
+    const sourcePackageJson = path.join(source, "package.json")
+
+    if (!fs.existsSync(sourcePackageJson)) {
+      throw new Error(`Missing bundled OpenCode tool runtime package ${packageName} at ${source}`)
+    }
+
+    fs.rmSync(destination, { recursive: true, force: true })
+    fs.mkdirSync(path.dirname(destination), { recursive: true })
+    fs.cpSync(source, destination, { recursive: true, force: true })
+  }
+
+  console.log(`Prepared bundled OpenCode tool runtime in ${runtimeRoot}`)
+}
+
 await ensureOpencodeSidecar()
+await ensureOpencodeToolRuntime()

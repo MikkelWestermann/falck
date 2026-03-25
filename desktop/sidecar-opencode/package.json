@@ -5,7 +5,8 @@
   "bin": "index.ts",
   "type": "module",
   "dependencies": {
-    "@opencode-ai/sdk": "^1.1.44"
+    "@opencode-ai/plugin": "1.1.65",
+    "@opencode-ai/sdk": "1.1.65"
   },
   "devDependencies": {
     "@types/node": "^22.13.1"

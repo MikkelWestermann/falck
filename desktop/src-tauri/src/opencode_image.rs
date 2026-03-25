@@ -20,6 +20,7 @@ const TOOL_FILENAME: &str = "falck_generate_image.ts";
 const PLACE_TOOL_FILENAME: &str = "falck_place_image.ts";
 const DEFAULT_AZURE_API_VERSION: &str = "2025-04-01-preview";
 const GPT_IMAGE_MODEL: &str = "gpt-image-1.5";
+const TOOL_RUNTIME_PACKAGES: &[&str] = &["@opencode-ai/plugin", "@opencode-ai/sdk", "zod"];
 
 const FALCK_IMAGE_TOOL_SOURCE: &str = r#"import { tool } from "@opencode-ai/plugin";
 import { promises as fs } from "node:fs";
@@ -1081,6 +1082,7 @@ pub fn apply_sidecar_image_env<R: Runtime>(
 }
 
 pub fn ensure_tool_installed<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    ensure_tool_runtime_installed(app)?;
     let tool_path = tool_path(app)?;
     if let Some(parent) = tool_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -1089,6 +1091,31 @@ pub fn ensure_tool_installed<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, 
     let place_tool_path = place_tool_path(app)?;
     fs::write(&place_tool_path, FALCK_PLACE_IMAGE_TOOL_SOURCE).map_err(|e| e.to_string())?;
     Ok(tool_path)
+}
+
+fn ensure_tool_runtime_installed<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let node_modules_dir = global_opencode_dir(app)?.join("node_modules");
+    if tool_runtime_ready(&node_modules_dir) {
+        return Ok(());
+    }
+
+    let bundled_runtime_dir = find_bundled_tool_runtime_dir(app).ok_or_else(|| {
+        "Falck is missing the bundled OpenCode tool runtime. Please reinstall Falck.".to_string()
+    })?;
+    fs::create_dir_all(&node_modules_dir).map_err(|e| e.to_string())?;
+
+    for package_name in TOOL_RUNTIME_PACKAGES {
+        sync_bundled_runtime_package(&bundled_runtime_dir, &node_modules_dir, package_name)?;
+    }
+
+    if tool_runtime_ready(&node_modules_dir) {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Falck could not prepare the bundled OpenCode tool runtime in {}.",
+        node_modules_dir.display()
+    ))
 }
 
 fn build_settings_response<R: Runtime>(
@@ -1170,11 +1197,19 @@ fn persist_settings<R: Runtime>(
 }
 
 fn global_opencode_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    let env = merged_env();
+    if let Some(config_home) = env_value(&env, &["XDG_CONFIG_HOME"]) {
+        return Ok(PathBuf::from(config_home).join("opencode"));
+    }
     let home_dir = app.path().home_dir().map_err(|e| e.to_string())?;
     Ok(home_dir.join(".config").join("opencode"))
 }
 
 fn opencode_auth_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    let env = merged_env();
+    if let Some(data_home) = env_value(&env, &["XDG_DATA_HOME"]) {
+        return Ok(PathBuf::from(data_home).join("opencode").join("auth.json"));
+    }
     let home_dir = app.path().home_dir().map_err(|e| e.to_string())?;
     Ok(home_dir
         .join(".local")
@@ -1452,6 +1487,140 @@ fn read_optional_text_file(path: &Path) -> Option<String> {
             None
         }
     }
+}
+
+fn find_bundled_tool_runtime_dir<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(
+            resource_dir
+                .join("share")
+                .join("opencode-tool-runtime")
+                .join("node_modules"),
+        );
+        candidates.push(resource_dir.join("opencode-tool-runtime").join("node_modules"));
+    }
+
+    let cwd = std::env::current_dir().ok();
+    candidates.extend(
+        [
+            cwd.as_ref().map(|dir| {
+                dir.join("src-tauri")
+                    .join("share")
+                    .join("opencode-tool-runtime")
+                    .join("node_modules")
+            }),
+            cwd.as_ref().map(|dir| {
+                dir.join("..")
+                    .join("src-tauri")
+                    .join("share")
+                    .join("opencode-tool-runtime")
+                    .join("node_modules")
+            }),
+            cwd.as_ref().map(|dir| {
+                dir.join("share")
+                    .join("opencode-tool-runtime")
+                    .join("node_modules")
+            }),
+        ]
+        .into_iter()
+        .flatten(),
+    );
+
+    candidates.into_iter().find(|candidate| tool_runtime_ready(candidate))
+}
+
+fn tool_runtime_ready(node_modules_dir: &Path) -> bool {
+    TOOL_RUNTIME_PACKAGES.iter().all(|package_name| {
+        node_modules_dir
+            .join(package_relative_path(package_name))
+            .join("package.json")
+            .exists()
+    })
+}
+
+fn package_relative_path(package_name: &str) -> PathBuf {
+    let mut path = PathBuf::new();
+    for segment in package_name.split('/') {
+        path.push(segment);
+    }
+    path
+}
+
+fn sync_bundled_runtime_package(
+    source_root: &Path,
+    destination_root: &Path,
+    package_name: &str,
+) -> Result<(), String> {
+    let relative_path = package_relative_path(package_name);
+    let source = source_root.join(&relative_path);
+    let destination = destination_root.join(&relative_path);
+
+    if !source.join("package.json").exists() {
+        return Err(format!(
+            "Falck is missing bundled runtime package {} at {}.",
+            package_name,
+            source.display()
+        ));
+    }
+
+    if !package_needs_sync(&source, &destination) {
+        return Ok(());
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    remove_path_if_exists(&destination)?;
+    copy_directory_recursive(&source, &destination)
+}
+
+fn package_needs_sync(source: &Path, destination: &Path) -> bool {
+    let Some(source_package_json) = read_optional_text_file(&source.join("package.json")) else {
+        return true;
+    };
+    let Some(destination_package_json) = read_optional_text_file(&destination.join("package.json"))
+    else {
+        return true;
+    };
+
+    source_package_json.trim() != destination_package_json.trim()
+}
+
+fn remove_path_if_exists(path: &Path) -> Result<(), String> {
+    match fs::metadata(path) {
+        Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(path).map_err(|e| e.to_string()),
+        Ok(_) => fs::remove_file(path).map_err(|e| e.to_string()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
+fn copy_directory_recursive(source: &Path, destination: &Path) -> Result<(), String> {
+    fs::create_dir_all(destination).map_err(|e| e.to_string())?;
+
+    for entry in fs::read_dir(source).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let file_type = entry.file_type().map_err(|e| e.to_string())?;
+
+        if file_type.is_dir() {
+            copy_directory_recursive(&source_path, &destination_path)?;
+        } else {
+            fs::copy(&source_path, &destination_path).map_err(|e| {
+                format!(
+                    "Failed to copy {} to {}: {}",
+                    source_path.display(),
+                    destination_path.display(),
+                    e
+                )
+            })?;
+        }
+    }
+
+    Ok(())
 }
 
 fn parse_json_like<T: DeserializeOwned>(raw: &str) -> Result<T, String> {
