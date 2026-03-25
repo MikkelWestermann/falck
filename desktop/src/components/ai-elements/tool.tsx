@@ -1,5 +1,6 @@
 "use client";
 
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { Badge } from "@/components/ui/badge";
 import {
   Collapsible,
@@ -87,7 +88,7 @@ export const ToolHeader = ({
     <CollapsibleTrigger
       className={cn(
         "flex w-full items-center justify-between gap-4 p-3",
-        className
+        className,
       )}
       {...props}
     >
@@ -107,7 +108,7 @@ export const ToolContent = ({ className, ...props }: ToolContentProps) => (
   <CollapsibleContent
     className={cn(
       "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
-      className
+      className,
     )}
     {...props}
   />
@@ -130,12 +131,168 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
 
 export type ToolOutputProps = ComponentProps<"div"> & {
   output: ToolPart["output"];
+  metadata?: unknown;
   errorText: ToolPart["errorText"];
+};
+
+export type GeneratedImageFile = {
+  path: string;
+  filename: string | undefined;
+  format: string | undefined;
+};
+
+type ToolOutputMetadata = {
+  images: GeneratedImageFile[];
+  instructions: string | undefined;
+  logFile: string | undefined;
+};
+
+const asToolRecord = (value: unknown) => {
+  if (!value || typeof value !== "object" || isValidElement(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+};
+
+const getGeneratedImages = (value: unknown): GeneratedImageFile[] => {
+  const record = asToolRecord(value);
+  if (!record) {
+    return [];
+  }
+
+  const candidate = record.images;
+  if (!Array.isArray(candidate)) {
+    return [];
+  }
+
+  const images = candidate.map((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return null;
+    }
+    const path = (entry as { path?: unknown }).path;
+    const filename = (entry as { filename?: unknown }).filename;
+    const format = (entry as { format?: unknown }).format;
+    if (typeof path !== "string" || path.length === 0) {
+      return null;
+    }
+    return {
+      path,
+      filename: typeof filename === "string" ? filename : undefined,
+      format: typeof format === "string" ? format : undefined,
+    };
+  });
+
+  return images.filter((entry): entry is GeneratedImageFile => entry !== null);
+};
+
+export const getGeneratedImagesFromToolData = (
+  output: ToolPart["output"],
+  metadata?: unknown,
+): GeneratedImageFile[] => {
+  const metadataImages = getGeneratedImages(metadata);
+  if (metadataImages.length > 0) {
+    return metadataImages;
+  }
+  return getGeneratedImages(output);
+};
+
+export const ToolImagePreviewGrid = ({
+  images,
+  className,
+  imageClassName,
+}: {
+  images: GeneratedImageFile[];
+  className?: string;
+  imageClassName?: string;
+}) => {
+  if (images.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className={cn(
+        "grid gap-3",
+        images.length > 1 ? "sm:grid-cols-2" : "grid-cols-1",
+        className,
+      )}
+    >
+      {images.map((image) => (
+        <div
+          key={image.path}
+          className="overflow-hidden rounded-md border border-border/60 bg-background"
+        >
+          <img
+            src={convertFileSrc(image.path)}
+            alt={image.filename ?? "Generated image"}
+            className={cn(
+              "w-full bg-muted/30 object-cover",
+              imageClassName ?? "h-48",
+            )}
+            loading="lazy"
+          />
+          <div className="border-t border-border/60 px-3 py-2 text-[0.7rem]">
+            <div className="truncate font-medium text-foreground">
+              {image.filename ?? image.path}
+            </div>
+            <div className="truncate text-muted-foreground">{image.path}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const getToolOutputMetadata = (
+  output: ToolPart["output"],
+  metadata: unknown,
+): ToolOutputMetadata => {
+  const outputRecord = asToolRecord(output);
+  const metadataRecord = asToolRecord(metadata);
+
+  return {
+    images: getGeneratedImagesFromToolData(outputRecord, metadataRecord),
+    instructions:
+      typeof metadataRecord?.instructions === "string"
+        ? metadataRecord.instructions
+        : typeof outputRecord?.instructions === "string"
+          ? outputRecord.instructions
+          : undefined,
+    logFile:
+      typeof metadataRecord?.logFile === "string"
+        ? metadataRecord.logFile
+        : typeof outputRecord?.logFile === "string"
+          ? outputRecord.logFile
+          : undefined,
+  };
+};
+
+const splitErrorText = (errorText: ToolPart["errorText"]) => {
+  if (typeof errorText !== "string" || errorText.length === 0) {
+    return {
+      message: errorText,
+      logFile: undefined,
+    };
+  }
+
+  const match = errorText.match(/^(.*?)(?:\s*Debug log:\s*(.+))$/s);
+  if (!match) {
+    return {
+      message: errorText,
+      logFile: undefined,
+    };
+  }
+
+  return {
+    message: match[1]?.trim() || errorText,
+    logFile: match[2]?.trim() || undefined,
+  };
 };
 
 export const ToolOutput = ({
   className,
   output,
+  metadata,
   errorText,
   ...props
 }: ToolOutputProps) => {
@@ -143,6 +300,14 @@ export const ToolOutput = ({
     return null;
   }
 
+  const {
+    images: generatedImages,
+    instructions,
+    logFile,
+  } = getToolOutputMetadata(output, metadata);
+  const { message: errorMessage, logFile: errorLogFile } =
+    splitErrorText(errorText);
+  const debugLogFile = logFile ?? errorLogFile;
   let Output = <div>{output as ReactNode}</div>;
 
   if (typeof output === "object" && !isValidElement(output)) {
@@ -158,15 +323,31 @@ export const ToolOutput = ({
       <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
         {errorText ? "Error" : "Result"}
       </h4>
+      {!errorText && instructions && (
+        <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          {instructions}
+        </div>
+      )}
+      {!errorText && generatedImages.length > 0 && (
+        <ToolImagePreviewGrid images={generatedImages} />
+      )}
+      {debugLogFile && (
+        <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-[0.7rem]">
+          <div className="font-medium text-foreground">Debug log</div>
+          <div className="break-all font-mono text-muted-foreground">
+            {debugLogFile}
+          </div>
+        </div>
+      )}
       <div
         className={cn(
           "overflow-x-auto rounded-md text-xs [&_table]:w-full",
           errorText
             ? "bg-destructive/10 text-destructive"
-            : "bg-muted/50 text-foreground"
+            : "bg-muted/50 text-foreground",
         )}
       >
-        {errorText && <div>{errorText}</div>}
+        {errorMessage && <div>{errorMessage}</div>}
         {Output}
       </div>
     </div>

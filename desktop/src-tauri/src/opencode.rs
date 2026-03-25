@@ -20,9 +20,44 @@ impl Default for OpencodeState {
 }
 
 pub struct SidecarProcess {
-    _child: Child,
+    child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
+}
+
+impl SidecarProcess {
+    fn send_request(&mut self, request: &str) -> Result<Value, String> {
+        self.stdin
+            .write_all(request.as_bytes())
+            .map_err(|e| e.to_string())?;
+        self.stdin.write_all(b"\n").map_err(|e| e.to_string())?;
+        self.stdin.flush().map_err(|e| e.to_string())?;
+
+        let mut response_line = String::new();
+        let bytes_read = self
+            .stdout
+            .read_line(&mut response_line)
+            .map_err(|e| e.to_string())?;
+
+        if bytes_read == 0 {
+            return Err("OpenCode sidecar exited unexpectedly".to_string());
+        }
+
+        serde_json::from_str(response_line.trim()).map_err(|e| e.to_string())
+    }
+
+    fn shutdown(&mut self) {
+        let _ = self.send_request(r#"{"cmd":"shutdown"}"#);
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+impl Drop for SidecarProcess {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -102,27 +137,14 @@ pub async fn opencode_send(
 
         let process = guard.as_mut().ok_or("Sidecar not available")?;
         let request = build_request(cmd, args)?;
-
-        process
-            .stdin
-            .write_all(request.as_bytes())
-            .map_err(|e| e.to_string())?;
-        process.stdin.write_all(b"\n").map_err(|e| e.to_string())?;
-        process.stdin.flush().map_err(|e| e.to_string())?;
-
-        let mut response_line = String::new();
-        let bytes_read = process
-            .stdout
-            .read_line(&mut response_line)
-            .map_err(|e| e.to_string())?;
-
-        if bytes_read == 0 {
-            *guard = None;
-            return Err("OpenCode sidecar exited unexpectedly".to_string());
-        }
-
-        let response: Value =
-            serde_json::from_str(response_line.trim()).map_err(|e| e.to_string())?;
+        let response = match process.send_request(&request) {
+            Ok(response) => response,
+            Err(err) if err.contains("exited unexpectedly") => {
+                *guard = None;
+                return Err(err);
+            }
+            Err(err) => return Err(err),
+        };
 
         match response.get("type").and_then(Value::as_str) {
             Some("success") => Ok(response.get("data").cloned().unwrap_or(Value::Null)),
@@ -137,8 +159,20 @@ pub async fn opencode_send(
     .await
 }
 
+pub fn reset_sidecar<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let state = app.state::<OpencodeState>();
+    let mut guard = state
+        .0
+        .lock()
+        .map_err(|_| "Sidecar lock poisoned".to_string())?;
+    if let Some(mut process) = guard.take() {
+        process.shutdown();
+    }
+    Ok(())
+}
+
 fn build_request(cmd: String, args: Value) -> Result<String, String> {
-  let mut map = Map::new();
+    let mut map = Map::new();
     map.insert("cmd".to_string(), Value::String(cmd));
 
     match args {
@@ -151,7 +185,7 @@ fn build_request(cmd: String, args: Value) -> Result<String, String> {
         _ => return Err("args must be an object".to_string()),
     }
 
-  serde_json::to_string(&Value::Object(map)).map_err(|e| e.to_string())
+    serde_json::to_string(&Value::Object(map)).map_err(|e| e.to_string())
 }
 
 fn apply_shell_env(cmd: &mut Command) {
@@ -189,16 +223,16 @@ fn spawn_sidecar<R: Runtime>(app: &AppHandle<R>) -> Result<SidecarProcess, Strin
     if let Ok(path) = std::env::var("OPENCODE_SIDECAR_PATH") {
         let path = PathBuf::from(path);
         if path.exists() {
-            return spawn_process(path, cli_path.as_deref());
+            return spawn_process(app, path, cli_path.as_deref());
         }
     }
 
     if let Some(binary) = find_sidecar_binary(app) {
-        return spawn_process(binary, cli_path.as_deref());
+        return spawn_process(app, binary, cli_path.as_deref());
     }
 
     if let Some(script) = find_sidecar_script(app) {
-        return spawn_bun(script, cli_path.as_deref());
+        return spawn_bun(app, script, cli_path.as_deref());
     }
 
     Err(
@@ -207,9 +241,23 @@ fn spawn_sidecar<R: Runtime>(app: &AppHandle<R>) -> Result<SidecarProcess, Strin
     )
 }
 
-fn spawn_process(path: PathBuf, cli_path: Option<&Path>) -> Result<SidecarProcess, String> {
+fn apply_sidecar_command_env<R: Runtime>(app: &AppHandle<R>, cmd: &mut Command) {
+    if let Err(err) = crate::opencode_image::ensure_tool_installed(app) {
+        eprintln!("[OpenCode] Failed to install managed image tools: {err}");
+    }
+    if let Err(err) = crate::opencode_image::apply_sidecar_image_env(app, cmd) {
+        eprintln!("[OpenCode] Failed to apply image tool environment: {err}");
+    }
+}
+
+fn spawn_process<R: Runtime>(
+    app: &AppHandle<R>,
+    path: PathBuf,
+    cli_path: Option<&Path>,
+) -> Result<SidecarProcess, String> {
     let mut cmd = Command::new(&path);
     apply_shell_env(&mut cmd);
+    apply_sidecar_command_env(app, &mut cmd);
     if let Some(cli_path) = cli_path {
         cmd.env("OPENCODE_CLI_PATH", cli_path);
     }
@@ -225,15 +273,20 @@ fn spawn_process(path: PathBuf, cli_path: Option<&Path>) -> Result<SidecarProces
     let stdout = child.stdout.take().ok_or("Failed to open sidecar stdout")?;
 
     Ok(SidecarProcess {
-        _child: child,
+        child,
         stdin,
         stdout: BufReader::new(stdout),
     })
 }
 
-fn spawn_bun(script: PathBuf, cli_path: Option<&Path>) -> Result<SidecarProcess, String> {
+fn spawn_bun<R: Runtime>(
+    app: &AppHandle<R>,
+    script: PathBuf,
+    cli_path: Option<&Path>,
+) -> Result<SidecarProcess, String> {
     let mut cmd = Command::new("bun");
     apply_shell_env(&mut cmd);
+    apply_sidecar_command_env(app, &mut cmd);
     if let Some(cli_path) = cli_path {
         cmd.env("OPENCODE_CLI_PATH", cli_path);
     }
@@ -250,7 +303,7 @@ fn spawn_bun(script: PathBuf, cli_path: Option<&Path>) -> Result<SidecarProcess,
     let stdout = child.stdout.take().ok_or("Failed to open sidecar stdout")?;
 
     Ok(SidecarProcess {
-        _child: child,
+        child,
         stdin,
         stdout: BufReader::new(stdout),
     })

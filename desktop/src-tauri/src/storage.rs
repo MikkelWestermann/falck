@@ -9,6 +9,10 @@ const DEFAULT_REPO_DIR_KEY: &str = "default_repo_dir";
 const BACKEND_MODE_KEY: &str = "backend_mode";
 const GITHUB_TOKEN_SERVICE_SUFFIX: &str = "github";
 const GITHUB_TOKEN_USERNAME: &str = "access_token";
+const OPENCODE_IMAGE_SETTINGS_KEY: &str = "opencode_image_settings";
+const OPENCODE_IMAGE_OPENAI_SERVICE_SUFFIX: &str = "opencode.image.openai";
+const OPENCODE_IMAGE_AZURE_SERVICE_SUFFIX: &str = "opencode.image.azure";
+const OPENCODE_IMAGE_API_KEY_USERNAME: &str = "api_key";
 
 static KEYRING_INIT: OnceLock<Result<(), String>> = OnceLock::new();
 
@@ -29,6 +33,13 @@ pub struct StoredContainer {
     pub image: Option<String>,
     pub created_at: i64,
     pub last_used: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct StoredOpencodeImageSettings {
+    pub default_provider: Option<String>,
+    pub azure_endpoint: Option<String>,
+    pub azure_deployment_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -100,10 +111,18 @@ fn ensure_keyring_store() -> Result<(), String> {
 }
 
 fn github_token_entry<R: Runtime>(app: &AppHandle<R>) -> Result<Entry, String> {
+    keyring_entry(app, GITHUB_TOKEN_SERVICE_SUFFIX, GITHUB_TOKEN_USERNAME)
+}
+
+fn keyring_entry<R: Runtime>(
+    app: &AppHandle<R>,
+    service_suffix: &str,
+    username: &str,
+) -> Result<Entry, String> {
     ensure_keyring_store()?;
     let identifier = app.config().identifier.clone();
-    let service = format!("{}.{}", identifier, GITHUB_TOKEN_SERVICE_SUFFIX);
-    Entry::new(&service, GITHUB_TOKEN_USERNAME).map_err(|e| e.to_string())
+    let service = format!("{}.{}", identifier, service_suffix);
+    Entry::new(&service, username).map_err(|e| e.to_string())
 }
 
 fn is_missing_keyring_entry(err: &KeyringError) -> bool {
@@ -150,9 +169,7 @@ pub fn set_default_repo_dir<R: Runtime>(app: &AppHandle<R>, path: &str) -> Resul
     Ok(())
 }
 
-pub fn get_backend_mode_raw<R: Runtime>(
-    app: &AppHandle<R>,
-) -> Result<Option<BackendMode>, String> {
+pub fn get_backend_mode_raw<R: Runtime>(app: &AppHandle<R>) -> Result<Option<BackendMode>, String> {
     let conn = open_db(app)?;
     let mut stmt = conn
         .prepare("SELECT value FROM settings WHERE key = ?1")
@@ -169,10 +186,7 @@ pub fn get_backend_mode_raw<R: Runtime>(
     Ok(None)
 }
 
-pub fn set_backend_mode<R: Runtime>(
-    app: &AppHandle<R>,
-    mode: BackendMode,
-) -> Result<(), String> {
+pub fn set_backend_mode<R: Runtime>(app: &AppHandle<R>, mode: BackendMode) -> Result<(), String> {
     let conn = open_db(app)?;
     let value = match mode {
         BackendMode::Host => "host",
@@ -184,6 +198,79 @@ pub fn set_backend_mode<R: Runtime>(
         params![BACKEND_MODE_KEY, value],
     )
     .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn get_setting_value<R: Runtime>(app: &AppHandle<R>, key: &str) -> Result<Option<String>, String> {
+    let conn = open_db(app)?;
+    let mut stmt = conn
+        .prepare("SELECT value FROM settings WHERE key = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt.query(params![key]).map_err(|e| e.to_string())?;
+    if let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        let value: String = row.get(0).map_err(|e| e.to_string())?;
+        return Ok(Some(value));
+    }
+    Ok(None)
+}
+
+fn set_setting_value<R: Runtime>(app: &AppHandle<R>, key: &str, value: &str) -> Result<(), String> {
+    let conn = open_db(app)?;
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn clear_setting_value<R: Runtime>(app: &AppHandle<R>, key: &str) -> Result<(), String> {
+    let conn = open_db(app)?;
+    conn.execute("DELETE FROM settings WHERE key = ?1", params![key])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn get_keyring_secret<R: Runtime>(
+    app: &AppHandle<R>,
+    service_suffix: &str,
+    username: &str,
+) -> Result<Option<String>, String> {
+    let entry = keyring_entry(app, service_suffix, username)?;
+    match entry.get_password() {
+        Ok(value) => Ok(Some(value)),
+        Err(err) if is_missing_keyring_entry(&err) => Ok(None),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
+fn set_keyring_secret<R: Runtime>(
+    app: &AppHandle<R>,
+    service_suffix: &str,
+    username: &str,
+    value: &str,
+) -> Result<(), String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("Secret cannot be empty.".to_string());
+    }
+    let entry = keyring_entry(app, service_suffix, username)?;
+    entry.set_password(trimmed).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn clear_keyring_secret<R: Runtime>(
+    app: &AppHandle<R>,
+    service_suffix: &str,
+    username: &str,
+) -> Result<(), String> {
+    let entry = keyring_entry(app, service_suffix, username)?;
+    if let Err(err) = entry.delete_credential() {
+        if !is_missing_keyring_entry(&err) {
+            return Err(err.to_string());
+        }
+    }
     Ok(())
 }
 
@@ -214,6 +301,91 @@ pub fn clear_github_token<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> 
         }
     }
     Ok(())
+}
+
+pub fn get_opencode_image_settings<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<StoredOpencodeImageSettings, String> {
+    let Some(raw) = get_setting_value(app, OPENCODE_IMAGE_SETTINGS_KEY)? else {
+        return Ok(StoredOpencodeImageSettings::default());
+    };
+
+    serde_json::from_str(&raw).map_err(|e| e.to_string())
+}
+
+pub fn set_opencode_image_settings<R: Runtime>(
+    app: &AppHandle<R>,
+    settings: &StoredOpencodeImageSettings,
+) -> Result<(), String> {
+    if settings.default_provider.is_none()
+        && settings.azure_endpoint.is_none()
+        && settings.azure_deployment_name.is_none()
+    {
+        return clear_setting_value(app, OPENCODE_IMAGE_SETTINGS_KEY);
+    }
+
+    let raw = serde_json::to_string(settings).map_err(|e| e.to_string())?;
+    set_setting_value(app, OPENCODE_IMAGE_SETTINGS_KEY, &raw)
+}
+
+pub fn get_opencode_image_openai_api_key<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<Option<String>, String> {
+    get_keyring_secret(
+        app,
+        OPENCODE_IMAGE_OPENAI_SERVICE_SUFFIX,
+        OPENCODE_IMAGE_API_KEY_USERNAME,
+    )
+}
+
+pub fn set_opencode_image_openai_api_key<R: Runtime>(
+    app: &AppHandle<R>,
+    value: &str,
+) -> Result<(), String> {
+    set_keyring_secret(
+        app,
+        OPENCODE_IMAGE_OPENAI_SERVICE_SUFFIX,
+        OPENCODE_IMAGE_API_KEY_USERNAME,
+        value,
+    )
+}
+
+pub fn clear_opencode_image_openai_api_key<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    clear_keyring_secret(
+        app,
+        OPENCODE_IMAGE_OPENAI_SERVICE_SUFFIX,
+        OPENCODE_IMAGE_API_KEY_USERNAME,
+    )
+}
+
+pub fn get_opencode_image_azure_api_key<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<Option<String>, String> {
+    get_keyring_secret(
+        app,
+        OPENCODE_IMAGE_AZURE_SERVICE_SUFFIX,
+        OPENCODE_IMAGE_API_KEY_USERNAME,
+    )
+}
+
+pub fn set_opencode_image_azure_api_key<R: Runtime>(
+    app: &AppHandle<R>,
+    value: &str,
+) -> Result<(), String> {
+    set_keyring_secret(
+        app,
+        OPENCODE_IMAGE_AZURE_SERVICE_SUFFIX,
+        OPENCODE_IMAGE_API_KEY_USERNAME,
+        value,
+    )
+}
+
+pub fn clear_opencode_image_azure_api_key<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    clear_keyring_secret(
+        app,
+        OPENCODE_IMAGE_AZURE_SERVICE_SUFFIX,
+        OPENCODE_IMAGE_API_KEY_USERNAME,
+    )
 }
 
 pub fn save_repo<R: Runtime>(

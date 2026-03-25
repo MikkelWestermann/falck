@@ -40,6 +40,8 @@ import {
 import {
   ToolInput,
   ToolOutput,
+  ToolImagePreviewGrid,
+  getGeneratedImagesFromToolData,
   getStatusBadge,
 } from "@/components/ai-elements/tool";
 import { Loader } from "@/components/ai-elements/loader";
@@ -87,6 +89,7 @@ import { cn } from "@/lib/utils";
 import { AssetUploadDialog } from "@/components/falck/AssetUploadDialog";
 import {
   opencodeService,
+  type OpenCodeImageSettings,
   type OpenCodePartInput,
 } from "@/services/opencodeService";
 import type { FalckApplication } from "@/services/falckService";
@@ -108,6 +111,7 @@ type PartSnapshot = {
   output?: unknown;
   errorText?: string;
   input?: unknown;
+  metadata?: unknown;
   toolName?: string;
   tool?: string;
   title?: string;
@@ -259,11 +263,66 @@ const normalizeAppRoot = (root: string) => {
   return normalized;
 };
 
-const isRepoRoot = (root: string) => normalizeAppRoot(root) === "";
-
 const formatAppRoot = (root: string) => {
   const normalized = normalizeAppRoot(root);
   return normalized ? `./${normalized}` : "the repo root";
+};
+
+const hasImageKeyStatus = (
+  hasStoredApiKey: boolean,
+  hasEnvApiKey: boolean,
+  hasOpencodeApiKey: boolean,
+) => hasStoredApiKey || hasEnvApiKey || hasOpencodeApiKey;
+
+const isOpenAIImageReady = (settings: OpenCodeImageSettings) =>
+  hasImageKeyStatus(
+    settings.openai.hasStoredApiKey,
+    settings.openai.hasEnvApiKey,
+    settings.openai.hasOpencodeApiKey,
+  );
+
+const isAzureImageReady = (settings: OpenCodeImageSettings) =>
+  hasImageKeyStatus(
+    settings.azure.hasStoredApiKey,
+    settings.azure.hasEnvApiKey,
+    settings.azure.hasOpencodeApiKey,
+  ) &&
+  settings.azure.resolvedEndpoint.trim().length > 0 &&
+  settings.azure.resolvedDeploymentName.trim().length > 0;
+
+const joinSystemInstructions = (...values: Array<string | undefined>) => {
+  const instructions = values
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+  return instructions.length > 0 ? instructions.join(" ") : undefined;
+};
+
+const buildImageProviderSystem = (
+  settings: OpenCodeImageSettings | null,
+): string | undefined => {
+  if (!settings) {
+    return undefined;
+  }
+
+  const openaiReady = isOpenAIImageReady(settings);
+  const azureReady = isAzureImageReady(settings);
+
+  if (openaiReady && azureReady) {
+    if (settings.defaultProvider) {
+      return `Falck image provider status: OpenAI and Azure are configured. The current default image provider is ${settings.defaultProvider}. When using falck_generate_image, omit provider unless the user explicitly asks for a specific provider.`;
+    }
+    return "Falck image provider status: OpenAI and Azure are configured. The current default image provider is automatic. When using falck_generate_image, omit provider unless the user explicitly asks for a specific provider.";
+  }
+
+  if (azureReady) {
+    return 'Falck image provider status: Azure is configured for image generation. OpenAI is not configured. When using falck_generate_image, omit the provider argument so Azure is selected automatically. Do not pass provider: "openai" unless the user explicitly asks to configure OpenAI first.';
+  }
+
+  if (openaiReady) {
+    return 'Falck image provider status: OpenAI is configured for image generation. Azure is not configured. When using falck_generate_image, omit the provider argument so OpenAI is selected automatically. Do not pass provider: "azure" unless the user explicitly asks to configure Azure first.';
+  }
+
+  return "Falck image provider status: neither OpenAI nor Azure is configured for image generation right now. Do not call falck_generate_image unless the user first configures an image provider.";
 };
 
 const buildAppFocusSystem = (app: FalckApplication) => {
@@ -273,21 +332,53 @@ const buildAppFocusSystem = (app: FalckApplication) => {
     rootLabel === "the repo root"
       ? "the repo root"
       : `${rootLabel} (relative to the repo root)`;
-  return `Focus on the "${appName}" app in ${rootHint}. Prefer edits inside that path. You can read shared code outside the app root when needed, but avoid modifying files outside it unless the user asks.`;
+  const instructions = [
+    `Focus on the "${appName}" app in ${rootHint}. Prefer edits inside that path. You can read shared code outside the app root when needed, but avoid modifying files outside it unless the user asks.`,
+    'When using falck_generate_image, always call it with structured JSON arguments. The minimum valid call is { "prompt": "..." }.',
+  ];
+
+  if (app.assets?.root) {
+    const assetRoot = normalizeAppRoot(app.assets.root) || "the app root";
+    const subdirectories =
+      app.assets.subdirectories
+        ?.map((entry) => normalizeAppRoot(entry))
+        .filter(Boolean)
+        .join(", ") ?? "";
+    instructions.push(
+      `If you generate images, prefer passing a final outputPath to falck_generate_image when you already know the asset location. Otherwise generate to temp and use falck_place_image instead of Bash to move or copy the final asset into ${assetRoot} relative to the app root when the user wants it kept.`,
+    );
+    if (subdirectories) {
+      instructions.push(
+        `Configured asset subdirectories for this app: ${subdirectories}. Use one when it matches the user's request.`,
+      );
+    }
+  } else {
+    instructions.push(
+      "If you generate images, prefer passing outputPath directly to falck_generate_image when you know the final repo file path. Otherwise use falck_place_image instead of Bash to move or copy the final file into the repository.",
+    );
+  }
+
+  return instructions.join(" ");
 };
 
 const normalizeToolStatus = (status?: string): ToolState => {
   switch (status) {
+    case "pending":
     case "input-streaming":
+      return "input-streaming";
+    case "running":
     case "input-available":
+      return "input-available";
     case "approval-requested":
     case "approval-responded":
     case "output-available":
     case "output-error":
     case "output-denied":
       return status;
-    case "running":
-      return "input-available";
+    case "completed":
+      return "output-available";
+    case "error":
+      return "output-error";
     default:
       return TOOL_STATE_FALLBACK;
   }
@@ -697,6 +788,8 @@ export function AIChat({ activeApp }: AIChatProps) {
   >(null);
   const [lastAbortAt, setLastAbortAt] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [imageSettings, setImageSettings] =
+    useState<OpenCodeImageSettings | null>(null);
   const errorRef = useRef(error);
   const pendingNotification = useRef<PendingNotification | null>(null);
   const partsByMessage = useRef<Map<string, Map<string, PartSnapshot>>>(
@@ -712,6 +805,30 @@ export function AIChat({ activeApp }: AIChatProps) {
   useEffect(() => {
     errorRef.current = error;
   }, [error]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadImageSettings = async () => {
+      try {
+        const next = await opencodeService.getImageGenerationSettings();
+        if (!cancelled) {
+          setImageSettings(next);
+        }
+      } catch (err) {
+        console.error(
+          "[OpenCode] Failed to load image generation settings for chat",
+          err,
+        );
+      }
+    };
+
+    void loadImageSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const clearPendingNotification = useCallback(() => {
     pendingNotification.current = null;
@@ -750,11 +867,21 @@ export function AIChat({ activeApp }: AIChatProps) {
   const assetConfig = activeApp?.assets;
   const canUploadAssets = Boolean(activeApp && assetConfig?.root);
   const appFocusSystem = useMemo(() => {
-    if (!activeApp || isRepoRoot(activeApp.root)) {
+    if (!activeApp) {
       return undefined;
     }
     return buildAppFocusSystem(activeApp);
   }, [activeApp]);
+
+  const imageProviderSystem = useMemo(
+    () => buildImageProviderSystem(imageSettings),
+    [imageSettings],
+  );
+
+  const sessionSystem = useMemo(
+    () => joinSystemInstructions(appFocusSystem, imageProviderSystem),
+    [appFocusSystem, imageProviderSystem],
+  );
 
   const eventStreamUrl = useMemo(() => {
     const base = serverUrl || "http://127.0.0.1:4096";
@@ -1453,6 +1580,7 @@ export function AIChat({ activeApp }: AIChatProps) {
         output?: unknown;
         errorText?: string;
         input?: unknown;
+        metadata?: unknown;
         toolName?: string;
         tool?: string;
         title?: string;
@@ -1469,9 +1597,18 @@ export function AIChat({ activeApp }: AIChatProps) {
       const errorText =
         part.errorText ??
         (extractToolField(part.state, "errorText") as string | undefined) ??
+        (extractToolField(part.state, "error") as string | undefined) ??
         existing?.errorText;
       const input =
         part.input ?? extractToolField(part.state, "input") ?? existing?.input;
+      const metadata =
+        part.metadata ??
+        extractToolField(part.state, "metadata") ??
+        existing?.metadata;
+      const title =
+        part.title ??
+        (extractToolField(part.state, "title") as string | undefined) ??
+        existing?.title;
 
       return {
         id: part.id ?? existing?.id ?? "",
@@ -1483,13 +1620,14 @@ export function AIChat({ activeApp }: AIChatProps) {
         ignored: part.ignored ?? existing?.ignored,
         toolName: part.toolName ?? existing?.toolName,
         tool: part.tool ?? existing?.tool,
-        title: part.title ?? existing?.title,
+        title,
         role: part.role ?? existing?.role,
         time: part.time ?? existing?.time,
         status,
         output,
         errorText,
         input,
+        metadata,
       };
     };
 
@@ -2170,7 +2308,7 @@ export function AIChat({ activeApp }: AIChatProps) {
         selectedModel,
         messageId,
         repoPath,
-        appFocusSystem,
+        sessionSystem,
         parts,
       );
     } catch (err) {
@@ -2394,22 +2532,44 @@ export function AIChat({ activeApp }: AIChatProps) {
                             const hasInput = part.input !== undefined;
                             const hasOutput =
                               part.output !== undefined || part.errorText;
+                            const previewImages =
+                              toolState === "output-available"
+                                ? getGeneratedImagesFromToolData(
+                                    part.output,
+                                    part.metadata,
+                                  )
+                                : [];
 
                             return (
                               <Dialog key={part.id}>
-                                <DialogTrigger asChild>
-                                  <button
-                                    className="group flex w-fit items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground"
-                                    type="button"
-                                  >
-                                    <WrenchIcon className="size-4 shrink-0" />
-                                    <span className="min-w-0 truncate text-left">
-                                      {toolTitle}
-                                    </span>
-                                    {getStatusBadge(toolState)}
-                                    <ChevronRightIcon className="ml-auto size-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
-                                  </button>
-                                </DialogTrigger>
+                                <div className="space-y-2">
+                                  <DialogTrigger asChild>
+                                    <button
+                                      className="group flex w-fit items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground"
+                                      type="button"
+                                    >
+                                      <WrenchIcon className="size-4 shrink-0" />
+                                      <span className="min-w-0 truncate text-left">
+                                        {toolTitle}
+                                      </span>
+                                      {getStatusBadge(toolState)}
+                                      <ChevronRightIcon className="ml-auto size-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
+                                    </button>
+                                  </DialogTrigger>
+                                  {previewImages.length > 0 && (
+                                    <DialogTrigger asChild>
+                                      <button
+                                        type="button"
+                                        className="block w-full max-w-md text-left"
+                                      >
+                                        <ToolImagePreviewGrid
+                                          images={previewImages}
+                                          imageClassName="h-56"
+                                        />
+                                      </button>
+                                    </DialogTrigger>
+                                  )}
+                                </div>
                                 <DialogContent className="max-w-2xl">
                                   <DialogHeader className="gap-2">
                                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2430,6 +2590,7 @@ export function AIChat({ activeApp }: AIChatProps) {
                                     {hasOutput ? (
                                       <ToolOutput
                                         output={part.output}
+                                        metadata={part.metadata}
                                         errorText={part.errorText}
                                       />
                                     ) : (

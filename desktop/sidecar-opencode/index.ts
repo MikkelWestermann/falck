@@ -351,6 +351,9 @@ async function handleCommand(request: RequestMessage) {
       case "dispose":
         await handleDispose();
         break;
+      case "shutdown":
+        handleShutdown();
+        break;
       default:
         sendError(`Unknown command: ${cmd}`, "UNKNOWN_CMD");
     }
@@ -525,6 +528,25 @@ async function handleDispose() {
     type: "success",
     cmd: "dispose",
     data: result,
+  });
+}
+
+function handleShutdown() {
+  try {
+    serverClose?.();
+  } catch (err) {
+    console.error("[SIDECAR] Failed to close embedded OpenCode server", err);
+  }
+
+  sendMessage({
+    type: "success",
+    cmd: "shutdown",
+    data: { success: true },
+  });
+
+  setImmediate(() => {
+    rl.close();
+    process.exit(0);
   });
 }
 

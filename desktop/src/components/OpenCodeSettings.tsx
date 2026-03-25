@@ -29,6 +29,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ModelSelectorLogo } from "@/components/ai-elements/model-selector";
+import { OpenCodeImageSettingsSection } from "@/components/OpenCodeImageSettings";
 import {
   opencodeService,
   OpenCodeConfigData,
@@ -1517,6 +1518,13 @@ const OpenCodeSettingsContent = ({ active }: OpenCodeSettingsContentProps) => {
           )}
         </div>
       </section>
+
+      <OpenCodeImageSettingsSection
+        active={active}
+        config={config}
+        onError={setError}
+        onSuccess={showSuccess}
+      />
 
       {error && (
         <Alert variant="destructive">

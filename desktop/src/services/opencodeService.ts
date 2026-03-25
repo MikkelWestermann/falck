@@ -74,6 +74,45 @@ export interface OpenCodeStatus {
   path?: string;
 }
 
+export type OpenCodeImageProvider = "openai" | "azure";
+
+export interface OpenCodeImageProviderStatus {
+  hasStoredApiKey: boolean;
+  hasEnvApiKey: boolean;
+  hasOpencodeApiKey: boolean;
+}
+
+export interface OpenCodeAzureImageSettings {
+  overrideEndpoint: string;
+  resolvedEndpoint: string;
+  overrideDeploymentName: string;
+  resolvedDeploymentName: string;
+  hasStoredApiKey: boolean;
+  hasEnvApiKey: boolean;
+  hasOpencodeApiKey: boolean;
+  hasOpencodeEndpoint: boolean;
+  hasOpencodeDeploymentName: boolean;
+}
+
+export interface OpenCodeImageSettings {
+  globalDir: string;
+  toolPath: string;
+  toolInstalled: boolean;
+  defaultProvider: OpenCodeImageProvider | null;
+  openai: OpenCodeImageProviderStatus;
+  azure: OpenCodeAzureImageSettings;
+}
+
+export interface SaveOpenCodeImageSettingsInput {
+  defaultProvider: OpenCodeImageProvider | null;
+  openaiApiKey?: string;
+  clearOpenaiApiKey?: boolean;
+  azureApiKey?: string;
+  clearAzureApiKey?: boolean;
+  azureEndpoint?: string;
+  azureDeploymentName?: string;
+}
+
 export interface OpenCodeServerInfo {
   baseUrl: string;
   startedAt: number | null;
@@ -132,7 +171,8 @@ async function withRetry<T>(
     } catch (err) {
       lastError = err as Error;
       if (attempt < options.maxRetries) {
-        const delay = options.delayMs * Math.pow(options.backoffMultiplier, attempt);
+        const delay =
+          options.delayMs * Math.pow(options.backoffMultiplier, attempt);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
@@ -151,7 +191,9 @@ async function sendCommand(
 }
 
 export const opencodeService = {
-  async health(directory?: string): Promise<{ healthy: boolean; version: string }> {
+  async health(
+    directory?: string,
+  ): Promise<{ healthy: boolean; version: string }> {
     return withRetry(() => sendCommand("health", {}, directory)) as Promise<{
       healthy: boolean;
       version: string;
@@ -159,29 +201,39 @@ export const opencodeService = {
   },
 
   async getServerInfo(): Promise<OpenCodeServerInfo> {
-    return withRetry(() => sendCommand("serverInfo", {}, undefined)) as Promise<OpenCodeServerInfo>;
+    return withRetry(() =>
+      sendCommand("serverInfo", {}, undefined),
+    ) as Promise<OpenCodeServerInfo>;
   },
 
   async getConfig(directory?: string): Promise<OpenCodeConfig> {
-    return withRetry(() => sendCommand("config", {}, directory)) as Promise<OpenCodeConfig>;
+    return withRetry(() =>
+      sendCommand("config", {}, directory),
+    ) as Promise<OpenCodeConfig>;
   },
 
   async getProviders(directory?: string): Promise<{
     providers: Provider[];
     defaults: Record<string, string>;
   }> {
-    return withRetry(() => sendCommand("getProviders", {}, directory)) as Promise<{
+    return withRetry(() =>
+      sendCommand("getProviders", {}, directory),
+    ) as Promise<{
       providers: Provider[];
       defaults: Record<string, string>;
     }>;
   },
 
   async listProviderCatalog(directory?: string): Promise<OpenCodeProviderList> {
-    return withRetry(() => sendCommand("providerList", {}, directory)) as Promise<OpenCodeProviderList>;
+    return withRetry(() =>
+      sendCommand("providerList", {}, directory),
+    ) as Promise<OpenCodeProviderList>;
   },
 
   async getProviderAuth(directory?: string): Promise<ProviderAuthResponse> {
-    return withRetry(() => sendCommand("providerAuth", {}, directory)) as Promise<ProviderAuthResponse>;
+    return withRetry(() =>
+      sendCommand("providerAuth", {}, directory),
+    ) as Promise<ProviderAuthResponse>;
   },
 
   async authorizeProviderOAuth(
@@ -201,7 +253,11 @@ export const opencodeService = {
     directory?: string,
   ): Promise<{ success: boolean }> {
     return withRetry(() =>
-      sendCommand("providerOauthCallback", { providerID, method, code }, directory),
+      sendCommand(
+        "providerOauthCallback",
+        { providerID, method, code },
+        directory,
+      ),
     ) as Promise<{ success: boolean }>;
   },
 
@@ -218,7 +274,10 @@ export const opencodeService = {
     return { ...result.session, repoPath };
   },
 
-  async getSession(sessionPath: string, directory?: string): Promise<AISession> {
+  async getSession(
+    sessionPath: string,
+    directory?: string,
+  ): Promise<AISession> {
     const result = (await withRetry(() =>
       sendCommand("getSession", { sessionPath }, directory),
     )) as { session: AISession };
@@ -296,7 +355,11 @@ export const opencodeService = {
   async findFiles(
     query: string,
     directory?: string,
-    options?: { includeDirs?: boolean; limit?: number; type?: "file" | "directory" },
+    options?: {
+      includeDirs?: boolean;
+      limit?: number;
+      type?: "file" | "directory";
+    },
   ): Promise<string[]> {
     const dirs = options?.includeDirs ? "true" : "false";
     const result = (await withRetry(() =>
@@ -318,7 +381,10 @@ export const opencodeService = {
     return result.files ?? [];
   },
 
-  async listMessages(sessionPath: string, directory?: string): Promise<Message[]> {
+  async listMessages(
+    sessionPath: string,
+    directory?: string,
+  ): Promise<Message[]> {
     const result = (await withRetry(() =>
       sendCommand("listMessages", { sessionPath }, directory),
     )) as { messages: Message[] };
@@ -326,7 +392,10 @@ export const opencodeService = {
     return result.messages || [];
   },
 
-  async deleteSession(sessionPath: string, directory?: string): Promise<boolean> {
+  async deleteSession(
+    sessionPath: string,
+    directory?: string,
+  ): Promise<boolean> {
     const result = (await withRetry(() =>
       sendCommand("deleteSession", { sessionPath }, directory),
     )) as { success: boolean };
@@ -334,7 +403,11 @@ export const opencodeService = {
     return result.success;
   },
 
-  async setAuth(provider: string, apiKey: string, directory?: string): Promise<boolean> {
+  async setAuth(
+    provider: string,
+    apiKey: string,
+    directory?: string,
+  ): Promise<boolean> {
     const result = (await withRetry(() =>
       sendCommand("setAuth", { provider, apiKey }, directory),
     )) as { success: boolean };
@@ -352,6 +425,18 @@ export const opencodeService = {
 
   async updateConfig(config: OpenCodeConfigData): Promise<unknown> {
     return withRetry(() => sendCommand("updateConfig", { config }, undefined));
+  },
+
+  async getImageGenerationSettings(): Promise<OpenCodeImageSettings> {
+    return invoke<OpenCodeImageSettings>("get_opencode_image_settings");
+  },
+
+  async saveImageGenerationSettings(
+    request: SaveOpenCodeImageSettingsInput,
+  ): Promise<OpenCodeImageSettings> {
+    return invoke<OpenCodeImageSettings>("save_opencode_image_settings", {
+      request,
+    });
   },
 
   async dispose(): Promise<unknown> {

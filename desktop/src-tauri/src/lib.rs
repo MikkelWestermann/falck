@@ -1,14 +1,16 @@
+mod backend;
+mod blocking;
+mod containers;
 mod falck;
 mod git;
 mod github;
-mod containers;
-mod backend;
 mod opencode;
+mod opencode_image;
 mod project;
 mod ssh;
 mod storage;
-mod blocking;
 
+use blocking::run_blocking;
 use git::{
     checkout_branch, clone_repository, create_branch, create_commit, current_branch, delete_branch,
     discard_changes as discard_git_changes, get_commit_history, get_project_history,
@@ -18,19 +20,19 @@ use git::{
 use opencode::{
     check_command_exists, check_opencode_installed, install_opencode, opencode_send, OpencodeState,
 };
+use opencode_image::{get_opencode_image_settings, save_opencode_image_settings};
 use reqwest::Client;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use storage::{
     get_default_repo_dir, list_repos, remove_repo, save_repo, set_default_repo_dir, SavedRepo,
 };
 use tauri::{AppHandle, Manager};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use blocking::run_blocking;
 
 #[cfg(desktop)]
-use tauri::Emitter;
-#[cfg(desktop)]
 use tauri::menu::{Menu, MenuItem, MenuItemKind, Submenu, HELP_SUBMENU_ID};
+#[cfg(desktop)]
+use tauri::Emitter;
 
 #[cfg(desktop)]
 const CHECK_UPDATES_EVENT: &str = "falck://check-for-updates";
@@ -51,13 +53,8 @@ fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     if let Some(MenuItemKind::Submenu(help_menu)) = menu.get(HELP_SUBMENU_ID) {
         help_menu.append(&check_item)?;
     } else {
-        let help_menu = Submenu::with_id_and_items(
-            app,
-            HELP_SUBMENU_ID,
-            "Help",
-            true,
-            &[&check_item],
-        )?;
+        let help_menu =
+            Submenu::with_id_and_items(app, HELP_SUBMENU_ID, "Help", true, &[&check_item])?;
         menu.append(&help_menu)?;
     }
 
@@ -69,7 +66,11 @@ fn build_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 // ============================================================================
 
 #[tauri::command]
-async fn clone_repo(url: String, path: String, ssh_key_path: Option<String>) -> Result<String, String> {
+async fn clone_repo(
+    url: String,
+    path: String,
+    ssh_key_path: Option<String>,
+) -> Result<String, String> {
     run_blocking(move || {
         let ssh_key_path =
             ssh_key_path.ok_or_else(|| "SSH key is required to clone repositories.".to_string())?;
@@ -78,7 +79,8 @@ async fn clone_repo(url: String, path: String, ssh_key_path: Option<String>) -> 
         }
         clone_repository(&url, &path, &ssh_key_path).map_err(|e| e.to_string())?;
         Ok("Repository cloned successfully".to_string())
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -97,7 +99,8 @@ async fn get_project_commits(
     base_branch: String,
     count: usize,
 ) -> Result<Vec<git::CommitInfo>, String> {
-    run_blocking(move || get_project_history(&path, &base_branch, count).map_err(|e| e.to_string())).await
+    run_blocking(move || get_project_history(&path, &base_branch, count).map_err(|e| e.to_string()))
+        .await
 }
 
 #[tauri::command]
@@ -105,7 +108,8 @@ async fn stage(path: String, file: String) -> Result<String, String> {
     run_blocking(move || {
         stage_file(&path, &file).map_err(|e| e.to_string())?;
         Ok("File staged".to_string())
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -113,12 +117,19 @@ async fn unstage(path: String, file: String) -> Result<String, String> {
     run_blocking(move || {
         unstage_file(&path, &file).map_err(|e| e.to_string())?;
         Ok("File unstaged".to_string())
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
-async fn commit(path: String, message: String, author: String, email: String) -> Result<String, String> {
-    run_blocking(move || create_commit(&path, &message, &author, &email).map_err(|e| e.to_string())).await
+async fn commit(
+    path: String,
+    message: String,
+    author: String,
+    email: String,
+) -> Result<String, String> {
+    run_blocking(move || create_commit(&path, &message, &author, &email).map_err(|e| e.to_string()))
+        .await
 }
 
 #[tauri::command]
@@ -126,7 +137,8 @@ async fn reset_to_commit(path: String, commit_id: String) -> Result<String, Stri
     run_blocking(move || {
         reset_git_to_commit(&path, &commit_id).map_err(|e| e.to_string())?;
         Ok("Reset to selected commit".to_string())
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -134,7 +146,8 @@ async fn discard_changes(path: String) -> Result<String, String> {
     run_blocking(move || {
         discard_git_changes(&path).map_err(|e| e.to_string())?;
         Ok("Discarded changes".to_string())
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -193,7 +206,8 @@ async fn create_new_branch(path: String, branch: String) -> Result<String, Strin
     run_blocking(move || {
         create_branch(&path, &branch).map_err(|e| e.to_string())?;
         Ok(format!("Branch '{}' created", branch))
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -206,7 +220,8 @@ async fn delete_current_branch(path: String, branch: String) -> Result<String, S
         }
         delete_branch(&path, &branch).map_err(|e| e.to_string())?;
         Ok(format!("Branch '{}' deleted", branch))
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -214,7 +229,8 @@ async fn checkout(path: String, branch: String) -> Result<String, String> {
     run_blocking(move || {
         checkout_branch(&path, &branch).map_err(|e| e.to_string())?;
         Ok(format!("Checked out branch '{}'", branch))
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -225,10 +241,12 @@ async fn push(
     ssh_key_path: Option<String>,
 ) -> Result<String, String> {
     run_blocking(move || {
-        let ssh_key_path = ssh_key_path.ok_or_else(|| "SSH key is required to push.".to_string())?;
+        let ssh_key_path =
+            ssh_key_path.ok_or_else(|| "SSH key is required to push.".to_string())?;
         push_to_remote(&path, &remote, &branch, &ssh_key_path).map_err(|e| e.to_string())?;
         Ok("Pushed successfully".to_string())
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -239,10 +257,12 @@ async fn pull(
     ssh_key_path: Option<String>,
 ) -> Result<String, String> {
     run_blocking(move || {
-        let ssh_key_path = ssh_key_path.ok_or_else(|| "SSH key is required to pull.".to_string())?;
+        let ssh_key_path =
+            ssh_key_path.ok_or_else(|| "SSH key is required to pull.".to_string())?;
         pull_from_remote(&path, &remote, &branch, &ssh_key_path).map_err(|e| e.to_string())?;
         Ok("Pulled successfully".to_string())
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -263,7 +283,8 @@ async fn save_repo_entry(app: tauri::AppHandle, name: String, path: String) -> R
             .map_err(|e| e.to_string())?
             .as_secs() as i64;
         save_repo(&app, &name, &path, now)
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -356,6 +377,8 @@ pub fn run() {
             check_opencode_installed,
             install_opencode,
             check_command_exists,
+            get_opencode_image_settings,
+            save_opencode_image_settings,
             ssh::generate_new_ssh_key,
             ssh::list_ssh_keys,
             ssh::add_ssh_key_to_agent,
