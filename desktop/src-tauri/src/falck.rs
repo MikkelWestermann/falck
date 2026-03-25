@@ -408,7 +408,7 @@ fn process_image_bytes(
     match format {
         ImageFormat::Jpeg => {
             let rgb = image.to_rgb8();
-            let mut encoder = JpegEncoder::new_with_quality(&mut cursor, DEFAULT_JPEG_QUALITY);
+            let encoder = JpegEncoder::new_with_quality(&mut cursor, DEFAULT_JPEG_QUALITY);
             encoder
                 .write_image(rgb.as_raw(), width, height, ColorType::Rgb8)
                 .ok()?;
