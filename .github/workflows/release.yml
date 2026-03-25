@@ -25,16 +25,31 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: setup bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.10"
       - name: install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
       - name: clone opencode repo
         run: git clone --depth 1 --branch production https://github.com/anomalyco/opencode.git opencode
+      - name: detect bun version
+        id: bun-version
+        shell: bash
+        run: |
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const packageJsonPath = path.join(process.cwd(), 'opencode', 'package.json');
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+          const match = (packageJson.packageManager || '').match(/bun@([0-9]+\.[0-9]+\.[0-9]+)/);
+          const bunVersion = match?.[1] ?? '1.3.10';
+
+          console.log(`bun_version=${bunVersion}`);
+          NODE
+      - name: setup bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.bun-version.outputs.bun_version }}
       - name: install opencode deps
         run: bun install
         working-directory: opencode
