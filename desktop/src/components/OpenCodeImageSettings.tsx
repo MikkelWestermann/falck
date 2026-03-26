@@ -201,6 +201,11 @@ export function OpenCodeImageSettingsSection({
               Tools installed
             </Badge>
           )}
+          {settings && !settings.toolInstalled && (
+            <Badge variant="outline" className="text-[0.6rem]">
+              Tools unavailable
+            </Badge>
+          )}
         </div>
         <p className="text-xs text-muted-foreground">
           Install Falck-managed OpenCode image tools backed by GPT Image 1.5.

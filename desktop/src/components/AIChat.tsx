@@ -310,6 +310,10 @@ const buildImageProviderSystem = (
     return undefined;
   }
 
+  if (!settings.toolInstalled) {
+    return "Falck image tools are unavailable right now. Do not call falck_generate_image or falck_place_image in this session.";
+  }
+
   const openaiReady = isOpenAIImageReady(settings);
   const azureReady = isAzureImageReady(settings);
 
@@ -331,7 +335,10 @@ const buildImageProviderSystem = (
   return "Falck image provider status: neither OpenAI nor Azure is configured for image generation right now. Do not call falck_generate_image unless the user first configures an image provider.";
 };
 
-const buildAppFocusSystem = (app: FalckApplication) => {
+const buildAppFocusSystem = (
+  app: FalckApplication,
+  imageToolsAvailable: boolean,
+) => {
   const appName = app.name || app.id || "selected";
   const rootLabel = formatAppRoot(app.root);
   const rootHint =
@@ -340,8 +347,15 @@ const buildAppFocusSystem = (app: FalckApplication) => {
       : `${rootLabel} (relative to the repo root)`;
   const instructions = [
     `Focus on the "${appName}" app in ${rootHint}. Prefer edits inside that path. You can read shared code outside the app root when needed, but avoid modifying files outside it unless the user asks.`,
-    'When using falck_generate_image, always call it with structured JSON arguments. The minimum valid call is { "prompt": "..." }.',
   ];
+
+  if (!imageToolsAvailable) {
+    return instructions.join(" ");
+  }
+
+  instructions.push(
+    'When using falck_generate_image, always call it with structured JSON arguments. The minimum valid call is { "prompt": "..." }.',
+  );
 
   if (app.assets?.root) {
     const assetRoot = normalizeAppRoot(app.assets.root) || "the app root";
@@ -984,12 +998,13 @@ export function AIChat({ activeApp }: AIChatProps) {
 
   const assetConfig = activeApp?.assets;
   const canUploadAssets = Boolean(activeApp && assetConfig?.root);
+  const imageToolsAvailable = imageSettings?.toolInstalled === true;
   const appFocusSystem = useMemo(() => {
     if (!activeApp) {
       return undefined;
     }
-    return buildAppFocusSystem(activeApp);
-  }, [activeApp]);
+    return buildAppFocusSystem(activeApp, imageToolsAvailable);
+  }, [activeApp, imageToolsAvailable]);
 
   const imageProviderSystem = useMemo(
     () => buildImageProviderSystem(imageSettings),

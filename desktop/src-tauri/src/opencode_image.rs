@@ -1023,7 +1023,14 @@ struct EffectiveImageConfig {
 #[tauri::command]
 pub async fn get_opencode_image_settings(app: AppHandle) -> Result<OpenCodeImageSettings, String> {
     run_blocking(move || {
-        ensure_tool_installed(&app)?;
+        if let Err(err) = ensure_tool_installed(&app) {
+            eprintln!("[OpenCode] Managed image tools unavailable: {err}");
+            if let Err(cleanup_err) = disable_managed_tools(&app) {
+                eprintln!(
+                    "[OpenCode] Failed to disable managed image tools after install error: {cleanup_err}"
+                );
+            }
+        }
         build_settings_response(&app)
     })
     .await
@@ -1036,7 +1043,14 @@ pub async fn save_opencode_image_settings(
 ) -> Result<OpenCodeImageSettings, String> {
     run_blocking(move || {
         persist_settings(&app, request)?;
-        ensure_tool_installed(&app)?;
+        if let Err(err) = ensure_tool_installed(&app) {
+            eprintln!("[OpenCode] Managed image tools unavailable after settings update: {err}");
+            if let Err(cleanup_err) = disable_managed_tools(&app) {
+                eprintln!(
+                    "[OpenCode] Failed to disable managed image tools after settings update: {cleanup_err}"
+                );
+            }
+        }
         crate::opencode::reset_sidecar(&app)?;
         build_settings_response(&app)
     })
@@ -1148,7 +1162,7 @@ fn build_settings_response<R: Runtime>(
     Ok(OpenCodeImageSettings {
         global_dir: global_opencode_dir(app)?.to_string_lossy().to_string(),
         tool_path: tool_path.to_string_lossy().to_string(),
-        tool_installed: tool_path.exists() && place_tool_path(app)?.exists(),
+        tool_installed: managed_tools_available(app)?,
         default_provider: parse_provider(stored.default_provider.as_deref()),
         openai: OpenCodeImageProviderStatus {
             has_stored_api_key: stored_openai_key.is_some(),
@@ -1236,23 +1250,61 @@ fn place_tool_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
         .join(PLACE_TOOL_FILENAME))
 }
 
+pub fn disable_managed_tools<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    remove_file_if_exists(&tool_path(app)?)?;
+    remove_file_if_exists(&place_tool_path(app)?)?;
+    remove_legacy_tool_files(app)?;
+    Ok(())
+}
+
+pub fn is_managed_tool_runtime_error(message: &str) -> bool {
+    let normalized = message.trim().to_lowercase();
+    normalized.contains("schema._zod.def")
+        || normalized.contains("@opencode-ai/plugin/dist/tool.js")
+        || (normalized.contains("cannot find package 'zod'")
+            && normalized.contains("@opencode-ai/plugin"))
+        || ((normalized.contains("falck_generate_image")
+            || normalized.contains("falck_place_image"))
+            && (normalized.contains("resolve")
+                || normalized.contains("cannot find package")
+                || normalized.contains("zod")))
+}
+
 fn remove_legacy_tool_files<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let tools_dir = global_opencode_dir(app)?.join("tools");
     for filename in LEGACY_TOOL_FILENAMES {
-        let path = tools_dir.join(filename);
-        match fs::remove_file(&path) {
-            Ok(()) => {}
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-            Err(err) => {
-                return Err(format!(
-                    "Failed to remove legacy OpenCode tool {}: {}",
-                    path.display(),
-                    err
-                ));
-            }
-        }
+        remove_file_if_exists(&tools_dir.join(filename))?;
     }
     Ok(())
+}
+
+fn remove_file_if_exists(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(format!(
+            "Failed to remove managed OpenCode tool {}: {}",
+            path.display(),
+            err
+        )),
+    }
+}
+
+fn managed_tools_available<R: Runtime>(app: &AppHandle<R>) -> Result<bool, String> {
+    if !tool_path(app)?.exists() || !place_tool_path(app)?.exists() {
+        return Ok(false);
+    }
+
+    let tools_dir = global_opencode_dir(app)?.join("tools");
+    if LEGACY_TOOL_FILENAMES
+        .iter()
+        .any(|filename| tools_dir.join(filename).exists())
+    {
+        return Ok(false);
+    }
+
+    let node_modules_dir = global_opencode_dir(app)?.join("node_modules");
+    Ok(tool_runtime_ready(&node_modules_dir))
 }
 
 fn normalize_optional(value: Option<&str>) -> Option<String> {

@@ -131,30 +131,31 @@ pub async fn opencode_send(
             .0
             .lock()
             .map_err(|_| "Sidecar lock poisoned".to_string())?;
+        let request = build_request(cmd, args)?;
         if guard.is_none() {
             *guard = Some(spawn_sidecar(&app)?);
         }
 
-        let process = guard.as_mut().ok_or("Sidecar not available")?;
-        let request = build_request(cmd, args)?;
-        let response = match process.send_request(&request) {
-            Ok(response) => response,
-            Err(err) if err.contains("exited unexpectedly") => {
-                *guard = None;
-                return Err(err);
-            }
-            Err(err) => return Err(err),
-        };
+        let mut response = send_sidecar_request(&mut guard, &request)?;
 
-        match response.get("type").and_then(Value::as_str) {
-            Some("success") => Ok(response.get("data").cloned().unwrap_or(Value::Null)),
-            Some("error") => Err(response
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("Unknown OpenCode error")
-                .to_string()),
-            _ => Err("Unexpected OpenCode response".to_string()),
+        if let Some(message) = response_error_message(&response) {
+            if crate::opencode_image::is_managed_tool_runtime_error(&message) {
+                eprintln!(
+                    "[OpenCode] Managed image tool runtime failure detected, disabling tools and retrying once: {}",
+                    message
+                );
+                if let Err(err) = crate::opencode_image::disable_managed_tools(&app) {
+                    eprintln!(
+                        "[OpenCode] Failed to disable managed image tools before retry: {err}"
+                    );
+                }
+                shutdown_sidecar(&mut guard);
+                *guard = Some(spawn_sidecar(&app)?);
+                response = send_sidecar_request(&mut guard, &request)?;
+            }
         }
+
+        sidecar_response_to_result(response)
     })
     .await
 }
@@ -165,10 +166,51 @@ pub fn reset_sidecar<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         .0
         .lock()
         .map_err(|_| "Sidecar lock poisoned".to_string())?;
+    shutdown_sidecar(&mut guard);
+    Ok(())
+}
+
+fn send_sidecar_request(guard: &mut Option<SidecarProcess>, request: &str) -> Result<Value, String> {
+    let process = guard.as_mut().ok_or("Sidecar not available")?;
+    match process.send_request(request) {
+        Ok(response) => Ok(response),
+        Err(err) if err.contains("exited unexpectedly") => {
+            *guard = None;
+            Err(err)
+        }
+        Err(err) => Err(err),
+    }
+}
+
+fn response_error_message(response: &Value) -> Option<String> {
+    match response.get("type").and_then(Value::as_str) {
+        Some("error") => Some(
+            response
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("Unknown OpenCode error")
+                .to_string(),
+        ),
+        _ => None,
+    }
+}
+
+fn sidecar_response_to_result(response: Value) -> Result<Value, String> {
+    match response.get("type").and_then(Value::as_str) {
+        Some("success") => Ok(response.get("data").cloned().unwrap_or(Value::Null)),
+        Some("error") => Err(response
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("Unknown OpenCode error")
+            .to_string()),
+        _ => Err("Unexpected OpenCode response".to_string()),
+    }
+}
+
+fn shutdown_sidecar(guard: &mut Option<SidecarProcess>) {
     if let Some(mut process) = guard.take() {
         process.shutdown();
     }
-    Ok(())
 }
 
 fn build_request(cmd: String, args: Value) -> Result<String, String> {
@@ -244,6 +286,11 @@ fn spawn_sidecar<R: Runtime>(app: &AppHandle<R>) -> Result<SidecarProcess, Strin
 fn apply_sidecar_command_env<R: Runtime>(app: &AppHandle<R>, cmd: &mut Command) {
     if let Err(err) = crate::opencode_image::ensure_tool_installed(app) {
         eprintln!("[OpenCode] Failed to install managed image tools: {err}");
+        if let Err(cleanup_err) = crate::opencode_image::disable_managed_tools(app) {
+            eprintln!(
+                "[OpenCode] Failed to disable managed image tools after install failure: {cleanup_err}"
+            );
+        }
     }
     if let Err(err) = crate::opencode_image::apply_sidecar_image_env(app, cmd) {
         eprintln!("[OpenCode] Failed to apply image tool environment: {err}");
