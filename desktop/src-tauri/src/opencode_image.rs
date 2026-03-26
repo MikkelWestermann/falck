@@ -18,6 +18,14 @@ use crate::storage::{
 
 const TOOL_FILENAME: &str = "falck_generate_image.ts";
 const PLACE_TOOL_FILENAME: &str = "falck_place_image.ts";
+const LEGACY_TOOL_FILENAMES: &[&str] = &[
+    "falck_generate_image.js",
+    "falck_generate_image.mjs",
+    "falck_generate_image.cjs",
+    "falck_place_image.js",
+    "falck_place_image.mjs",
+    "falck_place_image.cjs",
+];
 const DEFAULT_AZURE_API_VERSION: &str = "2025-04-01-preview";
 const GPT_IMAGE_MODEL: &str = "gpt-image-1.5";
 const TOOL_RUNTIME_PACKAGES: &[&str] = &["@opencode-ai/plugin", "@opencode-ai/sdk", "zod"];
@@ -1087,6 +1095,7 @@ pub fn ensure_tool_installed<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, 
     if let Some(parent) = tool_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
+    remove_legacy_tool_files(app)?;
     fs::write(&tool_path, FALCK_IMAGE_TOOL_SOURCE).map_err(|e| e.to_string())?;
     let place_tool_path = place_tool_path(app)?;
     fs::write(&place_tool_path, FALCK_PLACE_IMAGE_TOOL_SOURCE).map_err(|e| e.to_string())?;
@@ -1094,21 +1103,20 @@ pub fn ensure_tool_installed<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, 
 }
 
 fn ensure_tool_runtime_installed<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    let node_modules_dir = global_opencode_dir(app)?.join("node_modules");
-    if tool_runtime_ready(&node_modules_dir) {
-        return Ok(());
-    }
-
     let bundled_runtime_dir = find_bundled_tool_runtime_dir(app).ok_or_else(|| {
         "Falck is missing the bundled OpenCode tool runtime. Please reinstall Falck.".to_string()
     })?;
-    fs::create_dir_all(&node_modules_dir).map_err(|e| e.to_string())?;
+    let node_modules_dir = global_opencode_dir(app)?.join("node_modules");
 
-    for package_name in TOOL_RUNTIME_PACKAGES {
-        sync_bundled_runtime_package(&bundled_runtime_dir, &node_modules_dir, package_name)?;
+    if tool_runtime_matches(&bundled_runtime_dir, &node_modules_dir) {
+        return Ok(());
     }
 
-    if tool_runtime_ready(&node_modules_dir) {
+    fs::create_dir_all(&node_modules_dir).map_err(|e| e.to_string())?;
+
+    sync_bundled_runtime_tree(&bundled_runtime_dir, &node_modules_dir)?;
+
+    if tool_runtime_matches(&bundled_runtime_dir, &node_modules_dir) {
         return Ok(());
     }
 
@@ -1226,6 +1234,25 @@ fn place_tool_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     Ok(global_opencode_dir(app)?
         .join("tools")
         .join(PLACE_TOOL_FILENAME))
+}
+
+fn remove_legacy_tool_files<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let tools_dir = global_opencode_dir(app)?.join("tools");
+    for filename in LEGACY_TOOL_FILENAMES {
+        let path = tools_dir.join(filename);
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => {
+                return Err(format!(
+                    "Failed to remove legacy OpenCode tool {}: {}",
+                    path.display(),
+                    err
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn normalize_optional(value: Option<&str>) -> Option<String> {
@@ -1540,6 +1567,12 @@ fn tool_runtime_ready(node_modules_dir: &Path) -> bool {
     })
 }
 
+fn tool_runtime_matches(source_root: &Path, destination_root: &Path) -> bool {
+    tool_runtime_ready(destination_root)
+        && required_package_manifests_match(source_root, destination_root)
+        && directory_tree_covers(source_root, destination_root)
+}
+
 fn package_relative_path(package_name: &str) -> PathBuf {
     let mut path = PathBuf::new();
     for segment in package_name.split('/') {
@@ -1548,44 +1581,112 @@ fn package_relative_path(package_name: &str) -> PathBuf {
     path
 }
 
-fn sync_bundled_runtime_package(
-    source_root: &Path,
-    destination_root: &Path,
-    package_name: &str,
-) -> Result<(), String> {
-    let relative_path = package_relative_path(package_name);
-    let source = source_root.join(&relative_path);
-    let destination = destination_root.join(&relative_path);
+fn required_package_manifests_match(source_root: &Path, destination_root: &Path) -> bool {
+    TOOL_RUNTIME_PACKAGES.iter().all(|package_name| {
+        let relative_path = package_relative_path(package_name);
+        let source = source_root.join(&relative_path).join("package.json");
+        let destination = destination_root.join(&relative_path).join("package.json");
 
-    if !source.join("package.json").exists() {
-        return Err(format!(
-            "Falck is missing bundled runtime package {} at {}.",
-            package_name,
-            source.display()
-        ));
-    }
-
-    if !package_needs_sync(&source, &destination) {
-        return Ok(());
-    }
-
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    remove_path_if_exists(&destination)?;
-    copy_directory_recursive(&source, &destination)
+        matches!(
+            (
+                read_optional_text_file(&source),
+                read_optional_text_file(&destination),
+            ),
+            (Some(source_manifest), Some(destination_manifest))
+                if source_manifest.trim() == destination_manifest.trim()
+        )
+    })
 }
 
-fn package_needs_sync(source: &Path, destination: &Path) -> bool {
-    let Some(source_package_json) = read_optional_text_file(&source.join("package.json")) else {
-        return true;
-    };
-    let Some(destination_package_json) = read_optional_text_file(&destination.join("package.json"))
-    else {
-        return true;
+fn directory_tree_covers(source_root: &Path, destination_root: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(source_root) else {
+        return false;
     };
 
-    source_package_json.trim() != destination_package_json.trim()
+    for entry in entries {
+        let Ok(entry) = entry else {
+            return false;
+        };
+        let source_path = entry.path();
+        let destination_path = destination_root.join(entry.file_name());
+        let Ok(file_type) = entry.file_type() else {
+            return false;
+        };
+
+        if file_type.is_dir() {
+            let Ok(destination_metadata) = fs::metadata(&destination_path) else {
+                return false;
+            };
+            if !destination_metadata.is_dir() {
+                return false;
+            }
+            if !directory_tree_covers(&source_path, &destination_path) {
+                return false;
+            }
+            continue;
+        }
+
+        let Ok(source_metadata) = entry.metadata() else {
+            return false;
+        };
+        let Ok(destination_metadata) = fs::metadata(&destination_path) else {
+            return false;
+        };
+        if !destination_metadata.is_file() {
+            return false;
+        }
+        if source_metadata.len() != destination_metadata.len() {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn sync_bundled_runtime_tree(source_root: &Path, destination_root: &Path) -> Result<(), String> {
+    sync_runtime_entries(source_root, destination_root)
+}
+
+fn sync_runtime_entries(source_dir: &Path, destination_dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(destination_dir).map_err(|e| e.to_string())?;
+
+    for entry in fs::read_dir(source_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let source_path = entry.path();
+        let destination_path = destination_dir.join(entry.file_name());
+        let file_type = entry.file_type().map_err(|e| e.to_string())?;
+
+        if file_type.is_dir() {
+            if source_path.join("package.json").exists() {
+                remove_path_if_exists(&destination_path)?;
+                copy_directory_recursive(&source_path, &destination_path)?;
+            } else {
+                if fs::metadata(&destination_path)
+                    .map(|metadata| !metadata.is_dir())
+                    .unwrap_or(false)
+                {
+                    remove_path_if_exists(&destination_path)?;
+                }
+                sync_runtime_entries(&source_path, &destination_path)?;
+            }
+            continue;
+        }
+
+        if let Some(parent) = destination_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        remove_path_if_exists(&destination_path)?;
+        fs::copy(&source_path, &destination_path).map_err(|e| {
+            format!(
+                "Failed to copy {} to {}: {}",
+                source_path.display(),
+                destination_path.display(),
+                e
+            )
+        })?;
+    }
+
+    Ok(())
 }
 
 fn remove_path_if_exists(path: &Path) -> Result<(), String> {

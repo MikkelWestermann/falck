@@ -1,10 +1,38 @@
 import { invoke } from "@tauri-apps/api/core";
 
+export interface OpenCodeMessagePart {
+  id?: string;
+  sessionID?: string;
+  messageID?: string;
+  type?: string;
+  text?: string;
+  prompt?: string;
+  description?: string;
+  synthetic?: boolean;
+  ignored?: boolean;
+  state?: unknown;
+  output?: unknown;
+  errorText?: string;
+  input?: unknown;
+  metadata?: unknown;
+  toolName?: string;
+  tool?: string;
+  title?: string;
+  role?: "user" | "assistant";
+  time?: { start?: number; end?: number };
+  callID?: string;
+  hash?: string;
+  files?: string[];
+  snapshot?: string;
+  reason?: string;
+}
+
 export interface Message {
   id?: string;
   role: "user" | "assistant";
   text: string;
   timestamp: string;
+  parts?: OpenCodeMessagePart[];
 }
 
 export interface AISession {

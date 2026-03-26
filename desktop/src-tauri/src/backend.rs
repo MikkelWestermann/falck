@@ -529,27 +529,32 @@ const UNIX_PATH_MAX: usize = 104;
 const LIMA_SSH_SOCKET_SUFFIX_LEN: usize = "/ssh.sock.".len() + 16;
 
 fn lima_home_base_len() -> Option<usize> {
+    lima_home_dir().map(|path| path.to_string_lossy().as_bytes().len())
+}
+
+fn lima_home_dir() -> Option<PathBuf> {
     let read_env = |key: &str| std::env::var(key).ok().map(|value| value.trim().to_string());
     let mut base = read_env("FALCK_LIMA_HOME").filter(|value| !value.is_empty());
     if base.is_none() {
         base = read_env("LIMA_HOME").filter(|value| !value.is_empty());
     }
-    let base = if let Some(value) = base {
-        value
+
+    let path = if let Some(value) = base {
+        PathBuf::from(value)
     } else if let Ok(home) = std::env::var("HOME") {
         let trimmed = home.trim_end_matches(|ch| ch == '/' || ch == '\\');
         if trimmed.is_empty() {
             return None;
         }
-        format!("{}/.falck/lima", trimmed)
+        PathBuf::from(trimmed).join(".falck").join("lima")
     } else {
         return None;
     };
-    let trimmed = base.trim_end_matches(|ch| ch == '/' || ch == '\\');
-    if trimmed.is_empty() {
+
+    if path.as_os_str().is_empty() {
         None
     } else {
-        Some(trimmed.as_bytes().len())
+        Some(path)
     }
 }
 
@@ -679,9 +684,7 @@ fn lima_legacy_mount_target(repo_path: &Path) -> String {
 }
 
 fn lima_instance_dir(name: &str) -> Option<PathBuf> {
-    std::env::var("HOME")
-        .ok()
-        .map(|home| PathBuf::from(home).join(".lima").join(name))
+    lima_home_dir().map(|home| home.join(name))
 }
 
 #[derive(Debug, Deserialize)]
@@ -745,6 +748,17 @@ fn entries_from_value(value: serde_json::Value) -> Result<Option<Vec<LimaListEnt
 fn parse_lima_list_entries(raw: &[u8]) -> Result<Vec<LimaListEntry>, String> {
     if raw.iter().all(|byte| byte.is_ascii_whitespace()) {
         return Ok(Vec::new());
+    }
+    let raw_text = String::from_utf8_lossy(raw);
+    let raw_trimmed = raw_text.trim();
+    if raw_trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !raw_trimmed.contains(['{', '[']) {
+        let lowered = raw_trimmed.to_ascii_lowercase();
+        if lowered.contains("no instance found") {
+            return Ok(Vec::new());
+        }
     }
     let mut slices = vec![raw];
     if let Some(start) = raw.iter().position(|b| *b == b'{' || *b == b'[') {
@@ -961,7 +975,17 @@ fn list_lima_vms(app: &AppHandle) -> Result<Vec<BackendVmInfo>, String> {
     }
     .map_err(|e| format!("Failed to list Lima VMs: {e}"))?;
     if !output.status.success() {
-        return Err("Failed to list Lima VMs.".to_string());
+        let combined = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout).trim(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        )
+        .trim()
+        .to_string();
+        if combined.is_empty() {
+            return Err("Failed to list Lima VMs.".to_string());
+        }
+        return Err(format!("Failed to list Lima VMs: {combined}"));
     }
     let entries = parse_lima_list_entries(&output.stdout)?;
     let repo_map = build_repo_vm_map(app)?;

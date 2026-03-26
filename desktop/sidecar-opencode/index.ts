@@ -762,6 +762,7 @@ async function handleListMessages(sessionPath?: string, directory?: string) {
       ? new Date(msg.info.time.created).toISOString()
       : new Date().toISOString(),
     text: extractMessageText(msg.parts, msg.info.role),
+    parts: Array.isArray(msg.parts) ? msg.parts : [],
   }));
 
   sendMessage({

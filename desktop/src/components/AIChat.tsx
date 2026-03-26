@@ -90,6 +90,7 @@ import { AssetUploadDialog } from "@/components/falck/AssetUploadDialog";
 import {
   opencodeService,
   type OpenCodeImageSettings,
+  type OpenCodeMessagePart,
   type OpenCodePartInput,
 } from "@/services/opencodeService";
 import type { FalckApplication } from "@/services/falckService";
@@ -117,6 +118,11 @@ type PartSnapshot = {
   title?: string;
   role?: "user" | "assistant";
   time?: { start?: number; end?: number };
+  callID?: string;
+  hash?: string;
+  files?: string[];
+  snapshot?: string;
+  reason?: string;
 };
 
 type ToolState = ToolUIPart["state"];
@@ -384,6 +390,77 @@ const normalizeToolStatus = (status?: string): ToolState => {
   }
 };
 
+const normalizeToolStateValue = (state: unknown) => {
+  if (typeof state === "string") {
+    return state;
+  }
+  if (
+    state &&
+    typeof state === "object" &&
+    "status" in state &&
+    typeof (state as { status?: unknown }).status === "string"
+  ) {
+    return (state as { status: string }).status;
+  }
+  return undefined;
+};
+
+const extractToolField = (value: unknown, field: string) => {
+  if (value && typeof value === "object" && field in value) {
+    return (value as Record<string, unknown>)[field];
+  }
+  return undefined;
+};
+
+const normalizePart = (
+  part: OpenCodeMessagePart,
+  existing?: PartSnapshot,
+): PartSnapshot => {
+  const status = normalizeToolStateValue(part.state) ?? existing?.status;
+  const output =
+    part.output ?? extractToolField(part.state, "output") ?? existing?.output;
+  const errorText =
+    part.errorText ??
+    (extractToolField(part.state, "errorText") as string | undefined) ??
+    (extractToolField(part.state, "error") as string | undefined) ??
+    existing?.errorText;
+  const input =
+    part.input ?? extractToolField(part.state, "input") ?? existing?.input;
+  const metadata =
+    part.metadata ??
+    extractToolField(part.state, "metadata") ??
+    existing?.metadata;
+  const title =
+    part.title ??
+    (extractToolField(part.state, "title") as string | undefined) ??
+    existing?.title;
+
+  return {
+    id: part.id ?? existing?.id ?? "",
+    type: part.type ?? existing?.type,
+    text: part.text ?? existing?.text,
+    prompt: part.prompt ?? existing?.prompt,
+    description: part.description ?? existing?.description,
+    synthetic: part.synthetic ?? existing?.synthetic,
+    ignored: part.ignored ?? existing?.ignored,
+    toolName: part.toolName ?? existing?.toolName,
+    tool: part.tool ?? existing?.tool,
+    title,
+    role: part.role ?? existing?.role,
+    time: part.time ?? existing?.time,
+    status,
+    output,
+    errorText,
+    input,
+    metadata,
+    callID: part.callID ?? existing?.callID,
+    hash: part.hash ?? existing?.hash,
+    files: part.files ?? existing?.files,
+    snapshot: part.snapshot ?? existing?.snapshot,
+    reason: part.reason ?? existing?.reason,
+  };
+};
+
 const resolveToolState = (part: PartSnapshot): ToolState => {
   const normalized = normalizeToolStatus(part.status);
   if (
@@ -437,6 +514,47 @@ const compareParts = (a: PartSnapshot, b: PartSnapshot) => {
     return 1;
   }
   return a.id.localeCompare(b.id);
+};
+
+const buildMessageText = (
+  parts: Map<string, PartSnapshot>,
+  role?: "user" | "assistant",
+) => {
+  const values = Array.from(parts.values()).sort(compareParts);
+  const textParts = values.filter(
+    (part) =>
+      part.type === "text" &&
+      typeof part.text === "string" &&
+      !part.synthetic &&
+      !part.ignored,
+  );
+  if (textParts.length === 0) {
+    return "";
+  }
+  if (role === "assistant") {
+    return textParts[textParts.length - 1]!.text ?? "";
+  }
+  let longest = textParts[0]!;
+  for (const part of textParts) {
+    if ((part.text ?? "").length > (longest.text ?? "").length) {
+      longest = part;
+    }
+  }
+  return longest.text ?? "";
+};
+
+const buildPartMap = (parts?: OpenCodeMessagePart[]) => {
+  const map = new Map<string, PartSnapshot>();
+  if (!Array.isArray(parts)) {
+    return map;
+  }
+  for (const part of parts) {
+    if (!part?.id) {
+      continue;
+    }
+    map.set(part.id, normalizePart(part, map.get(part.id)));
+  }
+  return map;
 };
 
 const toolLabel = (part: PartSnapshot) => {
@@ -1174,13 +1292,29 @@ export function AIChat({ activeApp }: AIChatProps) {
       : undefined;
   const canStop = streaming || sending || awaitingResponse;
 
+  const historicalPartsByMessage = useMemo(() => {
+    const next = new Map<string, Map<string, PartSnapshot>>();
+    for (const msg of messages) {
+      if (!msg.id || !msg.parts?.length) {
+        continue;
+      }
+      const partMap = buildPartMap(msg.parts);
+      if (partMap.size > 0) {
+        next.set(msg.id, partMap);
+      }
+    }
+    return next;
+  }, [messages]);
+
   const visibleMessages = useMemo(
     () =>
       messages.filter((msg) => {
         if (msg.text.length > 0) {
           return true;
         }
-        const parts = partsByMessage.current.get(msg.id);
+        const parts =
+          partsByMessage.current.get(msg.id) ??
+          historicalPartsByMessage.get(msg.id);
         if (!parts) {
           return false;
         }
@@ -1191,7 +1325,7 @@ export function AIChat({ activeApp }: AIChatProps) {
         }
         return false;
       }),
-    [lastEventAt, messages, toolActivity],
+    [historicalPartsByMessage, lastEventAt, messages, toolActivity],
   );
 
   const hasPendingUserMessage = useMemo(
@@ -1199,8 +1333,10 @@ export function AIChat({ activeApp }: AIChatProps) {
     [messages],
   );
 
-  const getRenderableParts = (messageId: string) => {
-    const parts = partsByMessage.current.get(messageId);
+  const getRenderableParts = (message: ChatMessage) => {
+    const parts =
+      partsByMessage.current.get(message.id) ??
+      historicalPartsByMessage.get(message.id);
     if (!parts) {
       return { toolParts: [], reasoningParts: [] };
     }
@@ -1543,121 +1679,6 @@ export function AIChat({ activeApp }: AIChatProps) {
         };
         return next;
       });
-    };
-
-    const normalizeToolState = (state: unknown) => {
-      if (typeof state === "string") {
-        return state;
-      }
-      if (
-        state &&
-        typeof state === "object" &&
-        "status" in state &&
-        typeof (state as { status?: unknown }).status === "string"
-      ) {
-        return (state as { status: string }).status;
-      }
-      return undefined;
-    };
-
-    const extractToolField = (value: unknown, field: string) => {
-      if (value && typeof value === "object" && field in value) {
-        return (value as Record<string, unknown>)[field];
-      }
-      return undefined;
-    };
-
-    const normalizePart = (
-      part: {
-        id?: string;
-        type?: string;
-        text?: string;
-        prompt?: string;
-        description?: string;
-        synthetic?: boolean;
-        ignored?: boolean;
-        state?: unknown;
-        output?: unknown;
-        errorText?: string;
-        input?: unknown;
-        metadata?: unknown;
-        toolName?: string;
-        tool?: string;
-        title?: string;
-        role?: "user" | "assistant";
-        time?: { start?: number; end?: number };
-      },
-      existing?: PartSnapshot,
-    ): PartSnapshot => {
-      const status = normalizeToolState(part.state) ?? existing?.status;
-      const output =
-        part.output ??
-        extractToolField(part.state, "output") ??
-        existing?.output;
-      const errorText =
-        part.errorText ??
-        (extractToolField(part.state, "errorText") as string | undefined) ??
-        (extractToolField(part.state, "error") as string | undefined) ??
-        existing?.errorText;
-      const input =
-        part.input ?? extractToolField(part.state, "input") ?? existing?.input;
-      const metadata =
-        part.metadata ??
-        extractToolField(part.state, "metadata") ??
-        existing?.metadata;
-      const title =
-        part.title ??
-        (extractToolField(part.state, "title") as string | undefined) ??
-        existing?.title;
-
-      return {
-        id: part.id ?? existing?.id ?? "",
-        type: part.type ?? existing?.type,
-        text: part.text ?? existing?.text,
-        prompt: part.prompt ?? existing?.prompt,
-        description: part.description ?? existing?.description,
-        synthetic: part.synthetic ?? existing?.synthetic,
-        ignored: part.ignored ?? existing?.ignored,
-        toolName: part.toolName ?? existing?.toolName,
-        tool: part.tool ?? existing?.tool,
-        title,
-        role: part.role ?? existing?.role,
-        time: part.time ?? existing?.time,
-        status,
-        output,
-        errorText,
-        input,
-        metadata,
-      };
-    };
-
-    const buildMessageText = (
-      parts: Map<string, PartSnapshot>,
-      role?: "user" | "assistant",
-    ) => {
-      const values = Array.from(parts.values()).sort((a, b) =>
-        a.id.localeCompare(b.id),
-      );
-      const textParts = values.filter(
-        (part) =>
-          part.type === "text" &&
-          typeof part.text === "string" &&
-          !part.synthetic &&
-          !part.ignored,
-      );
-      if (textParts.length === 0) {
-        return "";
-      }
-      if (role === "assistant") {
-        return textParts[textParts.length - 1]!.text ?? "";
-      }
-      let longest = textParts[0]!;
-      for (const part of textParts) {
-        if ((part.text ?? "").length > (longest.text ?? "").length) {
-          longest = part;
-        }
-      }
-      return longest.text ?? "";
     };
 
     const refreshToolActivity = () => {
@@ -2477,7 +2498,7 @@ export function AIChat({ activeApp }: AIChatProps) {
                 ) : (
                   visibleMessages.map((msg, idx) => {
                     const { toolParts, reasoningParts } = getRenderableParts(
-                      msg.id,
+                      msg,
                     );
                     const isAssistant = msg.role === "assistant";
                     const isMessageStreaming =

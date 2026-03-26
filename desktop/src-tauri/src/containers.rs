@@ -243,24 +243,13 @@ fn find_named_in_dir(dir: &Path, prefix: &str) -> Option<PathBuf> {
     None
 }
 
-fn limactl_share_dir(path: &Path) -> Option<PathBuf> {
-    let parent = path.parent()?;
-    let prefix = parent.parent()?;
-    Some(prefix.join("share").join("lima"))
-}
-
-fn limactl_has_guest_agents(path: &Path) -> bool {
-    let Some(share_dir) = limactl_share_dir(path) else {
-        return false;
-    };
+fn share_dir_has_guest_agents(share_dir: &Path) -> bool {
     guest_agent_filenames()
         .iter()
         .any(|name| share_dir.join(name).exists())
 }
 
-fn find_bundled_limactl(app: &AppHandle) -> Option<PathBuf> {
-    let mut fallback: Option<PathBuf> = None;
-
+fn find_bundled_limactl_source(app: &AppHandle) -> Option<PathBuf> {
     if let Ok(resource_dir) = app.path().resource_dir() {
         for candidate in [
             resource_dir.clone(),
@@ -268,12 +257,7 @@ fn find_bundled_limactl(app: &AppHandle) -> Option<PathBuf> {
             resource_dir.join("binaries"),
         ] {
             if let Some(found) = find_named_in_dir(&candidate, "limactl") {
-                if limactl_has_guest_agents(&found) {
-                    return Some(found);
-                }
-                if fallback.is_none() {
-                    fallback = Some(found);
-                }
+                return Some(found);
             }
         }
     }
@@ -282,12 +266,7 @@ fn find_bundled_limactl(app: &AppHandle) -> Option<PathBuf> {
         if let Some(parent) = current.parent() {
             for candidate in [parent.to_path_buf(), parent.join("sidecars")] {
                 if let Some(found) = find_named_in_dir(&candidate, "limactl") {
-                    if limactl_has_guest_agents(&found) {
-                        return Some(found);
-                    }
-                    if fallback.is_none() {
-                        fallback = Some(found);
-                    }
+                    return Some(found);
                 }
             }
         }
@@ -309,16 +288,133 @@ fn find_bundled_limactl(app: &AppHandle) -> Option<PathBuf> {
 
     for candidate in candidates.into_iter().flatten() {
         if let Some(found) = find_named_in_dir(&candidate, "limactl") {
-            if limactl_has_guest_agents(&found) {
-                return Some(found);
-            }
-            if fallback.is_none() {
-                fallback = Some(found);
-            }
+            return Some(found);
         }
     }
 
-    fallback
+    None
+}
+
+fn find_bundled_lima_share_source(app: &AppHandle) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(resource_dir.join("share").join("lima"));
+        candidates.push(resource_dir.join("lima"));
+    }
+
+    let cwd = std::env::current_dir().ok();
+    candidates.extend(
+        [
+            cwd.as_ref().map(|dir| dir.join("share").join("lima")),
+            cwd.as_ref()
+                .map(|dir| dir.join("src-tauri").join("share").join("lima")),
+            cwd.as_ref()
+                .map(|dir| dir.join("..").join("src-tauri").join("share").join("lima")),
+        ]
+        .into_iter()
+        .flatten(),
+    );
+
+    candidates.into_iter().find(|candidate| share_dir_has_guest_agents(candidate))
+}
+
+fn remove_path_if_exists(path: &Path) -> Result<(), String> {
+    match fs::metadata(path) {
+        Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(path).map_err(|e| e.to_string()),
+        Ok(_) => fs::remove_file(path).map_err(|e| e.to_string()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
+fn copy_directory_recursive(source: &Path, destination: &Path) -> Result<(), String> {
+    fs::create_dir_all(destination).map_err(|e| e.to_string())?;
+
+    for entry in fs::read_dir(source).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let file_type = entry.file_type().map_err(|e| e.to_string())?;
+
+        if file_type.is_dir() {
+            copy_directory_recursive(&source_path, &destination_path)?;
+        } else {
+            fs::copy(&source_path, &destination_path).map_err(|e| {
+                format!(
+                    "Failed to copy {} to {}: {}",
+                    source_path.display(),
+                    destination_path.display(),
+                    e
+                )
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+fn read_optional_text_file(path: &Path) -> Option<String> {
+    match fs::read_to_string(path) {
+        Ok(raw) => Some(raw),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => None,
+    }
+}
+
+fn ensure_managed_bundled_limactl(app: &AppHandle) -> Result<PathBuf, String> {
+    let source_binary = find_bundled_limactl_source(app)
+        .ok_or_else(|| "Bundled Lima binary not found.".to_string())?;
+    let source_share = find_bundled_lima_share_source(app)
+        .ok_or_else(|| "Bundled Lima guest agents not found.".to_string())?;
+
+    let runtime_root = falck_lima_home(app)?.join("_runtime");
+    let version_path = runtime_root.join("version.txt");
+    let expected_version = format!("v{}", BUNDLED_LIMA_VERSION);
+    let destination_binary = runtime_root
+        .join("bin")
+        .join(limactl_executable_name());
+    let destination_share = runtime_root.join("share").join("lima");
+
+    let runtime_ready = read_optional_text_file(&version_path)
+        .map(|value| value.trim() == expected_version)
+        .unwrap_or(false)
+        && destination_binary.exists()
+        && share_dir_has_guest_agents(&destination_share);
+
+    if runtime_ready {
+        return Ok(destination_binary);
+    }
+
+    fs::create_dir_all(runtime_root.join("bin")).map_err(|e| e.to_string())?;
+    fs::create_dir_all(runtime_root.join("share")).map_err(|e| e.to_string())?;
+    remove_path_if_exists(&destination_binary)?;
+    remove_path_if_exists(&destination_share)?;
+    fs::copy(&source_binary, &destination_binary).map_err(|e| {
+        format!(
+            "Failed to copy {} to {}: {}",
+            source_binary.display(),
+            destination_binary.display(),
+            e
+        )
+    })?;
+    #[cfg(not(target_os = "windows"))]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&destination_binary)
+            .map_err(|e| e.to_string())?
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&destination_binary, perms).map_err(|e| e.to_string())?;
+    }
+    copy_directory_recursive(&source_share, &destination_share)?;
+    fs::write(&version_path, format!("{}\n", expected_version)).map_err(|e| e.to_string())?;
+
+    if share_dir_has_guest_agents(&destination_share) {
+        Ok(destination_binary)
+    } else {
+        Err("Failed to prepare bundled Lima guest agents.".to_string())
+    }
 }
 
 pub(crate) fn falck_lima_home(app: &AppHandle) -> Result<PathBuf, String> {
@@ -447,17 +543,17 @@ fn ensure_lima_guest_agents(app: &AppHandle, limactl: &Path) -> AnyhowResult<()>
 }
 
 fn find_limactl_location(app: &AppHandle) -> Option<LimactlLocation> {
+    if let Ok(path) = ensure_managed_bundled_limactl(app) {
+        return Some(LimactlLocation {
+            path,
+            source: LimaSource::Bundled,
+        });
+    }
+
     if let Some(path) = find_in_path(limactl_executable_name()) {
         return Some(LimactlLocation {
             path,
             source: LimaSource::System,
-        });
-    }
-
-    if let Some(path) = find_bundled_limactl(app) {
-        return Some(LimactlLocation {
-            path,
-            source: LimaSource::Bundled,
         });
     }
 

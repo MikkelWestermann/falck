@@ -6,7 +6,8 @@
   "type": "module",
   "dependencies": {
     "@opencode-ai/plugin": "1.1.65",
-    "@opencode-ai/sdk": "1.1.65"
+    "@opencode-ai/sdk": "1.1.65",
+    "zod": "4.1.8"
   },
   "devDependencies": {
     "@types/node": "^22.13.1"

@@ -605,10 +605,8 @@ async function ensureSidecarNodeModules(root: string) {
 
   const dependenciesReady =
     fs.existsSync(nodeModules) &&
-    installedPackageMatches(root, "@opencode-ai/plugin", pkg.dependencies?.["@opencode-ai/plugin"]) &&
-    installedPackageMatches(root, "@opencode-ai/sdk", pkg.dependencies?.["@opencode-ai/sdk"]) &&
     opencodeToolRuntimePackages.every((packageName) =>
-      fs.existsSync(path.join(packagePath(root, packageName), "package.json")),
+      installedPackageMatches(root, packageName, pkg.dependencies?.[packageName]),
     )
 
   if (!dependenciesReady) {
@@ -844,29 +842,35 @@ async function ensureOpencodeToolRuntime() {
 
   await ensureSidecarNodeModules(sidecarRoot)
 
-  const runtimeRoot = path.join(
-    appRoot,
-    "src-tauri",
-    "share",
-    "opencode-tool-runtime",
-    "node_modules",
-  )
-
-  for (const packageName of opencodeToolRuntimePackages) {
-    const source = packagePath(sidecarRoot, packageName)
-    const destination = path.join(runtimeRoot, ...packageName.split("/"))
-    const sourcePackageJson = path.join(source, "package.json")
-
-    if (!fs.existsSync(sourcePackageJson)) {
-      throw new Error(`Missing bundled OpenCode tool runtime package ${packageName} at ${source}`)
-    }
-
-    fs.rmSync(destination, { recursive: true, force: true })
-    fs.mkdirSync(path.dirname(destination), { recursive: true })
-    fs.cpSync(source, destination, { recursive: true, force: true })
+  const sourceRoot = path.join(sidecarRoot, "node_modules")
+  if (!fs.existsSync(sourceRoot)) {
+    throw new Error(`Missing sidecar node_modules at ${sourceRoot}`)
   }
 
-  console.log(`Prepared bundled OpenCode tool runtime in ${runtimeRoot}`)
+  const runtimeRoot = path.join(appRoot, "src-tauri", "share", "opencode-tool-runtime")
+  const runtimeNodeModules = path.join(runtimeRoot, "node_modules")
+
+  fs.rmSync(runtimeRoot, { recursive: true, force: true })
+  fs.mkdirSync(runtimeRoot, { recursive: true })
+
+  // Materialize the full install tree so the app bundle does not depend on
+  // package-manager symlinks, hoisting, or partially copied transitive deps.
+  fs.cpSync(sourceRoot, runtimeNodeModules, {
+    recursive: true,
+    force: true,
+    dereference: true,
+  })
+
+  for (const packageName of opencodeToolRuntimePackages) {
+    const destination = path.join(runtimeNodeModules, ...packageName.split("/"))
+    if (!fs.existsSync(path.join(destination, "package.json"))) {
+      throw new Error(
+        `Missing bundled OpenCode tool runtime package ${packageName} at ${destination}`,
+      )
+    }
+  }
+
+  console.log(`Prepared bundled OpenCode tool runtime in ${runtimeNodeModules}`)
 }
 
 await ensureOpencodeSidecar()
