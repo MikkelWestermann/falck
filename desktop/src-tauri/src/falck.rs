@@ -17,7 +17,7 @@ use std::env;
 use std::io::{BufRead, BufReader, Cursor, Read};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
 
@@ -26,6 +26,8 @@ use crate::backend::{self, BackendContext, BackendProcess, VmProcessHandle};
 
 lazy_static! {
     static ref SECRETS_STORE: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
+    static ref APP_ENV_FILE_STORE: Mutex<HashMap<String, StoredEnvFile>> =
+        Mutex::new(HashMap::new());
 }
 
 static SHELL_ENV_CACHE: OnceLock<Mutex<Option<HashMap<String, String>>>> = OnceLock::new();
@@ -63,8 +65,8 @@ fn unregister_running_app(state: &FalckProcessState, pid: u32) -> Option<Running
 
 fn backend_process_pid(process: &BackendProcess) -> u32 {
     match process {
-        BackendProcess::Host { pid } => *pid,
-        BackendProcess::Virtualized { pid, vm } => {
+        BackendProcess::Host { pid, .. } => *pid,
+        BackendProcess::Virtualized { pid, vm, .. } => {
             let input = format!("{}:{}", vm.name, pid);
             let hash = fnv1a_hash_u32(&input);
             0x8000_0000 | hash
@@ -83,8 +85,28 @@ fn fnv1a_hash_u32(value: &str) -> u32 {
 
 fn kill_backend_process(process: BackendProcess) -> Result<()> {
     match process {
-        BackendProcess::Host { pid } => kill_app(pid),
-        BackendProcess::Virtualized { pid, vm } => {
+        BackendProcess::Host { pid, child, .. } => {
+            if let Ok(mut guard) = child.lock() {
+                if let Some(mut c) = guard.take() {
+                    let _ = c.kill();
+                    let _ = c.wait();
+                    return Ok(());
+                }
+            }
+            kill_app(pid)
+        }
+        BackendProcess::Virtualized {
+            pid,
+            vm,
+            tail_child,
+            ..
+        } => {
+            if let Ok(mut g) = tail_child.lock() {
+                if let Some(mut c) = g.take() {
+                    let _ = c.kill();
+                    let _ = c.wait();
+                }
+            }
             backend::kill_vm_process(&vm, pid).map_err(|err| anyhow!(err))
         }
     }
@@ -189,6 +211,29 @@ pub struct Secret {
     pub name: String,
     pub description: String,
     pub required: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SecretStatus {
+    pub name: String,
+    pub description: String,
+    pub required: bool,
+    pub configured: bool,
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EnvFileStatus {
+    pub name: String,
+    pub directory: String,
+    pub repo_relative_path: String,
+    pub variable_count: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AppSecretStatus {
+    pub secrets: Vec<SecretStatus>,
+    pub env_file: Option<EnvFileStatus>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -318,6 +363,17 @@ pub struct CleanupStep {
 pub struct AppGroup {
     pub name: String,
     pub apps: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct StoredEnvFile {
+    name: String,
+    directory: String,
+    repo_relative_path: String,
+    managed_contents: Vec<u8>,
+    variables: HashMap<String, String>,
+    target_path: PathBuf,
+    original_contents: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -620,13 +676,124 @@ pub fn get_app_secrets(app: &Application) -> Vec<Secret> {
     app.secrets.clone().unwrap_or_default()
 }
 
-pub fn check_app_secrets_satisfied(app: &Application) -> bool {
-    let secrets = get_app_secrets(app);
+fn app_secret_store_key(repo_path: &Path, app_id: &str) -> String {
+    format!("{}\0{}", repo_path.to_string_lossy(), app_id)
+}
+
+fn validate_env_file_name(name: &str) -> Result<String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        bail!("Env file name is required");
+    }
+    if !trimmed.starts_with(".env") {
+        bail!("Env file name must start with '.env'");
+    }
+    if trimmed.contains('/') || trimmed.contains('\\') {
+        bail!("Env file name must not include directories");
+    }
+
+    let path = Path::new(trimmed);
+    let Some(component) = path.components().next() else {
+        bail!("Env file name is required");
+    };
+    if path.components().count() != 1 || !matches!(component, Component::Normal(_)) {
+        bail!("Env file name must be a file name, not a path");
+    }
+
+    Ok(trimmed.to_string())
+}
+
+fn resolve_env_file_directory(repo_path: &Path, directory: &str) -> Result<(String, PathBuf)> {
+    let normalized = normalize_relative_path(directory)?;
+    let target_dir = if normalized.is_empty() {
+        repo_path.to_path_buf()
+    } else {
+        repo_path.join(&normalized)
+    };
+    Ok((normalized, target_dir))
+}
+
+fn parse_env_file_contents(contents: &str) -> Result<HashMap<String, String>> {
+    let mut variables = HashMap::new();
+    for entry in dotenvy::from_read_iter(Cursor::new(contents.as_bytes())) {
+        let (key, value) = entry.map_err(|err| anyhow!("Failed to parse env file: {err}"))?;
+        variables.insert(key, value);
+    }
+    Ok(variables)
+}
+
+fn read_file_if_exists(path: &Path) -> Result<Option<Vec<u8>>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err.into()),
+    }
+}
+
+fn restore_managed_env_file(env_file: &StoredEnvFile) -> Result<()> {
+    let current_contents = read_file_if_exists(&env_file.target_path)?;
+    let current_matches_managed = current_contents
+        .as_ref()
+        .map(|current| current.as_slice() == env_file.managed_contents.as_slice())
+        .unwrap_or(false);
+
+    match (&env_file.original_contents, current_contents) {
+        (Some(original), Some(_)) if current_matches_managed => {
+            std::fs::write(&env_file.target_path, original)
+                .with_context(|| format!("Failed to restore {:?}", env_file.target_path))?;
+        }
+        (Some(original), None) => {
+            std::fs::write(&env_file.target_path, original)
+                .with_context(|| format!("Failed to restore {:?}", env_file.target_path))?;
+        }
+        (None, Some(_)) if current_matches_managed => {
+            std::fs::remove_file(&env_file.target_path)
+                .with_context(|| format!("Failed to remove {:?}", env_file.target_path))?;
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn env_file_status(env_file: &StoredEnvFile) -> EnvFileStatus {
+    EnvFileStatus {
+        name: env_file.name.clone(),
+        directory: env_file.directory.clone(),
+        repo_relative_path: env_file.repo_relative_path.clone(),
+        variable_count: env_file.variables.len(),
+    }
+}
+
+fn get_manual_secrets() -> HashMap<String, String> {
     let store = SECRETS_STORE.lock().unwrap();
+    store.clone()
+}
+
+fn get_app_env_file(repo_path: &Path, app_id: &str) -> Option<StoredEnvFile> {
+    let store = APP_ENV_FILE_STORE.lock().unwrap();
+    store.get(&app_secret_store_key(repo_path, app_id)).cloned()
+}
+
+fn get_app_env_file_variables(repo_path: &Path, app_id: &str) -> HashMap<String, String> {
+    get_app_env_file(repo_path, app_id)
+        .map(|entry| entry.variables)
+        .unwrap_or_default()
+}
+
+fn get_all_secrets(repo_path: &Path, app_id: &str) -> HashMap<String, String> {
+    let mut secrets = get_app_env_file_variables(repo_path, app_id);
+    secrets.extend(get_manual_secrets());
+    secrets
+}
+
+pub fn check_app_secrets_satisfied(repo_path: &Path, app: &Application) -> bool {
+    let secrets = get_app_secrets(app);
+    let configured = get_all_secrets(repo_path, &app.id);
     secrets
         .into_iter()
         .filter(|secret| secret.required)
-        .all(|secret| store.contains_key(&secret.name))
+        .all(|secret| configured.contains_key(&secret.name))
 }
 
 pub fn set_secret(name: String, value: String) {
@@ -634,14 +801,122 @@ pub fn set_secret(name: String, value: String) {
     store.insert(name, value);
 }
 
-pub fn get_all_secrets() -> HashMap<String, String> {
-    let store = SECRETS_STORE.lock().unwrap();
-    store.clone()
+fn store_app_env_file(
+    repo_path: &Path,
+    app: &Application,
+    directory: String,
+    name: String,
+    contents: String,
+) -> Result<EnvFileStatus> {
+    let name = validate_env_file_name(&name)?;
+    let variables = parse_env_file_contents(&contents)?;
+    let (directory, target_dir) = resolve_env_file_directory(repo_path, &directory)?;
+    let repo_relative_path = if directory.is_empty() {
+        name.clone()
+    } else {
+        format!("{directory}/{name}")
+    };
+    let target_path = target_dir.join(&name);
+    let previous = get_app_env_file(repo_path, &app.id);
+    let original_contents = if let Some(previous) = &previous {
+        if previous.target_path == target_path {
+            previous.original_contents.clone()
+        } else {
+            read_file_if_exists(&target_path)?
+        }
+    } else {
+        read_file_if_exists(&target_path)?
+    };
+
+    if let Some(parent) = target_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create {:?}", parent))?;
+    }
+    std::fs::write(&target_path, contents.as_bytes())
+        .with_context(|| format!("Failed to write {:?}", target_path))?;
+
+    if let Some(previous) = previous.as_ref().filter(|entry| entry.target_path != target_path) {
+        let _ = restore_managed_env_file(previous);
+    }
+
+    let stored = StoredEnvFile {
+        name: name.clone(),
+        directory,
+        repo_relative_path,
+        managed_contents: contents.into_bytes(),
+        variables,
+        target_path,
+        original_contents,
+    };
+
+    let status = env_file_status(&stored);
+    let mut store = APP_ENV_FILE_STORE.lock().unwrap();
+    store.insert(app_secret_store_key(repo_path, &app.id), stored);
+    Ok(status)
+}
+
+fn remove_app_env_file(repo_path: &Path, app_id: &str) -> Result<()> {
+    let stored = {
+        let mut store = APP_ENV_FILE_STORE.lock().unwrap();
+        store.remove(&app_secret_store_key(repo_path, app_id))
+    };
+
+    if let Some(stored) = stored {
+        restore_managed_env_file(&stored)?;
+    }
+
+    Ok(())
+}
+
+fn get_app_secret_status(repo_path: &Path, app: &Application) -> AppSecretStatus {
+    let manual_secrets = get_manual_secrets();
+    let env_file = get_app_env_file(repo_path, &app.id);
+    let env_variables = env_file
+        .as_ref()
+        .map(|entry| entry.variables.clone())
+        .unwrap_or_default();
+
+    let secrets = get_app_secrets(app)
+        .into_iter()
+        .map(|secret| {
+            let source = if manual_secrets.contains_key(&secret.name) {
+                Some("manual".to_string())
+            } else if env_variables.contains_key(&secret.name) {
+                Some("env_file".to_string())
+            } else {
+                None
+            };
+
+            SecretStatus {
+                name: secret.name,
+                description: secret.description,
+                required: secret.required,
+                configured: source.is_some(),
+                source,
+            }
+        })
+        .collect();
+
+    AppSecretStatus {
+        secrets,
+        env_file: env_file.as_ref().map(env_file_status),
+    }
 }
 
 pub fn clear_secrets() {
     let mut store = SECRETS_STORE.lock().unwrap();
     store.clear();
+}
+
+pub fn clear_managed_env_files() {
+    let stored_files = {
+        let mut store = APP_ENV_FILE_STORE.lock().unwrap();
+        store.drain().map(|(_, value)| value).collect::<Vec<_>>()
+    };
+
+    for stored in stored_files {
+        let _ = restore_managed_env_file(&stored);
+    }
 }
 
 // ============================================================================
@@ -886,7 +1161,7 @@ pub fn run_setup(
     backend: &BackendContext,
     app_handle: Option<&AppHandle>,
 ) -> Result<String> {
-    if !check_app_secrets_satisfied(app) {
+    if !check_app_secrets_satisfied(repo_path, app) {
         bail!("Required secrets not configured for this application");
     }
 
@@ -1033,7 +1308,7 @@ pub fn run_setup_step(
     backend: &BackendContext,
     app_handle: Option<&AppHandle>,
 ) -> Result<String> {
-    if !check_app_secrets_satisfied(app) {
+    if !check_app_secrets_satisfied(repo_path, app) {
         bail!("Required secrets not configured for this application");
     }
 
@@ -1222,13 +1497,127 @@ pub fn run_setup_step_teardown(
     Ok(format!("Ran teardown for '{}'.", step.name))
 }
 
+const FALCK_APP_LOG_MAX_CHARS: usize = 512_000;
+
+fn append_falck_host_log_line(buffer: &Arc<Mutex<String>>, stream: &str, line: &str) {
+    let mut guard = buffer.lock().unwrap_or_else(|err| err.into_inner());
+    guard.push('[');
+    guard.push_str(stream);
+    guard.push_str("] ");
+    guard.push_str(line);
+    guard.push('\n');
+    if guard.len() > FALCK_APP_LOG_MAX_CHARS {
+        let excess = guard.len() - FALCK_APP_LOG_MAX_CHARS;
+        guard.drain(..excess);
+    }
+}
+
+fn spawn_falck_host_log_streams(
+    app_handle: AppHandle,
+    pid: u32,
+    stdout: Option<std::process::ChildStdout>,
+    stderr: Option<std::process::ChildStderr>,
+    buffer: Arc<Mutex<String>>,
+) {
+    if let Some(out) = stdout {
+        let app_handle = app_handle.clone();
+        let buffer = buffer.clone();
+        std::thread::spawn(move || {
+            let mut br = BufReader::new(out);
+            let mut line_buf = String::new();
+            loop {
+                line_buf.clear();
+                match br.read_line(&mut line_buf) {
+                    Ok(0) => break,
+                    Ok(_) => {
+                        let trimmed = line_buf.trim_end();
+                        append_falck_host_log_line(&buffer, "out", trimmed);
+                        let _ = app_handle.emit(
+                            "falck-app-log",
+                            serde_json::json!({
+                                "pid": pid,
+                                "stream": "stdout",
+                                "line": trimmed,
+                            }),
+                        );
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+    }
+    if let Some(err) = stderr {
+        let app_handle = app_handle.clone();
+        let buffer = buffer.clone();
+        std::thread::spawn(move || {
+            let mut br = BufReader::new(err);
+            let mut line_buf = String::new();
+            loop {
+                line_buf.clear();
+                match br.read_line(&mut line_buf) {
+                    Ok(0) => break,
+                    Ok(_) => {
+                        let trimmed = line_buf.trim_end();
+                        append_falck_host_log_line(&buffer, "err", trimmed);
+                        let _ = app_handle.emit(
+                            "falck-app-log",
+                            serde_json::json!({
+                                "pid": pid,
+                                "stream": "stderr",
+                                "line": trimmed,
+                            }),
+                        );
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+    }
+}
+
+fn spawn_falck_vm_log_stream(
+    app_handle: AppHandle,
+    display_pid: u32,
+    stdout: Option<std::process::ChildStdout>,
+    buffer: Arc<Mutex<String>>,
+) {
+    if let Some(out) = stdout {
+        let app_handle = app_handle.clone();
+        let buffer = buffer.clone();
+        std::thread::spawn(move || {
+            let mut br = BufReader::new(out);
+            let mut line_buf = String::new();
+            loop {
+                line_buf.clear();
+                match br.read_line(&mut line_buf) {
+                    Ok(0) => break,
+                    Ok(_) => {
+                        let trimmed = line_buf.trim_end();
+                        append_falck_host_log_line(&buffer, "out", trimmed);
+                        let _ = app_handle.emit(
+                            "falck-app-log",
+                            serde_json::json!({
+                                "pid": display_pid,
+                                "stream": "stdout",
+                                "line": trimmed,
+                            }),
+                        );
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+    }
+}
+
 pub fn launch_app(
+    app_handle: &AppHandle,
     repo_path: &Path,
     config: &FalckConfig,
     app: &Application,
     backend: &BackendContext,
 ) -> Result<BackendProcess> {
-    if !check_app_secrets_satisfied(app) {
+    if !check_app_secrets_satisfied(repo_path, app) {
         bail!("Required secrets not configured for this application");
     }
 
@@ -1243,11 +1632,18 @@ pub fn launch_app(
     if let Some(vm) = &backend.vm {
         let exports = backend::vm_env_exports(&env_map);
         let vm_root = backend::vm_app_root(vm, &app_root).map_err(|err| anyhow!(err))?;
+        let log_path_in_vm = format!(
+            "/tmp/falck-app-{}.log",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
         let script = format!(
             "{}cd {} && {}",
             exports,
             backend::shell_escape(&vm_root),
-            backend::background_launch_script(&command)
+            backend::background_launch_script_vm(&command, &log_path_in_vm)
         );
         let cmd = backend::build_vm_command(vm, &script);
         let (status, stdout, stderr) =
@@ -1265,23 +1661,66 @@ pub fn launch_app(
         }
         let pid = backend::extract_pid(&format!("{}\n{}", stdout, stderr))
             .map_err(|err| anyhow!(err))?;
+        let vm_handle = VmProcessHandle {
+            provider: vm.provider,
+            name: vm.name.clone(),
+            limactl_path: vm.limactl_path.clone(),
+        };
+        let display_pid = {
+            let input = format!("{}:{}", vm_handle.name, pid);
+            0x8000_0000 | fnv1a_hash_u32(&input)
+        };
+        let log_buffer = Arc::new(Mutex::new(String::new()));
+        let tail_child = Arc::new(Mutex::new(None));
+        match backend::spawn_vm_log_tail_reader(vm, &log_path_in_vm) {
+            Ok(mut tail_proc) => {
+                let tail_stdout = tail_proc.stdout.take();
+                *tail_child.lock().unwrap_or_else(|err| err.into_inner()) = Some(tail_proc);
+                spawn_falck_vm_log_stream(
+                    app_handle.clone(),
+                    display_pid,
+                    tail_stdout,
+                    log_buffer.clone(),
+                );
+            }
+            Err(err) => {
+                let mut guard = log_buffer.lock().unwrap_or_else(|err| err.into_inner());
+                guard.push_str("[err] ");
+                guard.push_str(&err);
+                guard.push('\n');
+            }
+        }
         Ok(BackendProcess::Virtualized {
             pid,
-            vm: VmProcessHandle {
-                provider: vm.provider,
-                name: vm.name.clone(),
-                limactl_path: vm.limactl_path.clone(),
-            },
+            vm: vm_handle,
+            log_buffer,
+            tail_child,
         })
     } else {
         let mut cmd = build_shell_command(&command);
         cmd.current_dir(&app_root)
             .envs(&env_map)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
-        let child = cmd.spawn().context("Failed to spawn application process")?;
-        Ok(BackendProcess::Host { pid: child.id() })
+        let mut child = cmd.spawn().context("Failed to spawn application process")?;
+        let pid = child.id();
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+        let log_buffer = Arc::new(Mutex::new(String::new()));
+        spawn_falck_host_log_streams(
+            app_handle.clone(),
+            pid,
+            stdout,
+            stderr,
+            log_buffer.clone(),
+        );
+        let child_arc = Arc::new(Mutex::new(Some(child)));
+        Ok(BackendProcess::Host {
+            pid,
+            child: child_arc,
+            log_buffer,
+        })
     }
 }
 
@@ -1346,10 +1785,11 @@ fn merge_shell_env(env_map: &mut HashMap<String, String>, shell_env: HashMap<Str
 fn load_backend_env(backend: &BackendContext) -> HashMap<String, String> {
     if backend.mode == backend::BackendMode::Host {
         let mut env_map: HashMap<String, String> = env::vars().collect();
-        if !cfg!(debug_assertions) {
-            if let Some(shell_env) = load_shell_env() {
-                merge_shell_env(&mut env_map, shell_env);
-            }
+        // Always merge a login+interactive shell snapshot (cached). Launch uses
+        // `zsh -l -c` without `-i`, so ~/.zshrc (nvm/fnm/Homebrew shims) is not
+        // sourced; without this, `npm` is often missing in dev while Terminal works.
+        if let Some(shell_env) = load_shell_env() {
+            merge_shell_env(&mut env_map, shell_env);
         }
         env_map
     } else {
@@ -1390,11 +1830,12 @@ fn prepare_runtime_context(
     let base_env = load_backend_env(backend);
     let (ctx_repo_root, ctx_app_root) = resolve_runtime_paths(repo_path, &app_root, backend)?;
     let ctx = TemplateContext::new_for_backend(&ctx_repo_root, &ctx_app_root, &base_env, backend);
-    let env_map = build_env_map(config, app, &ctx, &base_env)?;
+    let env_map = build_env_map(repo_path, config, app, &ctx, &base_env)?;
     Ok((app_root, ctx, env_map))
 }
 
 fn build_env_map(
+    repo_path: &Path,
     config: &FalckConfig,
     app: &Application,
     ctx: &TemplateContext,
@@ -1414,11 +1855,12 @@ fn build_env_map(
         }
     }
 
-    env_map.extend(get_all_secrets());
+    env_map.extend(get_all_secrets(repo_path, &app.id));
     Ok(env_map)
 }
 
 fn build_container_env_map(
+    repo_path: &Path,
     config: &FalckConfig,
     app: &Application,
     ctx: &TemplateContext,
@@ -1437,7 +1879,7 @@ fn build_container_env_map(
         }
     }
 
-    env_map.extend(get_all_secrets());
+    env_map.extend(get_all_secrets(repo_path, &app.id));
     Ok(env_map)
 }
 
@@ -1577,7 +2019,7 @@ fn build_container_launch_spec(
         }]
     };
 
-    let env = build_container_env_map(config, app, &ctx)?;
+    let env = build_container_env_map(repo_path, config, app, &ctx)?;
 
     Ok(crate::containers::ContainerLaunchSpec {
         repo_path: repo_path.to_path_buf(),
@@ -2648,9 +3090,59 @@ pub async fn get_app_secrets_for_config(
 }
 
 #[tauri::command]
+pub async fn get_app_secret_status_for_config(
+    repo_path: String,
+    app_id: String,
+) -> Result<AppSecretStatus, String> {
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        let config = load_config(path).map_err(|e| e.to_string())?;
+        let app = config
+            .applications
+            .iter()
+            .find(|app| app.id == app_id)
+            .ok_or_else(|| "Application not found".to_string())?;
+
+        Ok(get_app_secret_status(path, app))
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn set_app_secret(name: String, value: String) -> Result<(), String> {
     set_secret(name, value);
     Ok(())
+}
+
+#[tauri::command]
+pub async fn set_app_env_file(
+    repo_path: String,
+    app_id: String,
+    directory: String,
+    name: String,
+    content: String,
+) -> Result<EnvFileStatus, String> {
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        let config = load_config(path).map_err(|e| e.to_string())?;
+        let app = config
+            .applications
+            .iter()
+            .find(|app| app.id == app_id)
+            .ok_or_else(|| "Application not found".to_string())?;
+
+        store_app_env_file(path, app, directory, name, content).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn clear_app_env_file(repo_path: String, app_id: String) -> Result<(), String> {
+    run_blocking(move || {
+        let path = Path::new(&repo_path);
+        remove_app_env_file(path, &app_id).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -2664,7 +3156,7 @@ pub async fn check_secrets_satisfied(repo_path: String, app_id: String) -> Resul
             .find(|app| app.id == app_id)
             .ok_or_else(|| "Application not found".to_string())?;
 
-        Ok(check_app_secrets_satisfied(app))
+        Ok(check_app_secrets_satisfied(path, app))
     })
     .await
 }
@@ -2793,7 +3285,7 @@ pub async fn launch_falck_app(
                 backend::ensure_vm_port_forwards(Some(&app_handle), vm, &ports)
                     .map_err(|e| e.to_string())?;
             }
-            let process = launch_app(path, &config, app_config, &backend_ctx)
+            let process = launch_app(&app_handle, path, &config, app_config, &backend_ctx)
                 .map_err(|e| e.to_string())?;
             Ok(LaunchOutcome::Process(process))
         }
@@ -2861,6 +3353,27 @@ pub async fn upload_falck_assets(
 }
 
 #[tauri::command]
+pub fn get_falck_app_logs(
+    state: State<'_, FalckProcessState>,
+    pid: u32,
+) -> Result<String, String> {
+    let guard = state
+        .0
+        .lock()
+        .map_err(|_| "Lock poisoned.".to_string())?;
+    let app = guard
+        .get(&pid)
+        .ok_or_else(|| "Process not found.".to_string())?;
+    match &app.process {
+        BackendProcess::Host { log_buffer, .. }
+        | BackendProcess::Virtualized { log_buffer, .. } => log_buffer
+            .lock()
+            .map_err(|_| "Lock poisoned.".to_string())
+            .map(|g| g.clone()),
+    }
+}
+
+#[tauri::command]
 pub async fn kill_falck_app(state: State<'_, FalckProcessState>, pid: u32) -> Result<(), String> {
     let handle = unregister_running_app(&state, pid);
     run_blocking(move || {
@@ -2887,6 +3400,7 @@ pub async fn open_browser_to_url(url: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn clear_all_secrets() -> Result<(), String> {
+    clear_managed_env_files();
     clear_secrets();
     Ok(())
 }

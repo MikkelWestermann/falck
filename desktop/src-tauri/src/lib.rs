@@ -353,6 +353,7 @@ pub fn run() {
                 let state = window.app_handle().state::<falck::FalckProcessState>();
                 falck::stop_all_running_apps(&state);
                 backend::stop_all_repo_backends(&window.app_handle());
+                falck::clear_managed_env_files();
             }
         });
 
@@ -416,7 +417,10 @@ pub fn run() {
             project::create_astro_project,
             falck::load_falck_config,
             falck::get_app_secrets_for_config,
+            falck::get_app_secret_status_for_config,
             falck::set_app_secret,
+            falck::set_app_env_file,
+            falck::clear_app_env_file,
             falck::check_secrets_satisfied,
             falck::run_falck_setup,
             falck::check_falck_setup_steps,
@@ -425,6 +429,7 @@ pub fn run() {
             falck::launch_falck_app,
             falck::run_falck_cleanup,
             falck::upload_falck_assets,
+            falck::get_falck_app_logs,
             falck::kill_falck_app,
             falck::check_port_available,
             falck::open_browser_to_url,
@@ -462,6 +467,7 @@ pub fn run() {
             let state = app_handle.state::<falck::FalckProcessState>();
             falck::stop_all_running_apps(&state);
             backend::stop_all_repo_backends(app_handle);
+            falck::clear_managed_env_files();
             app_handle.exit(0);
         } else if let tauri::RunEvent::Exit { .. } = event {
             if shutdown_guard.swap(true, Ordering::SeqCst) {
@@ -470,6 +476,7 @@ pub fn run() {
             let state = app_handle.state::<falck::FalckProcessState>();
             falck::stop_all_running_apps(&state);
             backend::stop_all_repo_backends(app_handle);
+            falck::clear_managed_env_files();
         }
     });
 }
