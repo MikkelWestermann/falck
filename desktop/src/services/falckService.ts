@@ -55,6 +55,23 @@ export interface Secret {
   required: boolean;
 }
 
+export interface SecretStatus extends Secret {
+  configured: boolean;
+  source: "manual" | "env_file" | null;
+}
+
+export interface EnvFileStatus {
+  name: string;
+  directory: string;
+  repo_relative_path: string;
+  variable_count: number;
+}
+
+export interface AppSecretStatus {
+  secrets: SecretStatus[];
+  env_file: EnvFileStatus | null;
+}
+
 export interface SetupConfig {
   steps?: SetupStep[];
 }
@@ -192,10 +209,43 @@ export const falckService = {
     });
   },
 
+  async getAppSecretStatus(
+    repoPath: string,
+    appId: string,
+  ): Promise<AppSecretStatus> {
+    return invoke<AppSecretStatus>("get_app_secret_status_for_config", {
+      repoPath,
+      appId,
+    });
+  },
+
   async setSecret(name: string, value: string): Promise<void> {
     return invoke<void>("set_app_secret", {
       name,
       value,
+    });
+  },
+
+  async setAppEnvFile(
+    repoPath: string,
+    appId: string,
+    directory: string,
+    name: string,
+    content: string,
+  ): Promise<EnvFileStatus> {
+    return invoke<EnvFileStatus>("set_app_env_file", {
+      repoPath,
+      appId,
+      directory,
+      name,
+      content,
+    });
+  },
+
+  async clearAppEnvFile(repoPath: string, appId: string): Promise<void> {
+    return invoke<void>("clear_app_env_file", {
+      repoPath,
+      appId,
     });
   },
 
@@ -265,6 +315,11 @@ export const falckService = {
     return invoke<void>("kill_falck_app", {
       pid,
     });
+  },
+
+  /** Captured stdout/stderr for host-launched processes (see Process logs in Falck UI). */
+  async getFalckAppLogs(pid: number): Promise<string> {
+    return invoke<string>("get_falck_app_logs", { pid });
   },
 
   async isPortAvailable(port: number): Promise<boolean> {

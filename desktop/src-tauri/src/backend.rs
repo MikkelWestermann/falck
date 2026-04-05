@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
@@ -166,8 +166,22 @@ pub struct VmProcessHandle {
 
 #[derive(Debug, Clone)]
 pub enum BackendProcess {
-    Host { pid: u32 },
-    Virtualized { pid: u32, vm: VmProcessHandle },
+    /// Host-launched process. The `Child` must be kept until stop/kill so the process stays running
+    /// and stdout/stderr can be read (dropping `Child` terminates the process on Unix).
+    Host {
+        pid: u32,
+        child: Arc<Mutex<Option<Child>>>,
+        log_buffer: Arc<Mutex<String>>,
+    },
+    /// Lima/WSL-launched process: app output is written to a file in the guest; the host runs
+    /// `tail -F` via `limactl shell` and streams lines into `log_buffer`. `tail_child` must be
+    /// killed when stopping.
+    Virtualized {
+        pid: u32,
+        vm: VmProcessHandle,
+        log_buffer: Arc<Mutex<String>>,
+        tail_child: Arc<Mutex<Option<Child>>>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -2812,6 +2826,23 @@ pub async fn delete_repo_backend(app: AppHandle, repo_path: String) -> Result<()
 pub fn background_launch_script(command: &str) -> String {
     let escaped = shell_escape(command);
     format!("nohup sh -c {} > /dev/null 2>&1 & echo $!", escaped)
+}
+
+/// Same as [`background_launch_script`], but redirects stdout+stderr to a log file inside the VM
+/// so the host can run `tail -F` and show process output in the UI.
+pub fn background_launch_script_vm(command: &str, log_path_in_vm: &str) -> String {
+    let escaped_cmd = shell_escape(command);
+    let escaped_log = shell_escape(log_path_in_vm);
+    format!("nohup sh -c {} > {} 2>&1 & echo $!", escaped_cmd, escaped_log)
+}
+
+/// Run `tail -F` inside the VM; stdout is the merged app log stream (read on the host).
+pub fn spawn_vm_log_tail_reader(vm: &VmContext, log_path_in_vm: &str) -> Result<Child, String> {
+    let script = format!("tail -n +1 -F {}", shell_escape(log_path_in_vm));
+    let mut cmd = build_vm_command(vm, &script);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::null());
+    cmd.spawn()
+        .map_err(|e| format!("Failed to start VM log tail ({log_path_in_vm}): {e}"))
 }
 
 pub fn extract_pid(output: &str) -> Result<u32, String> {

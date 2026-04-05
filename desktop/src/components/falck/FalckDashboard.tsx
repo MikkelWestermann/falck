@@ -21,11 +21,13 @@ import {
   AlertCircle,
   Circle,
   CheckCircle2,
+  FileText,
   Loader2,
   ListChecks,
   Play,
   RefreshCw,
   Square,
+  Terminal,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -97,6 +99,12 @@ interface SetupStepEvent {
   message?: string;
 }
 
+interface FalckAppLogEventPayload {
+  pid: number;
+  stream: string;
+  line: string;
+}
+
 export function FalckDashboard({
   repoPath,
   onActiveAppChange,
@@ -133,6 +141,8 @@ export function FalckDashboard({
   const runningAppsRef = useRef<Record<string, RunningAppHandle>>({});
   const [setupDialogOpen, setSetupDialogOpen] = useState(false);
   const [containerLogsOpen, setContainerLogsOpen] = useState(false);
+  const [processLogsOpen, setProcessLogsOpen] = useState(false);
+  const [processLogText, setProcessLogText] = useState("");
   const [secretsSatisfied, setSecretsSatisfied] = useState<
     Record<string, boolean>
   >({});
@@ -171,6 +181,8 @@ export function FalckDashboard({
     setContainerStatusByApp({});
     setContainerLogsByApp({});
     setContainerLogsOpen(false);
+    setProcessLogsOpen(false);
+    setProcessLogText("");
     setSetupStepStatusByApp({});
     setSetupStepChecksByApp({});
     setSetupCheckLoading({});
@@ -183,6 +195,8 @@ export function FalckDashboard({
 
   useEffect(() => {
     setContainerLogsOpen(false);
+    setProcessLogsOpen(false);
+    setProcessLogText("");
   }, [activeAppId]);
 
   useEffect(() => {
@@ -354,6 +368,55 @@ export function FalckDashboard({
   useEffect(() => {
     onActiveAppChange?.(activeApp);
   }, [activeApp, onActiveAppChange]);
+
+  useEffect(() => {
+    if (!processLogsOpen || !activeApp) {
+      return;
+    }
+    const handle = runningApps[activeApp.id];
+    if (!handle || handle.kind !== "process") {
+      setProcessLogText(
+        !handle ? "No process is running." : "Use container logs for this app.",
+      );
+      return;
+    }
+    const pid = handle.pid;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      try {
+        const initial = await falckService.getFalckAppLogs(pid);
+        if (!cancelled) {
+          setProcessLogText(initial);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setProcessLogText(String(err));
+        }
+      }
+      unlisten = await listen<FalckAppLogEventPayload>(
+        "falck-app-log",
+        (event) => {
+          if (event.payload.pid !== pid) {
+            return;
+          }
+          const prefix =
+            event.payload.stream === "stderr" ? "[err] " : "[out] ";
+          setProcessLogText((prev) => {
+            const line = `${prefix}${event.payload.line}`;
+            if (!prev) {
+              return line;
+            }
+            return `${prev}\n${line}`;
+          });
+        },
+      );
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [processLogsOpen, activeApp, runningApps]);
 
   const checkSetupSteps = async (
     appId: string,
@@ -800,8 +863,11 @@ export function FalckDashboard({
   ).length;
   const setupChecksReady =
     setupStepsConfigured && activeStepChecks.length === activeSetupSteps.length;
+  const appHasRequiredSecrets = activeApp
+    ? Boolean(activeApp.secrets?.length)
+    : false;
   const secretsOk = activeApp
-    ? activeApp.secrets && activeApp.secrets.length > 0
+    ? appHasRequiredSecrets
       ? Boolean(secretsSatisfied[activeApp.id])
       : true
     : true;
@@ -1133,6 +1199,27 @@ export function FalckDashboard({
                   size="sm"
                   variant="ghost"
                   className="gap-1"
+                  onClick={() => setSecretsDialogApp(activeApp)}
+                >
+                  <FileText className="h-4 w-4" />
+                  Manage env
+                </Button>
+                {isRunning &&
+                runningApps[activeApp.id]?.kind === "process" ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="gap-1"
+                    onClick={() => setProcessLogsOpen(true)}
+                  >
+                    <Terminal className="h-4 w-4" />
+                    Process logs
+                  </Button>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="gap-1"
                   onClick={() => setSetupDialogOpen(true)}
                 >
                   <ListChecks className="h-4 w-4" />
@@ -1177,15 +1264,15 @@ export function FalckDashboard({
               </div>
             </div>
             <div className="space-y-2 pt-0">
-              {!isRunning && !secretsOk && activeApp.secrets?.length ? (
+              {!isRunning && !secretsOk && appHasRequiredSecrets ? (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-900">
-                  <span>Secrets required to start this app.</span>
+                  <span>Required env values are missing for this app.</span>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => setSecretsDialogApp(activeApp)}
                   >
-                    Configure
+                    Manage env
                   </Button>
                 </div>
               ) : null}
@@ -1213,13 +1300,37 @@ export function FalckDashboard({
                   Live output from the dev container build and run steps.
                 </DialogDescription>
               </DialogHeader>
-              <ScrollArea className="max-h-[70vh] rounded-md border border-border/60 bg-muted/20">
-                <pre className="p-4 text-xs font-mono leading-relaxed whitespace-pre-wrap">
+              <div className="max-h-[70vh] min-h-0 overflow-y-auto overflow-x-auto rounded-md border border-border/60 bg-muted/20">
+                <pre className="p-4 text-xs font-mono leading-relaxed whitespace-pre-wrap break-words">
                   {activeContainerLogs.length > 0
                     ? activeContainerLogs.slice(-400).join("\n")
                     : "No logs yet."}
                 </pre>
-              </ScrollArea>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog
+            open={processLogsOpen}
+            onOpenChange={(open) => {
+              setProcessLogsOpen(open);
+              if (!open) {
+                setProcessLogText("");
+              }
+            }}
+          >
+            <DialogContent className="max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>Process logs</DialogTitle>
+                <DialogDescription>
+                  Output from the launch command (stdout and stderr), including
+                  when the app runs in a virtual machine. Last ~500 KB are kept.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="max-h-[70vh] min-h-0 overflow-y-auto overflow-x-auto rounded-md border border-border/60 bg-muted/20">
+                <pre className="p-4 text-xs font-mono leading-relaxed whitespace-pre-wrap break-words">
+                  {processLogText || "No output yet."}
+                </pre>
+              </div>
             </DialogContent>
           </Dialog>
           <Dialog open={autoSetupOverlayActive} onOpenChange={() => {}}>
@@ -1317,35 +1428,41 @@ export function FalckDashboard({
                     </div>
                   ) : null}
 
-                  {activeApp.secrets && activeApp.secrets.length > 0 && (
-                    <div
-                      className={
-                        secretsOk
+                  <div
+                    className={
+                      appHasRequiredSecrets
+                        ? secretsOk
                           ? "rounded-lg border-2 border-green-200 bg-green-50 px-3 py-2"
                           : "rounded-lg border-2 border-yellow-200 bg-yellow-50 px-3 py-2"
-                      }
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold">
-                            {secretsOk ? "Secrets ready" : "Secrets required"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {secretsOk
-                              ? "All required secrets are set."
-                              : "Add the required secrets to continue."}
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setSecretsDialogApp(activeApp)}
-                        >
-                          Configure
-                        </Button>
+                        : "rounded-lg border-2 border-border bg-card/80 px-3 py-2"
+                    }
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold">
+                          {appHasRequiredSecrets
+                            ? secretsOk
+                              ? "Environment ready"
+                              : "Environment required"
+                            : "Environment"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {appHasRequiredSecrets
+                            ? secretsOk
+                              ? "Required secrets are configured. You can still add an env file."
+                              : "Add required secrets or upload an env file to continue."
+                            : "No required secrets are configured for this app. You can still add an env file."}
+                        </p>
                       </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSecretsDialogApp(activeApp)}
+                      >
+                        Manage env
+                      </Button>
                     </div>
-                  )}
+                  </div>
 
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1559,6 +1676,7 @@ export function FalckDashboard({
           repoPath={repoPath}
           appId={secretsDialogApp.id}
           appName={secretsDialogApp.name}
+          appRoot={secretsDialogApp.root}
           onSecretsSaved={() => {
             void checkSecrets(secretsDialogApp.id);
           }}

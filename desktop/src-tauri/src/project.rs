@@ -750,7 +750,7 @@ async fn run_initial_setup_steps(
             .find(|app| app.id == app_id)
             .ok_or_else(|| format!("Application '{}' not found in Falck config.", app_id))?;
 
-        if !falck::check_app_secrets_satisfied(app_config) {
+        if !falck::check_app_secrets_satisfied(repo_root, app_config) {
             emit_progress(
                 app,
                 progress_id,
