@@ -32,6 +32,7 @@ interface BranchSwitcherProps {
   currentBranch: string;
   onSelectProject: (projectName: string) => Promise<void>;
   onCreateProject: (projectName: string) => Promise<void>;
+  onCheckoutExistingBranch: (branchName: string) => Promise<void>;
   compact?: boolean;
   branchPrefix?: string | null;
 }
@@ -41,18 +42,26 @@ export function BranchSwitcher({
   currentBranch,
   onSelectProject,
   onCreateProject,
+  onCheckoutExistingBranch,
   branchPrefix,
   compact = false,
 }: BranchSwitcherProps) {
   const [createOpen, setCreateOpen] = useState(false);
+  const [existingOpen, setExistingOpen] = useState(false);
   const [branchName, setBranchName] = useState("");
+  const [existingBranchName, setExistingBranchName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [existingError, setExistingError] = useState<string | null>(null);
   const normalizedPrefix = normalizeBranchPrefix(branchPrefix);
 
   const handleSelect = async (value: string) => {
     if (value === "__create__") {
       setCreateOpen(true);
+      return;
+    }
+    if (value === "__existing__") {
+      setExistingOpen(true);
       return;
     }
     if (value === currentBranch) {
@@ -97,6 +106,30 @@ export function BranchSwitcher({
     }
   };
 
+  const handleConfirmExistingBranch = async () => {
+    const trimmed = existingBranchName.trim();
+    if (!trimmed) {
+      setExistingError("Enter a branch name.");
+      return;
+    }
+    if (!isValidBranchName(trimmed)) {
+      setExistingError("Invalid branch name.");
+      return;
+    }
+
+    setLoading(true);
+    setExistingError(null);
+    try {
+      await onCheckoutExistingBranch(trimmed);
+      setExistingBranchName("");
+      setExistingOpen(false);
+    } catch (err) {
+      setExistingError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className={compact ? "space-y-1" : "space-y-2"}>
       <Label className={compact ? "sr-only" : undefined}>Project</Label>
@@ -111,10 +144,13 @@ export function BranchSwitcher({
             </SelectItem>
           ))}
           <SelectItem value="__create__">+ Create new project</SelectItem>
+          <SelectItem value="__existing__">
+            Select existing (advanced)
+          </SelectItem>
         </SelectContent>
       </Select>
 
-      {error && !createOpen && (
+      {error && !createOpen && !existingOpen && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -182,6 +218,59 @@ export function BranchSwitcher({
             </Button>
             <Button onClick={handleCreateProject} disabled={loading}>
               {loading ? "Creating..." : "Create project"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={existingOpen}
+        onOpenChange={(nextOpen) => {
+          setExistingOpen(nextOpen);
+          if (!nextOpen) {
+            setExistingBranchName("");
+            setExistingError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Select existing branch</DialogTitle>
+            <DialogDescription>
+              Enter the full branch name. The branch will be checked out and synced
+              from the remote when possible.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="existing-branch">Branch name</Label>
+            <Input
+              id="existing-branch"
+              value={existingBranchName}
+              onChange={(event) => setExistingBranchName(event.target.value)}
+              placeholder="feature/my-branch"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void handleConfirmExistingBranch();
+                }
+              }}
+            />
+          </div>
+          {existingError && (
+            <Alert variant="destructive">
+              <AlertDescription>{existingError}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setExistingOpen(false)}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmExistingBranch} disabled={loading}>
+              {loading ? "Switching..." : "Checkout and pull"}
             </Button>
           </DialogFooter>
         </DialogContent>

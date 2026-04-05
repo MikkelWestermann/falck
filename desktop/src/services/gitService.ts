@@ -125,6 +125,20 @@ export const gitService = {
     });
   },
 
+  async fetchCheckoutBranch(
+    path: string,
+    remote: string,
+    branch: string,
+  ): Promise<string> {
+    const key = requireSSHKey();
+    return invoke("fetch_checkout_branch", {
+      path,
+      remote,
+      branch,
+      sshKeyPath: key.private_key_path,
+    });
+  },
+
   async getRemotes(path: string): Promise<string[]> {
     return invoke("get_remotes", { path });
   },

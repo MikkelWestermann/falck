@@ -541,6 +541,46 @@ pub fn pull_from_remote(
     Err(GitError::Git("Merge required, not implemented".to_string()))
 }
 
+/// Fetches a branch from the remote and checks it out, creating or fast-forwarding the local branch.
+/// Use this when switching to a branch that may only exist on the remote.
+pub fn fetch_and_checkout_branch(
+    path: &str,
+    remote_name: &str,
+    branch_name: &str,
+    ssh_key_path: &str,
+) -> GitResult<()> {
+    if !Path::new(ssh_key_path).exists() {
+        return Err(GitError::Git("SSH key not found".to_string()));
+    }
+
+    let repo = open_repository(path)?;
+    let mut remote = repo.find_remote(remote_name)?;
+
+    let mut callbacks = RemoteCallbacks::new();
+    configure_ssh_callbacks(&mut callbacks, ssh_key_path);
+
+    let mut fetch_options = FetchOptions::new();
+    fetch_options.remote_callbacks(callbacks);
+
+    remote.fetch(&[branch_name], Some(&mut fetch_options), None)?;
+
+    let fetch_head = repo.find_reference("FETCH_HEAD")?;
+    let fetch_commit = repo.reference_to_annotated_commit(&fetch_head)?;
+
+    let refname = format!("refs/heads/{}", branch_name);
+    match repo.find_reference(&refname) {
+        Ok(mut reference) => {
+            reference.set_target(fetch_commit.id(), "Fast-Forward")?;
+        }
+        Err(_) => {
+            repo.reference(&refname, fetch_commit.id(), true, "Setting ref")?;
+        }
+    }
+    repo.set_head(&refname)?;
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))?;
+    Ok(())
+}
+
 pub fn list_remotes(path: &str) -> GitResult<Vec<String>> {
     let repo = open_repository(path)?;
     let remotes = repo.remotes()?;

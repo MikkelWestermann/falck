@@ -46,10 +46,12 @@ function OverviewRoute() {
   const [protectDefaultBranch, setProtectDefaultBranch] = useState(false);
   const [branchPrefix, setBranchPrefix] = useState<string | null>(null);
   const [activeApp, setActiveApp] = useState<FalckApplication | null>(null);
-  const [pendingProjectAction, setPendingProjectAction] = useState<{
-    type: "switch" | "create";
-    projectName: string;
-  } | null>(null);
+  const [pendingProjectAction, setPendingProjectAction] = useState<
+    | { type: "switch"; projectName: string }
+    | { type: "create"; projectName: string }
+    | { type: "checkout_existing"; branchName: string }
+    | null
+  >(null);
   const [refreshSeed, setRefreshSeed] = useState<number>(0);
 
   const loadRepoInfo = async (path: string) => {
@@ -212,10 +214,37 @@ function OverviewRoute() {
     await loadRepoInfo(repoPath);
   };
 
-  const queueProjectAction = async (action: {
-    type: "switch" | "create";
-    projectName: string;
-  }) => {
+  const performCheckoutExistingBranch = async (branchName: string) => {
+    if (!repoPath || !repoInfo) return;
+    const trimmed = branchName.trim();
+    const remotes = await gitService.getRemotes(repoPath);
+    const remote = remotes.includes("origin") ? "origin" : remotes[0];
+    const knownLocal = repoInfo.branches.some((b) => b.name === trimmed);
+
+    if (!remote) {
+      if (knownLocal) {
+        await gitService.checkoutBranch(repoPath, trimmed);
+        await loadRepoInfo(repoPath);
+        return;
+      }
+      throw new Error("No sync destination configured.");
+    }
+
+    if (knownLocal) {
+      await gitService.checkoutBranch(repoPath, trimmed);
+      await gitService.pull(repoPath, remote, trimmed);
+    } else {
+      await gitService.fetchCheckoutBranch(repoPath, remote, trimmed);
+    }
+    await loadRepoInfo(repoPath);
+  };
+
+  const queueProjectAction = async (
+    action:
+      | { type: "switch"; projectName: string }
+      | { type: "create"; projectName: string }
+      | { type: "checkout_existing"; branchName: string },
+  ) => {
     if (repoInfo?.is_dirty) {
       setPendingProjectAction(action);
       setShowUnsavedDialog(true);
@@ -225,7 +254,11 @@ function OverviewRoute() {
       await performProjectSwitch(action.projectName);
       return;
     }
-    await performProjectCreate(action.projectName);
+    if (action.type === "create") {
+      await performProjectCreate(action.projectName);
+      return;
+    }
+    await performCheckoutExistingBranch(action.branchName);
   };
 
   const handleSelectProject = async (projectName: string) => {
@@ -235,6 +268,10 @@ function OverviewRoute() {
   const handleCreateProject = async (projectName: string) => {
     const resolvedName = applyBranchPrefix(projectName.trim(), branchPrefix);
     await queueProjectAction({ type: "create", projectName: resolvedName });
+  };
+
+  const handleCheckoutExistingBranch = async (branchName: string) => {
+    await queueProjectAction({ type: "checkout_existing", branchName });
   };
 
   const handleDiscardAndContinue = async () => {
@@ -247,8 +284,10 @@ function OverviewRoute() {
       setShowUnsavedDialog(false);
       if (pendingProjectAction.type === "switch") {
         await performProjectSwitch(pendingProjectAction.projectName);
-      } else {
+      } else if (pendingProjectAction.type === "create") {
         await performProjectCreate(pendingProjectAction.projectName);
+      } else {
+        await performCheckoutExistingBranch(pendingProjectAction.branchName);
       }
     } finally {
       setPendingProjectAction(null);
@@ -273,7 +312,11 @@ function OverviewRoute() {
       await performProjectSwitch(action.projectName);
       return;
     }
-    await performProjectCreate(action.projectName);
+    if (action.type === "create") {
+      await performProjectCreate(action.projectName);
+      return;
+    }
+    await performCheckoutExistingBranch(action.branchName);
   };
 
   const handleSaveDialogOpenChange = (open: boolean) => {
@@ -382,6 +425,7 @@ function OverviewRoute() {
                     currentBranch={repoInfo.head_branch}
                     onSelectProject={handleSelectProject}
                     onCreateProject={handleCreateProject}
+                    onCheckoutExistingBranch={handleCheckoutExistingBranch}
                     branchPrefix={branchPrefix}
                     compact
                   />
@@ -476,9 +520,11 @@ function OverviewRoute() {
         targetLabel={
           pendingProjectAction?.type === "create"
             ? `create the "${pendingProjectAction.projectName}" project`
-            : pendingProjectAction
-              ? `switch to "${pendingProjectAction.projectName}"`
-              : undefined
+            : pendingProjectAction?.type === "checkout_existing"
+              ? `checkout branch "${pendingProjectAction.branchName}"`
+              : pendingProjectAction
+                ? `switch to "${pendingProjectAction.projectName}"`
+                : undefined
         }
         saveDisabled={saveBlocked}
         saveDisabledReason={

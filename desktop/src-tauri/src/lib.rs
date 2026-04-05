@@ -13,9 +13,10 @@ mod storage;
 use blocking::run_blocking;
 use git::{
     checkout_branch, clone_repository, create_branch, create_commit, current_branch, delete_branch,
-    discard_changes as discard_git_changes, get_commit_history, get_project_history,
-    get_remote_url as get_git_remote_url, get_repository_info, list_remotes, pull_from_remote,
-    push_to_remote, reset_to_commit as reset_git_to_commit, stage_file, unstage_file,
+    discard_changes as discard_git_changes, fetch_and_checkout_branch, get_commit_history,
+    get_project_history, get_remote_url as get_git_remote_url, get_repository_info, list_remotes,
+    pull_from_remote, push_to_remote, reset_to_commit as reset_git_to_commit, stage_file,
+    unstage_file,
 };
 use opencode::{
     check_command_exists, check_opencode_installed, install_opencode, opencode_send, OpencodeState,
@@ -266,6 +267,23 @@ async fn pull(
 }
 
 #[tauri::command]
+async fn fetch_checkout_branch(
+    path: String,
+    remote: String,
+    branch: String,
+    ssh_key_path: Option<String>,
+) -> Result<String, String> {
+    run_blocking(move || {
+        let ssh_key_path =
+            ssh_key_path.ok_or_else(|| "SSH key is required to sync.".to_string())?;
+        fetch_and_checkout_branch(&path, &remote, &branch, &ssh_key_path)
+            .map_err(|e| e.to_string())?;
+        Ok(format!("Checked out branch '{branch}'"))
+    })
+    .await
+}
+
+#[tauri::command]
 async fn get_remotes(path: String) -> Result<Vec<String>, String> {
     run_blocking(move || list_remotes(&path).map_err(|e| e.to_string())).await
 }
@@ -365,6 +383,7 @@ pub fn run() {
             checkout,
             push,
             pull,
+            fetch_checkout_branch,
             get_remotes,
             get_remote_url,
             save_repo_entry,
